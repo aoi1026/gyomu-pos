@@ -13,6 +13,7 @@ import {
 // DBの最新値を直接取得して表示する
 import { getCurrentUser } from '@/lib/auth';
 import { useNotificationContext } from '@/lib/notification-context';
+import { formatBackRate } from '@/lib/cast-back-system';
 
 export default function CastBackRatesPage() {
   const [currentRate, setCurrentRate] = useState<any | null>(null);
