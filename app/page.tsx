@@ -72,7 +72,7 @@ export default function Home() {
     //   icon: <Shield className="w-6 h-6" />,
     //   color: 'bg-orange-50 border-orange-200 text-orange-800'
     // }
-  ];
+  ];   
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-pink-50 to-blue-50">
