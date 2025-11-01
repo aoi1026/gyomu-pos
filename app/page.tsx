@@ -65,13 +65,13 @@ export default function Home() {
       icon: <Settings className="w-6 h-6" />,
       color: 'bg-purple-50 border-purple-200 text-purple-800'
     },
-    {
-      id: 'superadmin',
-      title: 'システム管理者',
-      description: '監査ログ・店舗管理・複数店舗統括',
-      icon: <Shield className="w-6 h-6" />,
-      color: 'bg-orange-50 border-orange-200 text-orange-800'
-    }
+    // {
+    //   id: 'superadmin',
+    //   title: 'システム管理者',
+    //   description: '監査ログ・店舗管理・複数店舗統括',
+    //   icon: <Shield className="w-6 h-6" />,
+    //   color: 'bg-orange-50 border-orange-200 text-orange-800'
+    // }
   ];
 
   return (
@@ -167,8 +167,8 @@ export default function Home() {
                 </div>
                 
                 <div className="absolute bottom-4 left-4 bg-white/95 backdrop-blur-sm rounded-lg p-4 shadow-lg">
-                  <div className="text-sm text-gray-600 mb-1">本日の売上</div>
-                  <div className="text-2xl font-bold text-gray-900">¥1,234,567</div>
+                  <div className="text-sm text-gray-600 mb-1">月別、日別</div>
+                  <div className="text-2xl font-bold text-gray-900">売上統計</div>
                 </div>
               </div>
               
@@ -266,7 +266,7 @@ export default function Home() {
             <h3 className="text-3xl font-bold text-gray-900 mb-4">役割別アクセス</h3>
             <p className="text-lg text-gray-600">テーブルログイン、キャスト、管理者がそれぞれの役割に最適化された機能</p>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {roles.map((role) => (
               <Card key={role.id} className={`${role.color} border-2 hover:shadow-lg transition-all duration-300 cursor-pointer transform hover:-translate-y-1`}>
                 <CardHeader className="text-center pb-4">
