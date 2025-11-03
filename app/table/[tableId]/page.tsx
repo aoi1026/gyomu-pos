@@ -23,6 +23,8 @@ import { createOrderNotification, getOrderTypeLabel } from '@/lib/order-monitori
 import { useNotificationContext } from '@/lib/notification-context';
 import StripeProvider from '@/components/providers/StripeProvider';
 import StripePaymentForm from '@/components/payment/StripePaymentForm';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from '@/components/ui/table';
 
 
 export default function TableDashboard({ params }: { params: { tableId: string } }) {
@@ -58,6 +60,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
   const [menuCategories, setMenuCategories] = useState<any[]>([]);
   const [menuItems, setMenuItems] = useState<any[]>([]);
   const [isMenuLoading, setIsMenuLoading] = useState(true);
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string>('all');
   const [showOrderDialog, setShowOrderDialog] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<any>(null);
   const [orderQuantity, setOrderQuantity] = useState<number>(1);
@@ -75,6 +78,13 @@ export default function TableDashboard({ params }: { params: { tableId: string }
   const [paymentAmount, setPaymentAmount] = useState<number>(0);
   const [isPaymentCompleted, setIsPaymentCompleted] = useState<boolean>(false);
   
+  // 支払い完了後に商品の追加をロックするフラグ
+  const hasAcceptedOrders = cartOrders.some(order => {
+    const status = (orderRequestStatus as any)[order.id] || order.status;
+    return status === 'accepted';
+  });
+  const isOrderingLocked = isPaymentCompleted && hasAcceptedOrders;
+  
   const router = useRouter();
   const { success, error, confirm } = useNotificationContext();
 
@@ -89,7 +99,13 @@ export default function TableDashboard({ params }: { params: { tableId: string }
     }
     
     setTableAuth(currentTable);
+    // 既存の未完了セッションがある場合は復元してセッション中として扱う
+    const existingSessionId = typeof window !== 'undefined' ? localStorage.getItem('current_session_id') : null;
+    if (existingSessionId) {
+      setIsSessionActive(true);
+    } else {
     setIsSessionActive(currentTable.status === 'occupied');
+    }
     setIsLoading(false);
     loadMenuData();
     loadServices();
@@ -442,10 +458,23 @@ export default function TableDashboard({ params }: { params: { tableId: string }
   // sendOrderRequest関数は削除（order_requestsテーブルが削除されたため）
   // 注文確定時に即座に管理者に送信される
 
-  const removeFromCart = (orderId: string) => {
+  const removeFromCart = async (orderId: string, currentStatus?: string) => {
+    try {
+      // 承認待ち（pending/sent）のみ削除可能
+      if (currentStatus && !['pending', 'sent'].includes(currentStatus)) {
+        error('エラー', '承認済みの注文は削除できません');
+        return;
+      }
+
+      const res = await fetch(`/api/salesorder/${orderId}`, { method: 'DELETE' });
+      const result = await res.json().catch(() => ({}));
+      if (!res.ok || !result.success) {
+        throw new Error(result?.error || '削除に失敗しました');
+      }
+
+      // クライアント状態を更新
     setCartOrders(prev => {
       const newOrders = prev.filter(order => order.id.toString() !== orderId);
-      // ローカルストレージも更新
       const sessionId = localStorage.getItem('current_session_id');
       if (sessionId) {
         localStorage.setItem(`cart_orders_${sessionId}`, JSON.stringify(newOrders));
@@ -453,15 +482,20 @@ export default function TableDashboard({ params }: { params: { tableId: string }
       return newOrders;
     });
     setCountdownTimers(prev => {
-      const newTimers = { ...prev };
+        const newTimers = { ...prev } as any;
       delete newTimers[orderId];
       return newTimers;
     });
     setOrderRequestStatus(prev => {
-      const newStatus = { ...prev };
+        const newStatus = { ...prev } as any;
       delete newStatus[orderId];
       return newStatus;
     });
+      success('削除完了', '承認待ちの注文を削除しました');
+    } catch (e: any) {
+      console.error('削除エラー:', e);
+      error('エラー', e?.message || '注文の削除に失敗しました');
+    }
   };
 
   const handleServiceOrder = (service: any) => {
@@ -729,7 +763,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
     setShowPaymentDialog(true);
   };
 
-  const handlePaymentSuccess = (paymentIntentId: string) => {
+  const handlePaymentSuccess = async (paymentIntentId: string) => {
     // 支払い完了後、ローカルストレージのcost項目に保存
     const currentCost = localStorage.getItem('cost') || '0';
     const newCost = parseInt(currentCost) + paymentAmount;
@@ -751,6 +785,33 @@ export default function TableDashboard({ params }: { params: { tableId: string }
           cost: newCost
         }),
       }).catch(err => console.error('セッション更新エラー:', err));
+    }
+    
+    // 承認待ち（pending/sent）の注文は決済完了時に拒否へ更新
+    try {
+      const ordersToReject = cartOrders.filter((order: any) => {
+        const st = (orderRequestStatus as any)[order.id] || order.status;
+        return st === 'pending' || st === 'sent';
+      });
+      await Promise.all(
+        ordersToReject.map((order: any) =>
+          fetch(`/api/salesorder/${order.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: 'rejected' })
+          }).catch(err => console.error('注文拒否更新エラー:', err))
+        )
+      );
+      // ローカル状態も反映
+      setOrderRequestStatus(prev => {
+        const next: any = { ...prev };
+        ordersToReject.forEach((o: any) => { next[o.id] = 'rejected'; });
+        return next;
+      });
+      // 最新データを取得
+      await loadCartOrders();
+    } catch (e) {
+      console.error('決済後の注文更新処理エラー:', e);
     }
     
     success('支払い完了', `${paymentAmount.toLocaleString()}円の支払いが完了しました`);
@@ -1134,59 +1195,189 @@ export default function TableDashboard({ params }: { params: { tableId: string }
             {/* メニューカテゴリ */}
             {isSessionActive && (
               <div className="space-y-6">
+                {isOrderingLocked && (
+                  <div className="p-3 bg-green-50 border border-green-200 text-green-800 text-sm rounded-none">
+                    支払いが確認されたため、商品の追加はできません。
+                  </div>
+                )}
                 {isMenuLoading ? (
                   <div className="text-center py-8">
                     <div className="w-8 h-8 border-2 border-purple-600 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
                     <p className="text-gray-500">メニューを読み込み中...</p>
                   </div>
                 ) : (
-                  menuCategories.map((category) => (
-                    <Card key={category.id}>
-                      <CardHeader>
+                  <div className="space-y-4">
+                    {/* 製品リスト（カード＋カテゴリ選択＋表） */}
+                    <Card>
+                      <CardHeader className="pb-3">
                         <CardTitle className="flex items-center">
                           <Wine className="w-5 h-5 mr-2" />
-                          {category.name}
+                          メニュー
                         </CardTitle>
                         <CardDescription>
-                          {category.other || 'メニューカテゴリ'}
+                          カテゴリを選択して製品一覧を表示
                         </CardDescription>
                       </CardHeader>
                       <CardContent>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          {menuItems
-                            .filter(item => item.category_id === category.id)
-                            .map((item) => (
-                              <div 
-                                key={item.id}
-                                className="flex items-center justify-between p-4 border rounded-none hover:bg-gray-50 transition-colors"
-                              >
-                                <div className="flex-1">
-                                  <h4 className="font-medium">{item.name}</h4>
-                                  <p className="text-sm text-gray-500">
-                                    {formatCurrency(item.sale_price)}
-                                    {item.sku && (
-                                      <Badge variant="outline" className="ml-2 text-xs">
-                                        {item.sku}
-                                      </Badge>
-                                    )}
-                                  </p>
+                        <div className="flex items-center gap-3 mb-3">
+                          <Label className="text-sm text-gray-600">カテゴリ</Label>
+                          <Select value={selectedCategoryId} onValueChange={setSelectedCategoryId}>
+                            <SelectTrigger className="w-56">
+                              <SelectValue placeholder="カテゴリを選択" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="all">すべて</SelectItem>
+                              {menuCategories.map((c) => (
+                                <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <ScrollArea className="h-[40vh] pr-1">
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead className="w-[40%]">商品名</TableHead>
+                                <TableHead className="w-[20%]">価格</TableHead>
+                                <TableHead className="w-[20%]">SKU</TableHead>
+                                <TableHead className="w-[20%] text-right">アクション</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {(() => {
+                                const items = selectedCategoryId === 'all'
+                                  ? menuItems
+                                  : menuItems.filter((it: any) => Number(it.category_id) === Number(selectedCategoryId));
+                                if (!items || items.length === 0) {
+                                  return (
+                                    <TableRow>
+                                      <TableCell colSpan={4} className="text-center text-sm text-gray-500">
+                                        該当する商品がありません
+                                      </TableCell>
+                                    </TableRow>
+                                  );
+                                }
+                                return items.map((item: any) => (
+                                  <TableRow key={item.id}>
+                                    <TableCell>
+                                      <div className="flex flex-col">
+                                        <span className="font-medium">{item.name}</span>
                                   {item.other && (
-                                    <p className="text-xs text-gray-400 mt-1">{item.other}</p>
+                                          <span className="text-xs text-gray-500 truncate">{item.other}</span>
                                   )}
                                 </div>
+                                    </TableCell>
+                                    <TableCell className="whitespace-nowrap">{formatCurrency(item.sale_price)}</TableCell>
+                                    <TableCell>
+                                      {item.sku ? (
+                                        <Badge variant="outline" className="text-[10px] py-0 px-1">{item.sku}</Badge>
+                                      ) : (
+                                        <span className="text-gray-300 text-xs">-</span>
+                                      )}
+                                    </TableCell>
+                                    <TableCell className="text-right">
                                 <Button 
                                   size="sm"
-                                  onClick={() => addToCart(item)}
-                                  className="ml-4"
+                                        onClick={() => { if (!isOrderingLocked) addToCart(item); }}
+                                        disabled={isOrderingLocked}
+                                        className={`${isOrderingLocked ? 'opacity-50 cursor-not-allowed' : ''}`}
                                 >
-                                  <Plus className="w-4 h-4" />
+                                        <Plus className="w-4 h-4 mr-1" /> 追加
                                 </Button>
+                                    </TableCell>
+                                  </TableRow>
+                                ));
+                              })()}
+                            </TableBody>
+                          </Table>
+                        </ScrollArea>
+                      </CardContent>
+                    </Card>
+
+                    {/* サービスリスト（注文） */}
+                    <ScrollArea className="h-[40vh] pr-1">
+                      <Card>
+                        <CardHeader className="pb-3">
+                          <CardTitle className="flex items-center">
+                            <Users className="w-5 h-5 mr-2" />
+                            サービス・呼び出し
+                          </CardTitle>
+                          <CardDescription>
+                            サービスの注文と店長呼び出し
+                          </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                          <div className="space-y-4">
+                            {/* サービス注文ボタン */}
+                            <div>
+                              <h4 className="text-sm font-medium text-gray-700 mb-2">サービス注文</h4>
+                              {isServicesLoading ? (
+                                <div className="text-center py-4">
+                                  <div className="w-6 h-6 border-2 border-green-600 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
+                                  <p className="text-sm text-gray-500">サービスを読み込み中...</p>
                               </div>
-                            ))}
+                              ) : (
+                                <div className="grid grid-cols-2 gap-2">
+                                  {services.map((service, index) => {
+                                    const colors = [
+                                      'text-green-700 border-green-300 hover:bg-green-50',
+                                      'text-orange-700 border-orange-300 hover:bg-orange-50',
+                                      'text-blue-700 border-blue-300 hover:bg-blue-50',
+                                      'text-purple-700 border-purple-300 hover:bg-purple-50',
+                                      'text-teal-700 border-teal-300 hover:bg-teal-50',
+                                      'text-pink-700 border-pink-300 hover:bg-pink-50'
+                                    ];
+                                    const colorClass = colors[index % colors.length];
+                                    return (
+                                      <Button 
+                                        key={service.id}
+                                        variant="outline"
+                                        onClick={() => handleServiceOrder(service)}
+                                        className={colorClass}
+                                      >
+                                        {service.name}
+                                      </Button>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
+
+                            {/* スタッフ呼び出し（店長） */}
+                            <div>
+                              <h4 className="text-sm font-medium text-gray-700 mb-2">スタッフ呼び出し</h4>
+                              <Button 
+                                variant="outline"
+                                onClick={() => handleManagerCall()}
+                                className={`${
+                                  managerCallStatus === 'accepted' 
+                                    ? 'text-green-700 border-green-300 bg-green-50' 
+                                    : managerCallStatus === 'rejected'
+                                    ? 'text-red-700 border-red-300 bg-red-50'
+                                    : managerCallStatus === 'pending'
+                                    ? 'text-yellow-700 border-yellow-300 bg-yellow-50'
+                                    : 'text-red-700 border-red-300 hover:bg-red-50'
+                                }`}
+                                disabled={managerCallStatus === 'pending' || managerCallStatus === 'accepted' || managerCallStatus === 'rejected'}
+                              >
+                                <div className="flex items-center space-x-2">
+                                  {managerCallStatus === 'accepted' && <CheckCircle className="w-4 h-4" />}
+                                  {managerCallStatus === 'rejected' && <XCircle className="w-4 h-4" />}
+                                  {managerCallStatus === 'pending' && <Clock className="w-4 h-4" />}
+                                  <span>
+                                    {managerCallStatus === 'accepted' ? '受理済み' : 
+                                      managerCallStatus === 'rejected' ? '拒否済み' : 
+                                      managerCallStatus === 'pending' ? '処理中' : 
+                                      '店長呼び出し'}
+                                  </span>
+                                </div>
+                              </Button>
+                            </div>
                         </div>
                       </CardContent>
                     </Card>
-                  ))
+                    </ScrollArea>
+                  </div>
                 )}
               </div>
             )}
@@ -1213,6 +1404,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                     <p>カートが空です</p>
                   </div>
                 ) : (
+                  <ScrollArea className="h-[30vh] pr-1">
                   <div className="space-y-3">
                     {cartOrders.map((order) => (
                       <div key={order.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border">
@@ -1275,21 +1467,26 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                               </div>
                             )}
                           </div>
-                          
-                          
-                          {/* 削除ボタン */}
+                            {/* 削除ボタン（承認待ちのみ表示） */}
+                            {(() => {
+                              const st = (orderRequestStatus as any)[order.id] || order.status;
+                              const canDelete = st === 'pending' || st === 'sent';
+                              return canDelete ? (
                           <Button
                             size="sm"
                             variant="outline"
-                            onClick={() => removeFromCart(order.id.toString())}
+                                  onClick={() => removeFromCart(order.id.toString(), st)}
                             className="text-red-600 hover:text-red-700"
                           >
                             <Trash2 className="w-3 h-3" />
                           </Button>
+                              ) : null;
+                            })()}
                         </div>
                       </div>
                     ))}
                   </div>
+                  </ScrollArea>
                 )}
               </CardContent>
             </Card>
@@ -1317,9 +1514,9 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                     
                     return (
                       <div className="bg-blue-50 rounded-lg p-3 text-sm">
-                        <div className="flex justify-between items-center mb-2">
+                        {/* <div className="flex justify-between items-center mb-2">
                           <span className="font-medium text-blue-900">承認状況</span>
-                        </div>
+                        </div> */}
                         <div className="space-y-1">
                           <div className="flex justify-between">
                             <span className="text-blue-700">承認済み商品:</span>
@@ -1335,14 +1532,14 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                   })()}
                   
                   <div className="space-y-2">
-                    <div className="flex justify-between">
+                    {/* <div className="flex justify-between">
                       <span>小計（承認済み商品のみ）</span>
                       <span>{formatCurrency(calculateTotal())}</span>
                     </div>
                     <div className="flex justify-between text-sm text-gray-600">
                       <span>キャストバック</span>
                       <span className="text-green-600 font-medium">{formatBackAmount(calculateCastBack())}</span>
-                    </div>
+                    </div> */}
                     <div className="border-t pt-2 flex justify-between font-bold text-lg">
                       <span>合計</span>
                       <span>{formatCurrency(calculateTotal())}</span>
@@ -1404,6 +1601,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                     <p>サービス注文がありません</p>
                   </div>
                 ) : (
+                  <ScrollArea className="h-[24vh] pr-1">
                   <div className="space-y-3">
                     {serviceOrders.map((order) => (
                       <div key={order.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border">
@@ -1477,6 +1675,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                       </div>
                     ))}
                   </div>
+                  </ScrollArea>
                 )}
               </CardContent>
             </Card>
@@ -1526,96 +1725,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
               </Card>
             )}
 
-            {/* サービス注文・スタッフ呼び出し（常時表示） */}
-            {isSessionActive && (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center">
-                    <Users className="w-5 h-5 mr-2" />
-                    サービス・呼び出し
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    {/* サービス注文ボタン */}
-                    <div>
-                      <h4 className="text-sm font-medium text-gray-700 mb-2">サービス注文</h4>
-                      {isServicesLoading ? (
-                        <div className="text-center py-4">
-                          <div className="w-6 h-6 border-2 border-green-600 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
-                          <p className="text-sm text-gray-500">サービスを読み込み中...</p>
-                        </div>
-                      ) : (
-                        <div className="grid grid-cols-2 gap-2">
-                          {services.map((service, index) => {
-                            const colors = [
-                              'text-green-700 border-green-300 hover:bg-green-50',
-                              'text-orange-700 border-orange-300 hover:bg-orange-50',
-                              'text-blue-700 border-blue-300 hover:bg-blue-50',
-                              'text-purple-700 border-purple-300 hover:bg-purple-50',
-                              'text-teal-700 border-teal-300 hover:bg-teal-50',
-                              'text-pink-700 border-pink-300 hover:bg-pink-50'
-                            ];
-                            const colorClass = colors[index % colors.length];
-                            
-                            return (
-                              <Button 
-                                key={service.id}
-                                variant="outline"
-                                onClick={() => handleServiceOrder(service)}
-                                className={colorClass}
-                              >
-                                {service.name}
-                              </Button>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* スタッフ呼び出しボタン */}
-                    <div>
-                      <h4 className="text-sm font-medium text-gray-700 mb-2">スタッフ呼び出し</h4>
-                      <div className="grid grid-cols-2 gap-2">
-                        {/* <Button 
-                          variant="outline"
-                          onClick={() => handleStaffCall('service', 'サービスをお願いします')}
-                          className="text-green-700 border-green-300 hover:bg-green-50"
-                        >
-                          サービス
-                        </Button> */}
-                        <Button 
-                          variant="outline"
-                          onClick={() => handleManagerCall()}
-                          className={`${
-                            managerCallStatus === 'accepted' 
-                              ? 'text-green-700 border-green-300 bg-green-50' 
-                              : managerCallStatus === 'rejected'
-                              ? 'text-red-700 border-red-300 bg-red-50'
-                              : managerCallStatus === 'pending'
-                              ? 'text-yellow-700 border-yellow-300 bg-yellow-50'
-                              : 'text-red-700 border-red-300 hover:bg-red-50'
-                          }`}
-                          disabled={managerCallStatus === 'pending' || managerCallStatus === 'accepted' || managerCallStatus === 'rejected'}
-                        >
-                          <div className="flex items-center space-x-2">
-                            {managerCallStatus === 'accepted' && <CheckCircle className="w-4 h-4" />}
-                            {managerCallStatus === 'rejected' && <XCircle className="w-4 h-4" />}
-                            {managerCallStatus === 'pending' && <Clock className="w-4 h-4" />}
-                            <span>
-                              {managerCallStatus === 'accepted' ? '受理済み' : 
-                               managerCallStatus === 'rejected' ? '拒否済み' : 
-                               managerCallStatus === 'pending' ? '処理中' : 
-                               '店長呼び出し'}
-                            </span>
-                          </div>
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
+            {/* サービス・呼び出しカードは左カラムへ移動済み */}
 
           </div>
           )}
@@ -2134,7 +2244,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
               </Button>
               <Button
                 onClick={handleOrderSubmit}
-                disabled={!selectedProduct || orderQuantity < 1}
+                disabled={!selectedProduct || orderQuantity < 1 || isOrderingLocked}
                 className="bg-blue-600 hover:bg-blue-700"
               >
                 <CheckCircle className="w-4 h-4 mr-2" />

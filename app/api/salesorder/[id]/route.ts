@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/database';
 
+export const dynamic = 'force-dynamic';
+
 export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
   const client = await pool.connect();
   try {
@@ -176,6 +178,46 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
       },
       { status: statusCode }
     );
+  } finally {
+    client.release();
+  }
+}
+
+export async function DELETE(_request: NextRequest, { params }: { params: { id: string } }) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // 注文を取得し、pending以外は削除不可
+    const orderRes = await client.query(
+      `SELECT id, product_id, amount, status FROM salesorder WHERE id = $1 FOR UPDATE`,
+      [params.id]
+    );
+    if (orderRes.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return NextResponse.json({ success: false, error: '注文が見つかりません' }, { status: 404 });
+    }
+    const order = orderRes.rows[0];
+    if (order.status !== 'pending') {
+      await client.query('ROLLBACK');
+      return NextResponse.json({ success: false, error: '承認待ち以外は削除できません' }, { status: 400 });
+    }
+
+    // 在庫を戻す
+    await client.query(
+      `UPDATE product SET amount = amount + $1 WHERE id = $2`,
+      [Number(order.amount) || 0, Number(order.product_id)]
+    );
+
+    // 注文を削除
+    await client.query(`DELETE FROM salesorder WHERE id = $1`, [params.id]);
+
+    await client.query('COMMIT');
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    try { await client.query('ROLLBACK'); } catch {}
+    console.error('売上注文削除エラー:', error);
+    return NextResponse.json({ success: false, error: '注文の削除に失敗しました' }, { status: 500 });
   } finally {
     client.release();
   }
