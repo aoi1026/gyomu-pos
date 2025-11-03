@@ -346,7 +346,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
       
       if (categoriesResult.success && productsResult.success) {
         setMenuCategories(categoriesResult.categories);
-        setMenuItems(productsResult.products);
+        setMenuItems(productsResult.products.filter((p: any) => Number(p.amount) > 0));
       } else {
         error('エラー', 'メニューデータの取得に失敗しました');
       }
