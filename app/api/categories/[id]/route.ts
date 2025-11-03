@@ -99,6 +99,14 @@ export async function DELETE(
       );
     }
 
+    // 固定カテゴリ(ID:1,2)は削除不可
+    if (categoryId === 1 || categoryId === 2) {
+      return NextResponse.json(
+        { error: 'このカテゴリは固定のため削除できません。' },
+        { status: 403 }
+      );
+    }
+
     const client = await pool.connect();
     
     try {

@@ -90,6 +90,15 @@ export default function CategoryManagementPage() {
     setIsDeleteDialogOpen(true);
   };
 
+  // 固定カテゴリ（ID:1,2）を先頭に表示するための並び替え済み配列
+  const sortedCategories = [...categories].sort((a, b) => {
+    const pinA = a.id === 1 || a.id === 2 ? 0 : 1;
+    const pinB = b.id === 1 || b.id === 2 ? 0 : 1;
+    if (pinA !== pinB) return pinA - pinB;
+    // 同一グループ内はIDの小さい→大きい順（昇順）で表示
+    return a.id - b.id;
+  });
+
   const validateForm = (): string[] => {
     const errors: string[] = [];
     
@@ -266,7 +275,7 @@ export default function CategoryManagementPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {categories.map((category) => (
+                    {sortedCategories.map((category) => (
                       <TableRow key={category.id}>
                         <TableCell>
                           <div className="flex items-center space-x-3">
@@ -274,7 +283,12 @@ export default function CategoryManagementPage() {
                               <Tag className="w-4 h-4 text-green-600" />
                             </div>
                             <div>
-                              <div className="font-medium">{category.name}</div>
+                              <div className="font-medium flex items-center space-x-2">
+                                <span>{category.name}</span>
+                                {(category.id === 1 || category.id === 2) && (
+                                  <Badge variant="outline" className="text-xs">固定</Badge>
+                                )}
+                              </div>
                               <div className="text-sm text-gray-500">ID: {category.id}</div>
                             </div>
                           </div>
@@ -304,15 +318,17 @@ export default function CategoryManagementPage() {
                               <Edit className="w-4 h-4 mr-1" />
                               編集
                             </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => handleDelete(category.id)}
-                              className="text-red-600 hover:text-red-700"
-                            >
-                              <Trash2 className="w-4 h-4 mr-1" />
-                              削除
-                            </Button>
+                            {(category.id !== 1 && category.id !== 2) && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleDelete(category.id)}
+                                className="text-red-600 hover:text-red-700"
+                              >
+                                <Trash2 className="w-4 h-4 mr-1" />
+                                削除
+                              </Button>
+                            )}
                           </div>
                         </TableCell>
                       </TableRow>

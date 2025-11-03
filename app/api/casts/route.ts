@@ -11,7 +11,8 @@ export async function GET() {
       SELECT id, name, mail, other, created_at
       FROM "user"
       WHERE role = 'cast'
-      ORDER BY name ASC
+      // ORDER BY id DESC
+      ORDER BY id ASC
     `);
     
     return NextResponse.json({
