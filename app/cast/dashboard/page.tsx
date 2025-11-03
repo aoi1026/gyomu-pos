@@ -1,6 +1,11 @@
 'use client';
 
+import { BiUserPin } from "react-icons/bi"; 
+import { MdOutlineAreaChart } from "react-icons/md"; 
+import { GrAchievement } from "react-icons/gr"; 
+import { AiFillMoneyCollect } from "react-icons/ai"; 
 import { useEffect, useState } from 'react';
+import { FaUserClock } from "react-icons/fa"; 
 import { useRouter } from 'next/navigation';
 import { getCurrentUser, hasRole, AuthUser } from '@/lib/auth';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -332,7 +337,8 @@ export default function CastDashboard() {
                   className="h-24 flex-col space-y-2 hover:bg-yellow-50 hover:border-yellow-300 rounded-none"
                   onClick={() => router.push('/cast/attendance')}
                 >
-                  <Clock className="w-6 h-6 text-yellow-600" />
+                  {/* <Clock className="w-6 h-6 text-yellow-600" /> */}
+                  <span className="w-6 h-5 text-blue-600 text-2xl"><FaUserClock /></span>
                   <span className="text-sm font-medium">勤怠管理</span>
                 </Button>
                 
@@ -341,7 +347,8 @@ export default function CastDashboard() {
                   className="h-24 flex-col space-y-2 hover:bg-red-50 hover:border-red-300 rounded-none"
                   onClick={() => router.push('/cast/payroll')}
                 >
-                  <DollarSign className="w-6 h-6 text-red-600" />
+                  {/* <DollarSign className="w-6 h-6 text-red-600" /> */}
+                  <span className="w-6 h-5 text-red-600 text-2xl"><AiFillMoneyCollect /></span>
                   <span className="text-sm font-medium">給与確認</span>
                 </Button>
                 <Button 
@@ -349,7 +356,8 @@ export default function CastDashboard() {
                   className="h-24 flex-col space-y-2 hover:bg-purple-50 hover:border-purple-300 rounded-none"
                   onClick={() => router.push('/cast/performance/daily')}
                 >
-                  <TrendingUp className="w-6 h-6 text-purple-600" />
+                  {/* <TrendingUp className="w-6 h-6 text-purple-600" /> */}
+                  <span className="w-6 h-5 text-purple-600 text-xl"><GrAchievement /></span>
                   <span className="text-sm font-medium">本日の実績</span>
                 </Button>
                 <Button 
@@ -357,7 +365,8 @@ export default function CastDashboard() {
                   className="h-24 flex-col space-y-2 hover:bg-green-50 hover:border-green-300 rounded-none"
                   onClick={() => router.push('/cast/back-rates')}
                 >
-                  <TrendingUp className="w-6 h-6 text-green-600" />
+                  {/* <TrendingUp className="w-6 h-6 text-green-600" /> */}
+                  <span className="w-6 h-6 text-green-600 text-2xl"><MdOutlineAreaChart /></span>
                   <span className="text-sm font-medium">バック率確認</span>
                 </Button>
 
@@ -366,7 +375,8 @@ export default function CastDashboard() {
                   className="h-24 flex-col space-y-2 hover:bg-gray-50 hover:border-gray-300 rounded-none"
                   onClick={() => router.push('/cast/profile')}
                 >
-                  <User className="w-6 h-6 text-gray-700" />
+                  {/* <User className="w-6 h-6 text-gray-700" /> */}
+                  <span className="w-6 h-5 text-gray-700 text-2xl"><BiUserPin /></span>
                   <span className="text-sm font-medium">個人情報管理</span>
                 </Button>
 

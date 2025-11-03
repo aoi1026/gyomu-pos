@@ -1,5 +1,18 @@
+
 'use client';
 
+import { MdOutlineCalendarMonth } from "react-icons/md"; 
+import { FaRegChartBar } from "react-icons/fa"; 
+import { BsFillMenuButtonWideFill } from "react-icons/bs"; 
+import { GiTimeTrap } from "react-icons/gi"; 
+import { AiFillMoneyCollect } from "react-icons/ai"; 
+import { FaPercentage } from "react-icons/fa"; 
+import { FiUserPlus } from "react-icons/fi"; 
+import { MdWifiCalling3 } from "react-icons/md"; 
+import { TbBellRinging } from "react-icons/tb"; 
+import { MdOutlineTableRestaurant } from "react-icons/md"; 
+import { FaUserTie } from 'react-icons/fa'; 
+import { MdRoomService } from "react-icons/md"; 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { getCurrentUser, hasRole, AuthUser } from '@/lib/auth';
@@ -556,7 +569,8 @@ export default function Dashboard() {
                   className="h-24 flex-col space-y-2 hover:bg-blue-50 hover:border-blue-300"
                   onClick={() => router.push('/admin/sales/daily')}
                 >
-                  <BarChart3 className="w-6 h-6 text-blue-600" />
+                  {/* <BarChart3 className="w-6 h-6 text-blue-600" /> */}
+                  <span className="w-6 h-5 text-blue-600 text-xl"><FaRegChartBar /></span>
                   <span className="text-sm font-medium">日次売上</span>
                 </Button>
                 
@@ -565,7 +579,8 @@ export default function Dashboard() {
                   className="h-24 flex-col space-y-2 hover:bg-indigo-50 hover:border-indigo-300"
                   onClick={() => router.push('/admin/sales/monthly')}
                 >
-                  <Calendar className="w-6 h-6 text-indigo-600" />
+                  {/* <Calendar className="w-6 h-6 text-indigo-600" /> */}
+                  <span className="w-6 h-5 text-indigo-600 text-2xl"><MdOutlineCalendarMonth /></span>
                   <span className="text-sm font-medium">月次売上</span>
                 </Button>
                 
@@ -583,7 +598,8 @@ export default function Dashboard() {
                   className="h-24 flex-col space-y-2 hover:bg-purple-50 hover:border-purple-300"
                   onClick={() => router.push('/admin/menu')}
                 >
-                  <FileText className="w-6 h-6 text-purple-600" />
+                  {/* <FileText className="w-6 h-6 text-purple-600" /> */}
+                  <span className="w-6 h-5 text-purple-600 text-xl"><BsFillMenuButtonWideFill /></span>
                   <span className="text-sm font-medium">メニュー管理</span>
                 </Button>
                 
@@ -601,7 +617,8 @@ export default function Dashboard() {
                   className="h-24 flex-col space-y-2 hover:bg-pink-50 hover:border-pink-300"
                   onClick={() => router.push('/admin/attendance')}
                 >
-                  <Users className="w-6 h-6 text-pink-600" />
+                  {/* <Users className="w-6 h-6 text-pink-600" /> */}
+                  <span className="w-6 h-5 text-pink-600 text-2xl"><GiTimeTrap /></span>
                   <span className="text-sm font-medium">勤怠承認</span>
                 </Button>
                 
@@ -610,7 +627,8 @@ export default function Dashboard() {
                   className="h-24 flex-col space-y-2 hover:bg-yellow-50 hover:border-yellow-300"
                   onClick={() => router.push('/admin/payroll/preview')}
                 >
-                  <DollarSign className="w-6 h-6 text-yellow-600" />
+                  {/* <DollarSign className="w-6 h-6 text-yellow-600" /> */}
+                  <span className="w-6 h-5 text-yellow-600 text-2xl"><AiFillMoneyCollect /></span>
                   <span className="text-sm font-medium">給与計算</span>
                 </Button>
                 
@@ -637,7 +655,8 @@ export default function Dashboard() {
                   className="h-24 flex-col space-y-2 hover:bg-indigo-50 hover:border-indigo-300"
                   onClick={() => router.push('/admin/cast-back-rates')}
                 >
-                  <DollarSign className="w-6 h-6 text-indigo-600" />
+                  {/* <DollarSign className="w-6 h-6 text-indigo-600" /> */}
+                  <span className="w-6 h-5 text-indigo-600 text-2xl"><FaPercentage /></span>
                   <span className="text-sm font-medium">バック率設定</span>
                 </Button>
                 
@@ -646,7 +665,8 @@ export default function Dashboard() {
                   className="h-24 flex-col space-y-2 hover:bg-rose-50 hover:border-rose-300"
                   onClick={() => router.push('/admin/casts')}
                 >
-                  <Users className="w-6 h-6 text-rose-600" />
+                  {/* <Users className="w-6 h-6 text-rose-600" /> */}
+                  <span className="w-6 h-5 text-rose-600 text-2xl"><FiUserPlus /></span>
                   <span className="text-sm font-medium">キャスト管理</span>
                 </Button>
                 
@@ -655,7 +675,8 @@ export default function Dashboard() {
                   className="h-24 flex-col space-y-2 hover:bg-green-50 hover:border-green-300 relative"
                   onClick={() => router.push('/admin/staff-calls')}
                 >
-                  <Users className="w-6 h-6 text-green-600" />
+                  {/* <Users className="w-6 h-6 text-green-600" /> */}
+                  <span className="w-6 h-5 text-green-600 text-2xl"><MdWifiCalling3 /></span>
                   <span className="text-sm font-medium">スタッフ呼び出し</span>
                   {(pendingServiceOrderCount + pendingManagerCallCount + unreadNotificationCount) > 0 && (
                     <Badge className="absolute -top-2 -right-2 bg-red-500 text-white text-xs">
@@ -679,7 +700,8 @@ export default function Dashboard() {
                   onClick={() => router.push('/admin/order-monitoring')}
                 >
                   <div className="relative">
-                    <Bell className="w-6 h-6 text-orange-600" />
+                    {/* <Bell className="w-6 h-6 text-orange-600" /> */}
+                    <span className="w-6 h-5 text-orange-600 text-2xl"><TbBellRinging /></span>
                     {(pendingOrderCount > 0 || pendingServiceOrderCount > 0) && (
                       <div className="absolute -top-2 -right-2 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center animate-pulse">
                         {pendingOrderCount + pendingServiceOrderCount}
@@ -694,7 +716,8 @@ export default function Dashboard() {
                   className="h-24 flex-col space-y-2 hover:bg-cyan-50 hover:border-cyan-300"
                   onClick={() => router.push('/admin/tables')}
                 >
-                  <Table className="w-6 h-6 text-cyan-600" />
+                  {/* <Table className="w-6 h-6 text-cyan-600" /> */}
+                  <span className="w-6 h-5 text-cyan-600 text-2xl"><MdOutlineTableRestaurant /></span>
                   <span className="text-sm font-medium">テーブル管理</span>
                 </Button>
                 
@@ -703,9 +726,21 @@ export default function Dashboard() {
                   className="h-24 flex-col space-y-2 hover:bg-green-50 hover:border-green-300"
                   onClick={() => router.push('/admin/services')}
                 >
-                  <Settings className="w-6 h-6 text-green-600" />
+                  {/* <Settings className="w-6 h-6 text-green-600" /> */}
+                  <span className="w-6 h-5 text-green-600 text-2xl"><MdRoomService /></span>
                   <span className="text-sm font-medium">サービス管理</span>
                 </Button>
+
+              <Button 
+                variant="outline" 
+                className="h-24 flex-col space-y-2 hover:bg-gray-50 hover:border-gray-300"
+                onClick={() => router.push('/admin/profile')}
+              >
+                {/* <User className="w-6 h-6 text-gray-700" /> */}
+                <span className="w-6 h-5 text-gray-700 text-xl"><FaUserTie /></span>
+                
+                <span className="text-sm font-medium">管理者情報管理</span>
+              </Button>
               </div>
             </div>
           </div>

@@ -29,52 +29,31 @@ NightWork POSは、キャバクラ業界に特化した統合POSシステムで�
 ### 主要特徴
 - **テーブルファースト設計**: キャストがテーブルで注文を管理
 - **指名システム**: 本指名・場内指名の完全サポート
-- **バック率計算**: ドリンク・ボトル・指名別の自動計算
+- **バック率計算**: ドリンク・ボトル
 - **統合管理**: 勤怠・給与・売上・顧客の一元管理
-- **4つのロール**: テーブルログイン、キャスト、管理者、システム管理者
+- **4つのロール**: テーブルログイン、キャスト、管理者
 - **リアルタイム管理**: テーブル状況、注文、セッションの監視
 - **モバイル対応**: レスポンシブデザインによる全デバイス対応
 
-## ✨ 主要機能
+## ✅ Implemented Features（実装済み機能のみ）
 
-### 🍷 テーブル・注文管理
-- **テーブルログイン**: テーブル選択と顧客選択（本指名・フリー）
-- **注文作成**: メニュー選択・キャスト選択・カート機能
-- **指名管理**: 本指名・場内指名の管理・指名履歴
-- **サービス注文**: おしぼり、灰皿交換、グラス、箸など
-- **スタッフ呼び出し**: 管理・サービス・緊急呼び出し
+- テーブル注文/セッション
+  - テーブルログイン、セッション開始/終了（`/api/sessions`）
+  - メニュー表示（`/api/categories`, `/api/products`）。在庫0の商品は非表示
+  - 商品注文（`/api/salesorder`）と在庫減算、状態反映
+  - サービス注文（`/api/serviceorder`）
+  - キャスト指名（本指名/場内指名）登録、店長呼び出し
+  - スタッフ呼び出し通知（`/api/notifications`）
+  - Stripe決済導線（支払い後にセッション金額更新・未承認注文の自動拒否）
 
-### 👑 指名・バック率システム
-- **本指名管理**: 顧客の事前指名キャストへの自動割当
-- **場内指名管理**: その場でのキャスト指名
-- **バック率計算**: ドリンク・ボトル・指名別の自動計算
-- **指名履歴**: 指名の記録と管理
-- **昇格管理**: 場内指名から本指名への昇格
+- 管理者（Admin）
+  - キャスト管理（一覧/追加/編集/削除）: `/api/casts`, `/api/casts/[id]`（メール重複検知、パスワードハッシュ化）
+  - カテゴリ管理（一覧/追加/編集/削除）: `/api/categories`, `/api/categories/[id]`
+    - ID 1/2 を常に先頭表示・削除不可（UI/APIで保護）
 
-### ⏰ 勤怠・給与管理
-- **出退勤記録**: 出勤・退勤・休憩時間の記録
-- **勤怠承認**: 管理者による勤怠承認・修正
-- **給与計算**: 月次給与の自動計算・バック率適用
-- **給与明細**: 詳細な給与明細の生成・PDF出力
-
-### 👥 顧客管理
-- **顧客登録**: 新規顧客の登録・編集
-- **顧客履歴**: 来店履歴・指名履歴・支払い履歴
-- **VIP管理**: VIP顧客の管理・特典提供
-- **指名統計**: 顧客別指名統計・分析
-
-### 📊 売上・分析
-- **日次売上**: 日次売上レポート・チャート表示
-- **月次売上**: 月次売上レポート・トレンド分析
-- **キャスト別実績**: キャスト別売上実績・パフォーマンス
-- **在庫管理**: ボトル在庫管理・在庫アラート
-
-### 🏢 店舗・システム管理
-- **メニュー管理**: メニューアイテムの作成・編集・価格設定
-- **ボトル管理**: 店舗在庫ボトルの管理・消費記録
-- **スタッフ呼び出し**: 呼び出し管理・対応履歴
-- **注文監視**: 注文状況の監視・スタッフ割当
-- **レジ締め**: 日次レジ締め処理・売上集計
+- キャスト
+  - 勤怠（出退勤）ローカル記録、記録表示は常時表示
+  - 勤怠送信（`/api/attendance`）で管理者共有
 
 ## 🛠 技術スタック
 
@@ -88,11 +67,11 @@ NightWork POSは、キャバクラ業界に特化した統合POSシステムで�
 - **Charts**: Recharts for data visualization
 - **State Management**: React Context API
 
-### バックエンド（モック）
-- **Data Layer**: TypeScript interfaces with mock data
-- **API Simulation**: Custom API client with mock endpoints
-- **State Management**: React Context API
-- **Authentication**: Client-side role-based authentication
+### バックエンド
+- **Runtime**: Next.js API Routes
+- **Database**: PostgreSQL（`pg` 接続プール）
+- **Auth**: シンプルなAdmin/Castログイン（MD5ハッシュによる検証）
+- **Notifications/Payments**: 通知API、Stripeエンドポイント実装
 
 ### 開発ツール
 - **Package Manager**: npm/yarn
@@ -111,7 +90,6 @@ nightwork-pos/
 │   │   ├── bottles/       # ボトル管理
 │   │   ├── campaigns/     # キャンペーン管理
 │   │   ├── cast-back-rates/ # バック率管理
-│   │   ├── customers/     # 顧客管理
 │   │   ├── menu/          # メニュー管理
 │   │   ├── nominations/   # 指名管理
 │   │   ├── order-monitor/ # 注文監視
@@ -139,14 +117,12 @@ nightwork-pos/
 │   ├── ui/               # ベースUIコンポーネント
 │   ├── auth/             # 認証コンポーネント
 │   ├── admin/            # 管理者コンポーネント
-│   ├── super/            # システム管理者コンポーネント
 │   └── common/           # 共通コンポーネント
 ├── lib/                  # ライブラリ・ユーティリティ
 │   ├── auth.ts           # 認証システム
 │   ├── table-auth.ts     # テーブル認証
 │   ├── cast-back-system.ts # バック率システム
 │   ├── nomination-system.ts # 指名システム
-│   ├── customer-nomination-system.ts # 顧客指名管理
 │   ├── order-monitoring-system.ts # 注文監視
 │   ├── staff-call-system.ts # スタッフ呼び出し
 │   ├── payroll-calculator.ts # 給与計算
@@ -157,18 +133,6 @@ nightwork-pos/
     └── use-toast.ts      # トーストフック
 ```
 
-### データフローアーキテクチャ
-```
-ユーザーインターフェース (React Components)
-    ↓
-コンテキストプロバイダー (Session, Notifications)
-    ↓
-APIクライアント (Mock Data Layer)
-    ↓
-データモデル (TypeScript Interfaces)
-    ↓
-モックデータストア (In-memory data)
-```
 
 ## 🚀 インストール
 
@@ -221,12 +185,11 @@ npm start
 #### 👨‍💼 キャスト
 - **勤怠管理**: 出退勤記録・勤怠状況確認
 - **給与確認**: 給与明細・バック率確認・指名サマリー
-- **指名管理**: 本指名顧客管理・指名統計・昇格管理
+- **指名管理**: 本指名顧客管理・指名統計
 - **サービス管理**: サービス注文対応・スタッフ呼び出し対応
 - **セッション管理**: セッション詳細・注文履歴・会計処理
 
 #### 👨‍💻 管理者
-- **顧客管理**: 顧客登録・編集・履歴確認・VIP管理
 - **指名管理**: 指名統計・昇格管理・本指名変更
 - **売上管理**: 日次・月次売上確認・レポート生成
 - **メニュー管理**: メニューアイテムの作成・編集・価格設定
@@ -235,11 +198,6 @@ npm start
 - **給与プレビュー**: 給与計算・修正・確定
 - **システム設定**: バック率設定・メニュー管理・店舗設定
 
-#### 🔧 システム管理者
-- **店舗管理**: 店舗登録・設定管理・設定テンプレート配布
-- **監査ログ**: システム操作ログの表示・分析・エクスポート
-- **ユーザー管理**: 全ユーザーの権限管理
-- **システム設定**: グローバル設定・テンプレート管理
 
 ### 主要ワークフロー
 
@@ -266,46 +224,68 @@ npm start
 4. 売上確認・レポート生成
 5. システム設定・メンテナンス
 
-## 🔌 API仕様
+## 🔌 API仕様（実装済み）
 
-### 主要エンドポイント（モック実装）
-
-#### 認証
-```typescript
-POST /api/auth/login
-POST /api/auth/logout
-GET /api/auth/me
+### 認証
+```
+POST /api/auth/admin-login
+POST /api/auth/cast-login
 ```
 
-#### テーブル
-```typescript
-GET /api/v1/tables
-PATCH /api/v1/tables/:id
-POST /api/v1/tables/:id/reserve
+### キャスト
+```
+GET    /api/casts
+POST   /api/casts
+PUT    /api/casts/[id]
+DELETE /api/casts/[id]
 ```
 
-#### 注文
-```typescript
-GET /api/v1/orders
-POST /api/v1/orders
-PATCH /api/v1/orders/:id
-GET /api/v1/orders/:id/items
+### カテゴリ & 商品
+```
+GET    /api/categories
+POST   /api/categories
+PUT    /api/categories/[id]
+DELETE /api/categories/[id]     # ID 1/2 は削除不可
+
+GET    /api/products
+POST   /api/products
+PUT    /api/products/[id]
+DELETE /api/products/[id]
 ```
 
-#### 顧客
-```typescript
-GET /api/v1/customers
-POST /api/v1/customers
-GET /api/v1/customers/:id
-PATCH /api/v1/customers/:id
+### サービス
+```
+GET    /api/services
+POST   /api/services
 ```
 
-#### キャスト
-```typescript
-GET /api/v1/cast
-GET /api/v1/cast/:id/attendance
-POST /api/v1/cast/:id/clock-in
-POST /api/v1/cast/:id/clock-out
+### セッション・注文
+```
+GET    /api/sessions
+POST   /api/sessions
+PATCH  /api/sessions/[id]
+
+GET    /api/salesorder           # ?session_id= でフィルタ
+POST   /api/salesorder           # 在庫減算を伴う
+
+GET    /api/serviceorder         # ?session_id= でフィルタ
+POST   /api/serviceorder
+```
+
+### 勤怠
+```
+GET    /api/attendance
+POST   /api/attendance
+```
+
+### 通知/呼び出し・決済
+```
+POST   /api/notifications
+GET    /api/callmanager
+POST   /api/callmanager
+
+POST   /api/stripe/create-payment-intent
+POST   /api/stripe/create-checkout-session
 ```
 
 ### データモデル
@@ -446,10 +426,6 @@ interface SessionCast {
 - `AttendanceReviewPage`: スタッフ勤怠承認と取り消し
 - `PayrollPreviewPage`: 給与計算と修正
 
-#### スーパー管理者コンポーネント
-- `StoreRegistrationModal`: 店舗作成と設定
-- `StoreDetailsModal`: 店舗情報表示
-- `SettingsTemplateModal`: 設定テンプレート管理
 
 ## 🔐 認証・権限管理
 
@@ -471,10 +447,6 @@ interface SessionCast {
 - キャストパフォーマンス監視
 - 顧客管理と指名管理
 
-#### システム管理者ロール
-- システム全体の設定
-- 店舗管理とユーザー管理
-- 監査ログとビジネスインテリジェンス
 
 ### 認証フロー
 1. テーブルログイン、キャスト、管理者、システム管理者がログイン時に役割を選択
@@ -570,20 +542,6 @@ NEXT_PUBLIC_APP_NAME=NightWork POS
 - **コード分割**: 自動バンドル分割
 - **キャッシング**: 静的アセットキャッシングとCDNサポート
 
-## 📈 将来の拡張
-
-### 計画機能
-- **リアルタイム更新**: ライブ更新用WebSocket統合
-- **決済統合**: Stripe/PayPal決済処理
-- **在庫管理**: 在庫追跡とアラート
-- **高度な分析**: 機械学習インサイト
-- **モバイルアプリ**: React Nativeコンパニオンアプリ
-- **API統合**: バックエンドサービス統合
-- **多言語サポート**: 国際化（i18n）
-- **高度なレポート**: カスタムレポートビルダー
-- **顧客ロイヤルティ**: ポイントとリワードシステム
-- **統合API**: サードパーティサービス統合
-
 ### 技術的改善
 - **データベース統合**: PostgreSQL/MongoDBバックエンド
 - **認証**: JWT/OAuth2実装
@@ -602,6 +560,8 @@ NEXT_PUBLIC_APP_NAME=NightWork POS
 NODE_ENV=development
 NEXT_PUBLIC_APP_NAME=NightWork POS
 NEXT_PUBLIC_API_URL=http://localhost:3000/api
+NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_test_51SMrxT2NRpI9c8r78v4HWfbQHX6KDbrwYGv3J2eC68UsEoqknH3XPNQ9pul3zbuHH26znCvTlhBbwdtKLzvivmWM00f1wczpXr
+STRIPE_SECRET_KEY=STRIPE_SECRET_REMOVED
 
 # 本番
 NODE_ENV=production
@@ -634,32 +594,6 @@ module.exports = {
 }
 ```
 
-## 🧪 テスト
-
-### テスト構造
-```
-tests/
-├── components/          # コンポーネントテスト
-├── pages/              # ページテスト
-├── lib/                # ユーティリティテスト
-├── integration/        # 統合テスト
-└── e2e/               # エンドツーエンドテスト
-```
-
-### テストコマンド
-```bash
-# 全テスト実行
-npm test
-
-# ウォッチモードでテスト実行
-npm run test:watch
-
-# カバレッジ付きテスト実行
-npm run test:coverage
-
-# E2Eテスト実行
-npm run test:e2e
-```
 
 ## 📊 パフォーマンス
 
@@ -926,13 +860,5 @@ npm run lighthouse
 
 ---
 
-## 📞 お問い合わせ
-
-- **Website**: [https://nightwork-pos.com](https://nightwork-pos.com)
-- **Email**: info@nightwork-pos.com
-- **Twitter**: [@NightWorkPOS](https://twitter.com/NightWorkPOS)
-- **LinkedIn**: [NightWork POS](https://linkedin.com/company/nightwork-pos)
-
----
 
 **NightWork POS** - モダンなテクノロジーと直感的な管理ツールでナイトライフビジネスを支援。🍷✨
