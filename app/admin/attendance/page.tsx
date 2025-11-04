@@ -38,6 +38,9 @@ export default function AdminAttendancePage() {
   const [isDetailDialogOpen, setIsDetailDialogOpen] = useState(false);
   const [isTimeDetailDialogOpen, setIsTimeDetailDialogOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [lastUpdateTime, setLastUpdateTime] = useState<string>(new Date().toISOString());
+  const [newAttendanceIds, setNewAttendanceIds] = useState<Set<number>>(new Set());
   
   const [editForm, setEditForm] = useState({
     total_work_hours: '',
@@ -57,6 +60,11 @@ export default function AdminAttendancePage() {
         setAdminUser(parsedAdminAuth);
         setIsLoading(false);
         fetchAttendanceData();
+        // 注文監視と同様に短周期ポーリングで即時反映
+        const interval = setInterval(() => {
+          loadAttendanceSilently();
+        }, 500);
+        return () => clearInterval(interval);
         return;
       } catch (err) {
         console.error('管理者認証情報の解析に失敗しました:', err);
@@ -73,13 +81,43 @@ export default function AdminAttendancePage() {
       const response = await fetch('/api/attendance');
       const result = await response.json();
       if (result.success) {
-        setAttendanceData(result.data);
+        const sorted = [...result.data].sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+        setAttendanceData(sorted as AttendanceData[]);
+        // 最新の作成時刻を追跡
+        const latest = sorted.length > 0 ? sorted[0].created_at : new Date().toISOString();
+        setLastUpdateTime(latest);
       } else {
         error('エラー', '勤怠データの取得に失敗しました');
       }
     } catch (err) {
       console.error('勤怠データ取得エラー:', err);
       error('エラー', '勤怠データの取得に失敗しました');
+    }
+  };
+
+  const loadAttendanceSilently = async () => {
+    try {
+      setIsUpdating(true);
+      const response = await fetch('/api/attendance');
+      const result = await response.json();
+      if (result.success) {
+        const sorted = [...result.data].sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+        // 新規追加分を検出（作成時刻で判定）
+        const newOnes = sorted.filter((a: any) => new Date(a.created_at).getTime() > new Date(lastUpdateTime).getTime());
+        if (newOnes.length > 0) {
+          const idSet = new Set<number>(newOnes.map((x: any) => x.id));
+          setNewAttendanceIds(idSet);
+          // 数秒後にハイライト解除
+          setTimeout(() => setNewAttendanceIds(new Set()), 3000);
+        }
+        setAttendanceData(sorted as AttendanceData[]);
+        const latest = sorted.length > 0 ? sorted[0].created_at : lastUpdateTime;
+        setLastUpdateTime(latest);
+      }
+    } catch (err) {
+      // サイレント失敗は握りつぶす
+    } finally {
+      setTimeout(() => setIsUpdating(false), 200);
     }
   };
 
@@ -301,7 +339,7 @@ export default function AdminAttendancePage() {
             <CardTitle className="flex items-center justify-between">
               <span className="flex items-center">
                 <Clock className="w-5 h-5 mr-2" />
-                勤怠データ一覧
+                勤怠データ一覧 {isUpdating && <span className="ml-2 w-2 h-2 bg-blue-500 rounded-full animate-pulse" />}
               </span>
               <Badge variant="outline" className="text-sm">
                 {attendanceData.length}件
@@ -315,8 +353,9 @@ export default function AdminAttendancePage() {
                 <p className="text-gray-500">勤怠データがありません</p>
               </div>
             ) : (
-              <div className="overflow-x-auto">
-                <Table>
+              <div className="h-[60vh] overflow-y-auto pr-1">
+                <div className="overflow-x-auto">
+                  <Table>
                   <TableHeader>
                     <TableRow>
                       <TableHead className="w-16 text-center">番号</TableHead>
@@ -330,7 +369,7 @@ export default function AdminAttendancePage() {
                   </TableHeader>
                   <TableBody>
                     {attendanceData.map((attendance, index) => (
-                      <TableRow key={attendance.id}>
+                      <TableRow key={attendance.id} className={`${newAttendanceIds.has(attendance.id) ? 'bg-blue-50' : ''}`}>
                         <TableCell className="text-center">
                           <span className="text-sm font-medium text-gray-600">
                             {index + 1}
@@ -419,7 +458,8 @@ export default function AdminAttendancePage() {
                       </TableRow>
                     ))}
                   </TableBody>
-                </Table>
+                  </Table>
+                </div>
               </div>
             )}
           </CardContent>

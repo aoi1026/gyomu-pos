@@ -74,7 +74,7 @@ export default function Dashboard() {
         setPendingManagerCallCount(result.data.length);
       }
     } catch (err) {
-      console.error('店長呼び出し数取得エラー:', err);
+      console.error('スタッフ呼び出し数取得エラー:', err);
     }
   };
 

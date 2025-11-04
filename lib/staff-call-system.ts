@@ -149,7 +149,7 @@ export const completeServiceOrder = async (orderId: string, staffId: string): Pr
 export const getCallTypeLabel = (callType: StaffCall['call_type']): string => {
   const labels = {
     service: 'サービス',
-    manager: '店長呼び出し',
+    manager: 'スタッフ呼び出し',
     security: 'セキュリティ',
     emergency: '緊急事態'
   };

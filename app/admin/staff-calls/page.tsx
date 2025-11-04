@@ -25,7 +25,7 @@ export default function StaffCallsPage() {
   const [pendingServiceOrderCount, setPendingServiceOrderCount] = useState(0);
   const [pendingManagerCallCount, setPendingManagerCallCount] = useState(0);
   const [notifications, setNotifications] = useState<any[]>([]);
-  const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [selectedDate, setSelectedDate] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [isLoading, setIsLoading] = useState(true);
   const [lastManagerCallCount, setLastManagerCallCount] = useState(0);
@@ -53,28 +53,28 @@ export default function StaffCallsPage() {
     setIsLoading(true);
     
     try {
-      // 店長呼び出しデータを取得
+      // スタッフ呼び出しデータを取得
       const managerCallsResponse = await fetch('/api/callmanager');
       const managerCallsResult = await managerCallsResponse.json();
       
       if (managerCallsResult.success) {
         const filteredManagerCalls = managerCallsResult.data.filter((call: any) => {
-          const callDate = call.created_at.split('T')[0];
-          const matchesDate = callDate === selectedDate;
+          const callDate = (call.created_at || '').split('T')[0];
+          const matchesDate = !selectedDate || callDate === selectedDate;
           const matchesStatus = statusFilter === 'all' || call.status === statusFilter;
           return matchesDate && matchesStatus;
         });
         setManagerCalls(filteredManagerCalls);
         
-        // 店長呼び出しの通知数を計算
+        // スタッフ呼び出しの通知数を計算
         const pendingManagerCalls = managerCallsResult.data.filter((call: any) => call.status === 'pending');
         const currentPendingCount = pendingManagerCalls.length;
         
-        // 新しい店長呼び出しリクエストを検出
+        // 新しいスタッフ呼び出しリクエストを検出
         if (currentPendingCount > lastManagerCallCount && lastManagerCallCount > 0) {
           const newCalls = pendingManagerCalls.slice(0, currentPendingCount - lastManagerCallCount);
           newCalls.forEach((call: any) => {
-            success('新しい店長呼び出し', `${call.cast_name}から${call.table_name}への店長呼び出しリクエストが届きました`);
+            success('新しいスタッフ呼び出し', `${call.cast_name}から${call.table_name}へのスタッフ呼び出しリクエストが届きました`);
           });
         }
         
@@ -85,7 +85,7 @@ export default function StaffCallsPage() {
         setPendingManagerCallCount(0);
       }
     } catch (err) {
-      console.error('店長呼び出しデータ取得エラー:', err);
+      console.error('スタッフ呼び出しデータ取得エラー:', err);
       setManagerCalls([]);
     }
 
@@ -132,19 +132,19 @@ export default function StaffCallsPage() {
     try {
       setIsUpdating(true);
       
-      // 店長呼び出しデータを取得（ローディング状態を変更しない）
+      // スタッフ呼び出しデータを取得（ローディング状態を変更しない）
       const managerCallsResponse = await fetch('/api/callmanager');
       const managerCallsResult = await managerCallsResponse.json();
       
       if (managerCallsResult.success) {
         const filteredManagerCalls = managerCallsResult.data.filter((call: any) => {
-          const callDate = call.created_at.split('T')[0];
-          const matchesDate = callDate === selectedDate;
+          const callDate = (call.created_at || '').split('T')[0];
+          const matchesDate = !selectedDate || callDate === selectedDate;
           const matchesStatus = statusFilter === 'all' || call.status === statusFilter;
           return matchesDate && matchesStatus;
         });
         
-        // 新しい店長呼び出しリクエストを検出（タイムスタンプベース）
+        // 新しいスタッフ呼び出しリクエストを検出（タイムスタンプベース）
         const newCalls = managerCallsResult.data.filter((call: any) => {
           const callTime = new Date(call.created_at).getTime();
           const lastTime = new Date(lastUpdateTime).getTime();
@@ -254,14 +254,14 @@ export default function StaffCallsPage() {
         ));
         
         success(
-          action === 'accepted' ? '店長呼び出しを承認しました' : '店長呼び出しを拒否しました',
+          action === 'accepted' ? 'スタッフ呼び出しを承認しました' : 'スタッフ呼び出しを拒否しました',
           action === 'accepted' ? '対応いたします' : '別の方法でお問い合わせください'
         );
       } else {
         error('エラー', result.error || '処理に失敗しました');
       }
     } catch (err) {
-      console.error('店長呼び出し処理エラー:', err);
+      console.error('スタッフ呼び出し処理エラー:', err);
       error('エラー', '処理に失敗しました');
     }
   };
@@ -554,7 +554,7 @@ export default function StaffCallsPage() {
               </Card>
             )}
 
-             {/* 店長呼び出し */}
+             {/* スタッフ呼び出し */}
              <Card className={`transition-all duration-300 ${isUpdating ? 'bg-blue-50 border-blue-200' : ''}`}>
                <CardHeader>
                  <CardTitle className="flex items-center justify-between">
@@ -595,20 +595,13 @@ export default function StaffCallsPage() {
                       </TableHeader>
                       <TableBody>
                         {managerCalls
-                          .sort((a, b) => {
-                            // pendingを最初に、その後は作成日時の降順
-                            if (a.status === 'pending' && b.status !== 'pending') return -1;
-                            if (a.status !== 'pending' && b.status === 'pending') return 1;
-                            return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-                          })
+                          .filter(call => call.status === 'pending')
+                          .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
                           .map((call) => (
                            <TableRow 
                              key={call.id} 
                              className={`transition-all duration-500 ${
-                               newCallIds.has(call.id.toString()) ? 'bg-blue-100 border-l-4 border-blue-500' :
-                               call.status === 'pending' ? 'bg-yellow-50' : 
-                               call.status === 'accepted' ? 'bg-green-50' :
-                               call.status === 'rejected' ? 'bg-red-50' : ''
+                              newCallIds.has(call.id.toString()) ? 'bg-blue-100 border-l-4 border-blue-500' : 'bg-yellow-50'
                              }`}
                            >
                             <TableCell className="font-medium">
@@ -625,7 +618,7 @@ export default function StaffCallsPage() {
                             </TableCell>
                             <TableCell>
                               <span className="font-medium">
-                                {call.calltype === 'manager' ? '店長' : 
+                                {call.calltype === 'manager' ? 'スタッフ' : 
                                  call.calltype === 'service' ? 'サービス' :
                                  call.calltype === 'security' ? 'セキュリティ' :
                                  call.calltype === 'emergency' ? '緊急' : call.calltype}
@@ -678,6 +671,84 @@ export default function StaffCallsPage() {
                       </TableBody>
                     </Table>
                 </div>
+                )}
+              </CardContent>
+            </Card>
+            
+            {/* 履歴（承認・拒否済み） */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center">
+                  <Clock className="w-5 h-5 mr-2" />
+                  履歴（承認・拒否済み）
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {managerCalls.filter(call => call.status !== 'pending').length === 0 ? (
+                  <div className="text-center py-8 text-gray-500">
+                    履歴がありません
+                  </div>
+                ) : (
+                  <div className="max-h-[50vh] overflow-y-auto pr-1">
+                    <div className="overflow-x-auto">
+                      <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="w-[120px]">キャスト名</TableHead>
+                          <TableHead className="w-[120px]">テーブル名</TableHead>
+                          <TableHead className="w-[120px]">呼び出し対象</TableHead>
+                          <TableHead className="w-[100px]">ステータス</TableHead>
+                          <TableHead className="w-[150px]">作成日時</TableHead>
+                          <TableHead className="w-[150px]">処理日時</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {managerCalls
+                          .filter(call => call.status !== 'pending')
+                          .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+                          .map((call) => (
+                            <TableRow key={call.id}>
+                              <TableCell className="font-medium">
+                                <div className="flex items-center space-x-2">
+                                  <Users className="w-4 h-4 text-blue-600" />
+                                  <span>{call.cast_name}</span>
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex items-center space-x-2">
+                                  <AlertTriangle className="w-4 h-4 text-orange-600" />
+                                  <span>{call.table_name}</span>
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <span className="font-medium">
+                                  {call.calltype === 'manager' ? 'スタッフ' : 
+                                   call.calltype === 'service' ? 'サービス' :
+                                   call.calltype === 'security' ? 'セキュリティ' :
+                                   call.calltype === 'emergency' ? '緊急' : call.calltype}
+                                </span>
+                              </TableCell>
+                              <TableCell>
+                                {getStatusBadge(call.status)}
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex items-center text-sm text-gray-500">
+                                  <Clock className="w-3 h-3 mr-1" />
+                                  {formatDateTime(call.created_at)}
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex items-center text-sm text-gray-500">
+                                  <Clock className="w-3 h-3 mr-1" />
+                                  {call.accepted_at ? formatDateTime(call.accepted_at) : '-'}
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                      </TableBody>
+                      </Table>
+                    </div>
+                  </div>
                 )}
               </CardContent>
             </Card>

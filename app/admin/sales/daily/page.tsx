@@ -139,7 +139,7 @@ export default function DailySalesPage() {
                   <RefreshCw className="w-4 h-4 mr-2" />
                   <span className="hidden sm:inline">更新</span>
                 </Button>
-                <Button
+                {/* <Button
                   variant="outline"
                   size="sm"
                   onClick={exportData}
@@ -147,7 +147,7 @@ export default function DailySalesPage() {
                 >
                   <Download className="w-4 h-4 mr-2" />
                   <span className="hidden sm:inline">CSV出力</span>
-                </Button>
+                </Button> */}
               </div>
             </div>
           </div>

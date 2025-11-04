@@ -151,13 +151,13 @@ export function SalesChart({ period, data, categoryData, selectedDate }: SalesCh
           >
             線グラフ
           </Button>
-          <Button
+          {/* <Button
             size="sm"
             variant={activeChart === 'pie' ? 'default' : 'outline'}
             onClick={() => setActiveChart('pie')}
           >
             円グラフ
-          </Button>
+          </Button> */}
         </div>
       </div>
 

@@ -37,7 +37,7 @@ export async function PUT(
 
       if (result.rows.length === 0) {
         return NextResponse.json(
-          { success: false, error: '店長呼び出しが見つかりません' },
+          { success: false, error: 'スタッフ呼び出しが見つかりません' },
           { status: 404 }
         );
       }
@@ -53,9 +53,9 @@ export async function PUT(
     }
 
   } catch (error) {
-    console.error('店長呼び出し更新エラー:', error);
+    console.error('スタッフ呼び出し更新エラー:', error);
     return NextResponse.json(
-      { success: false, error: '店長呼び出しの更新に失敗しました' },
+      { success: false, error: 'スタッフ呼び出しの更新に失敗しました' },
       { status: 500 }
     );
   }

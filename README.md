@@ -42,7 +42,7 @@ NightWork POSは、キャバクラ業界に特化した統合POSシステムで�
   - メニュー表示（`/api/categories`, `/api/products`）。在庫0の商品は非表示
   - 商品注文（`/api/salesorder`）と在庫減算、状態反映
   - サービス注文（`/api/serviceorder`）
-  - キャスト指名（本指名/場内指名）登録、店長呼び出し
+  - キャスト指名（本指名/場内指名）登録、スタッフ呼び出し
   - スタッフ呼び出し通知（`/api/notifications`）
   - Stripe決済導線（支払い後にセッション金額更新・未承認注文の自動拒否）
 

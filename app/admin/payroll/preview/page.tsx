@@ -47,7 +47,7 @@ export default function PayrollPreviewPage() {
             await Promise.all(
               result.rows.map((r: any) => saveRowData(r))
             );
-            info('初期保存', '読み込んだ給与データを保存しました');
+            // info('初期保存', '読み込んだ給与データを保存しました');
           } catch (e) {
             // noop
           }

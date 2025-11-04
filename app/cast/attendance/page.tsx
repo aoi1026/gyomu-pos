@@ -2,12 +2,14 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { getCurrentUser, hasRole } from '@/lib/auth';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import {
   ArrowLeft, Clock, Play, Pause, Timer, Send, List, X,
   CheckCircle, AlertCircle
@@ -32,10 +34,23 @@ export default function CastAttendancePage() {
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [showNewSessionOption, setShowNewSessionOption] = useState(false);
 
+  // モーダル用ステート（アラート置換）
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [modalTitle, setModalTitle] = useState('');
+  const [modalMessage, setModalMessage] = useState('');
+  const [modalType, setModalType] = useState<'success' | 'error' | 'info'>('info');
+
+  const openModal = (title: string, message: string, type: 'success' | 'error' | 'info' = 'info') => {
+    setModalTitle(title);
+    setModalMessage(message);
+    setModalType(type);
+    setIsModalOpen(true);
+  };
+
   const router = useRouter();
 
   // 現在のユーザーIDを取得する関数
-  const getCurrentUserId = () => {
+  const getCurrentUserId = (): number | null => {
     if (typeof window !== 'undefined') {
       // キャスト認証情報を取得
       const castAuth = localStorage.getItem('cast_auth');
@@ -43,14 +58,21 @@ export default function CastAttendancePage() {
         try {
           const parsedCastAuth = JSON.parse(castAuth);
           console.log('現在のキャスト認証情報:', parsedCastAuth);
-          return parsedCastAuth.id || 1; // デフォルトは1
+          if (parsedCastAuth?.id) return parsedCastAuth.id as number;
         } catch (err) {
           console.error('キャスト認証情報の解析に失敗:', err);
-          return 1; // デフォルトは1
+          // フォールバックは下で処理
         }
       }
     }
-    return 1; // デフォルトは1
+    // 従来の認証にもフォールバック
+    const current = getCurrentUser();
+    if (current && (hasRole(current, 'cast') || hasRole(current, 'admin'))) {
+      // AuthUser.id は string 型想定のため数値へ変換
+      const numericId = Number((current as any).id);
+      return isNaN(numericId) ? null : numericId;
+    }
+    return null;
   };
 
   useEffect(() => {
@@ -351,7 +373,8 @@ export default function CastAttendancePage() {
       const testResult = await testResponse.json();
 
       if (!testResult.success) {
-        alert('データベース接続に失敗しました: ' + testResult.error);
+        openModal('データベース接続に失敗', String(testResult.error || '不明なエラー'), 'error');
+        setIsSubmitting(false);
         return;
       }
 
@@ -363,17 +386,24 @@ export default function CastAttendancePage() {
         const createResult = await createResponse.json();
 
         if (!createResult.success) {
-          alert('テーブル作成に失敗しました: ' + createResult.error);
+          openModal('テーブル作成に失敗', String(createResult.error || '不明なエラー'), 'error');
+          setIsSubmitting(false);
           return;
         }
       }
 
       // 勤怠データを送信
+      const staffId = getCurrentUserId();
+      if (!staffId) {
+        openModal('送信者情報が取得できません', 'キャストとして再ログインしてください。', 'error');
+        setIsSubmitting(false);
+        return;
+      }
       const response = await fetch('/api/attendance', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          staff_id: getCurrentUserId(), // 現在ログイン中のキャストのID（userテーブルのid）
+          staff_id: staffId, // 現在ログイン中のキャストのID（userテーブルのid）
           clock_in: timeRecords[0].startTime,
           clock_out: new Date().toISOString(),
           total_work_hours: totalWorkTime / 3600, // 秒を時間に変換
@@ -386,14 +416,13 @@ export default function CastAttendancePage() {
       if (result.success) {
         // すべての勤怠データをクリア
         clearAllAttendanceData();
-
-        alert('管理者に勤務時間を報告しました。新しい勤務記録を開始できます。');
+        openModal('報告送信完了', '管理者に勤務時間を報告しました。新しい勤務記録を開始できます。', 'success');
       } else {
-        alert('報告の送信に失敗しました: ' + (result.error || '不明なエラー'));
+        openModal('送信に失敗', String(result.error || '不明なエラー'), 'error');
       }
     } catch (err) {
       console.error('報告送信エラー:', err);
-      alert('報告の送信に失敗しました: ' + (err instanceof Error ? err.message : '不明なエラー'));
+      openModal('送信に失敗', err instanceof Error ? err.message : '不明なエラー', 'error');
     } finally {
       setIsSubmitting(false);
     }
@@ -409,6 +438,27 @@ export default function CastAttendancePage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-pink-50 to-blue-50">
+      {/* 結果/エラー用モーダル */}
+      <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center space-x-2">
+              {modalType === 'success' && <CheckCircle className="w-5 h-5 text-green-600" />}
+              {modalType === 'error' && <AlertCircle className="w-5 h-5 text-red-600" />}
+              {modalType === 'info' && <AlertCircle className="w-5 h-5 text-blue-600" />}
+              <span>{modalTitle}</span>
+            </DialogTitle>
+            <DialogDescription>
+              {modalMessage}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end">
+            <Button onClick={() => setIsModalOpen(false)} className="bg-purple-600 hover:bg-purple-700">
+              閉じる
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
       {/* Header */}
       <header className="bg-white/80 backdrop-blur-sm border-b border-gray-200 sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">

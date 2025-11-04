@@ -240,7 +240,7 @@ CREATE TRIGGER update_serviceorder_updated_at
     BEFORE UPDATE ON serviceorder 
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
--- 店長呼び出し管理テーブル
+-- スタッフ呼び出し管理テーブル
 CREATE TABLE IF NOT EXISTS callmanager (
     id SERIAL PRIMARY KEY,
     cast_id INTEGER NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
@@ -254,7 +254,7 @@ CREATE TABLE IF NOT EXISTS callmanager (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- 店長呼び出しテーブルのインデックス
+-- スタッフ呼び出しテーブルのインデックス
 CREATE INDEX IF NOT EXISTS idx_callmanager_cast_id ON callmanager(cast_id);
 CREATE INDEX IF NOT EXISTS idx_callmanager_table_id ON callmanager(table_id);
 CREATE INDEX IF NOT EXISTS idx_callmanager_session_id ON callmanager(session_id);
@@ -262,7 +262,7 @@ CREATE INDEX IF NOT EXISTS idx_callmanager_calltype ON callmanager(calltype);
 CREATE INDEX IF NOT EXISTS idx_callmanager_status ON callmanager(status);
 CREATE INDEX IF NOT EXISTS idx_callmanager_created_at ON callmanager(created_at);
 
--- 店長呼び出し更新時のトリガー
+-- スタッフ呼び出し更新時のトリガー
 CREATE TRIGGER update_callmanager_updated_at 
     BEFORE UPDATE ON callmanager 
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();

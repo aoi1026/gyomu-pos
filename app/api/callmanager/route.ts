@@ -34,9 +34,9 @@ export async function POST(request: NextRequest) {
     }
 
   } catch (error) {
-    console.error('店長呼び出し保存エラー:', error);
+    console.error('スタッフ呼び出し保存エラー:', error);
     return NextResponse.json(
-      { success: false, error: '店長呼び出しの保存に失敗しました' },
+      { success: false, error: 'スタッフ呼び出しの保存に失敗しました' },
       { status: 500 }
     );
   }
@@ -106,9 +106,9 @@ export async function GET(request: NextRequest) {
     }
 
   } catch (error) {
-    console.error('店長呼び出し取得エラー:', error);
+    console.error('スタッフ呼び出し取得エラー:', error);
     return NextResponse.json(
-      { success: false, error: '店長呼び出しの取得に失敗しました' },
+      { success: false, error: 'スタッフ呼び出しの取得に失敗しました' },
       { status: 500 }
     );
   }

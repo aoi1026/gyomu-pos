@@ -134,7 +134,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
     }
   }, [tableAuth]);
 
-  // 定期的に店長呼び出しステータスと注文カートを確認
+  // 定期的にスタッフ呼び出しステータスと注文カートを確認
   useEffect(() => {
     if (!tableAuth || !isSessionActive) return;
     
@@ -1033,7 +1033,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
       const result = await response.json();
       
       if (result.success) {
-        success('店長呼び出し完了', '管理者に通知されました');
+        success('スタッフ呼び出し完了', '管理者に通知されました');
         setShowManagerCallDialog(false);
         setSelectedCastForManagerCall(null);
         setManagerCallStatus('pending');
@@ -1050,7 +1050,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
               table_id: tableAuth.table_id,
               table_label: tableAuth.table_label,
               cast_name: selectedCastForManagerCall.name,
-              message: '店長呼び出しリクエストが送信されました',
+              message: 'スタッフ呼び出しリクエストが送信されました',
               priority: 'high'
             }),
           });
@@ -1058,11 +1058,11 @@ export default function TableDashboard({ params }: { params: { tableId: string }
           console.error('通知送信エラー:', notificationError);
         }
       } else {
-        error('エラー', result.error || '店長呼び出しに失敗しました');
+        error('エラー', result.error || 'スタッフ呼び出しに失敗しました');
       }
     } catch (err) {
-      console.error('店長呼び出しエラー:', err);
-      error('エラー', '店長呼び出しに失敗しました');
+      console.error('スタッフ呼び出しエラー:', err);
+      error('エラー', 'スタッフ呼び出しに失敗しました');
     }
   };
 
@@ -1094,7 +1094,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
         setManagerCallStatus(newStatus);
       }
     } catch (err) {
-      console.error('店長呼び出し状態確認エラー:', err);
+      console.error('スタッフ呼び出し状態確認エラー:', err);
     }
   };
 
@@ -1303,7 +1303,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                             サービス・呼び出し
                           </CardTitle>
                           <CardDescription>
-                            サービスの注文と店長呼び出し
+                            サービスの注文とスタッフ呼び出し
                           </CardDescription>
                         </CardHeader>
                         <CardContent>
@@ -1368,7 +1368,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                                     {managerCallStatus === 'accepted' ? '受理済み' : 
                                       managerCallStatus === 'rejected' ? '拒否済み' : 
                                       managerCallStatus === 'pending' ? '処理中' : 
-                                      '店長呼び出し'}
+                                      'スタッフ呼び出し'}
                                   </span>
                                 </div>
                               </Button>
@@ -2452,16 +2452,16 @@ export default function TableDashboard({ params }: { params: { tableId: string }
           </DialogContent>
         </Dialog>
 
-        {/* 店長呼び出しキャスト選択ダイアログ */}
+        {/* スタッフ呼び出しキャスト選択ダイアログ */}
         <Dialog open={showManagerCallDialog} onOpenChange={setShowManagerCallDialog}>
           <DialogContent>
             <DialogHeader>
               <DialogTitle className="flex items-center">
                 <Users className="w-5 h-5 mr-2" />
-                店長呼び出し - キャスト選択
+                スタッフ呼び出し - キャスト選択
               </DialogTitle>
               <DialogDescription>
-                店長呼び出しを行うキャストを選択してください
+                スタッフ呼び出しを行うキャストを選択してください
               </DialogDescription>
             </DialogHeader>
             
