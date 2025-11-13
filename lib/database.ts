@@ -10,7 +10,8 @@ const dbConfig = {
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
   max: 20, // 接続プールの最大接続数
   idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 2000,
+  connectionTimeoutMillis: 10000, // 10秒に延長
+  statement_timeout: 30000, // クエリタイムアウト30秒
 };
 
 // PostgreSQL接続プールの設定

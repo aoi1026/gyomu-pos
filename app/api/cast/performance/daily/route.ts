@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { pool } from '@/lib/database';
 
 export const dynamic = 'force-dynamic';
-import { pool } from '@/lib/database';
 
 export async function GET(request: NextRequest) {
   const client = await pool.connect();

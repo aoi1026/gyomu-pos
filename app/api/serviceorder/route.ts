@@ -117,10 +117,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // サービス注文を作成
+    // サービス注文を作成（statusはpendingで開始）
     const serviceOrderResult = await client.query(
-      'INSERT INTO serviceorder (cast_id, service_id, amount, table_id, session_id) VALUES ($1, $2, $3, $4, $5) RETURNING *',
-      [cast_id || null, service_id, amount, table_id, session_id]
+      'INSERT INTO serviceorder (cast_id, service_id, amount, table_id, session_id, status) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
+      [cast_id || null, service_id, amount, table_id, session_id, 'pending']
     );
 
     return NextResponse.json({

@@ -15,7 +15,7 @@ import {
   Wine, Users, Clock, DollarSign, Star, Bell, 
   TrendingUp, Calendar, AlertCircle, CheckCircle, Target, User
 } from 'lucide-react';
-import { formatCurrency, formatDateTime, mockDailySales, mockAttendance, mockBottles } from '@/lib/mock-data';
+import { formatCurrency, formatDateTime, mockAttendance, mockBottles } from '@/lib/mock-data';
 import { getCurrentBackRate, formatBackRate } from '@/lib/cast-back-system';
 
 export default function CastDashboard() {
@@ -60,11 +60,12 @@ export default function CastDashboard() {
   // 今日の実績（DB集計）: フックは早期returnより前に配置して順序を安定化
   useEffect(() => {
     const loadDailyPerf = async () => {
-      const id = (castUser || user)?.id;
+      const currentUser = castUser || user;
+      const id = currentUser?.id;
       if (!id) return;
       const today = new Date().toISOString().split('T')[0];
       try {
-        const res = await fetch(`/api/cast/performance/daily?user_id=${id}&date=${today}`);
+        const res = await fetch(`/api/cast/performance/daily?user_id=${String(id)}&date=${today}`);
         const result = await res.json();
         if (result?.success) {
           const nominations = Number(result.data.main_count || 0) + Number(result.data.inside_count || 0) + Number(result.data.together_count || 0);
@@ -95,9 +96,6 @@ export default function CastDashboard() {
 
   // 現在のユーザー情報（キャスト認証または従来の認証）
   const currentUser = castUser || user;
-
-  // 今日の売上データ
-  const todaySales = mockDailySales['2025-01-20'];
   
   // 自分の勤怠データ
   const myAttendance = mockAttendance.find(a => a.staff_id === currentUser?.id);

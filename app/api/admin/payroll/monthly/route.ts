@@ -6,7 +6,26 @@ function ymStart(year: number, month: number) {
 }
 
 export async function GET(request: NextRequest) {
-  const client = await pool.connect();
+  let client;
+  try {
+    // 接続タイムアウトを設定
+    client = await Promise.race([
+      pool.connect(),
+      new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Connection timeout')), 10000)
+      )
+    ]) as any;
+  } catch (connectError: any) {
+    console.error('データベース接続エラー:', connectError);
+    return NextResponse.json(
+      { 
+        success: false, 
+        error: 'データベースに接続できませんでした。データベースサーバーが起動しているか確認してください。' 
+      }, 
+      { status: 503 }
+    );
+  }
+
   try {
     const { searchParams } = new URL(request.url);
     const now = new Date();
@@ -146,12 +165,37 @@ export async function GET(request: NextRequest) {
     }
     return NextResponse.json({ success: false, error: errorMessage }, { status: 500 });
   } finally {
-    client.release();
+    if (client) {
+      try {
+        client.release();
+      } catch (releaseError) {
+        console.error('クライアントリリースエラー:', releaseError);
+      }
+    }
   }
 }
 
 export async function PUT(request: NextRequest) {
-  const client = await pool.connect();
+  let client;
+  try {
+    // 接続タイムアウトを設定
+    client = await Promise.race([
+      pool.connect(),
+      new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Connection timeout')), 10000)
+      )
+    ]) as any;
+  } catch (connectError: any) {
+    console.error('データベース接続エラー:', connectError);
+    return NextResponse.json(
+      { 
+        success: false, 
+        error: 'データベースに接続できませんでした。データベースサーバーが起動しているか確認してください。' 
+      }, 
+      { status: 503 }
+    );
+  }
+
   try {
     const body = await request.json();
     const { user_id, year, month, basic_hours, main_nomination_count, inside_nomination_count, together_nomination_cost, together_nomination_count, drink_back_yen, food_back_yen, overtime_wage_yen, deduction_yen, base_pay, main_nomination_fee, inside_nomination_fee, together_nomination_fee } = body;
@@ -203,11 +247,23 @@ export async function PUT(request: NextRequest) {
     await client.query('COMMIT');
     return NextResponse.json({ success: true });
   } catch (error) {
-    await client.query('ROLLBACK');
+    if (client) {
+      try {
+        await client.query('ROLLBACK');
+      } catch (rollbackError) {
+        console.error('ロールバックエラー:', rollbackError);
+      }
+    }
     console.error('給与保存エラー:', error);
     return NextResponse.json({ success: false, error: '給与データの保存に失敗しました' }, { status: 500 });
   } finally {
-    client.release();
+    if (client) {
+      try {
+        client.release();
+      } catch (releaseError) {
+        console.error('クライアントリリースエラー:', releaseError);
+      }
+    }
   }
 }
 

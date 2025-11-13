@@ -20,7 +20,7 @@ interface SessionData {
   table_id: number;
   client: number;
   set_count: number;
-  status: string;
+  status: number;
   created_at: string;
 }
 

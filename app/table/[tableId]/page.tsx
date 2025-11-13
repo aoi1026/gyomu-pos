@@ -55,6 +55,10 @@ export default function TableDashboard({ params }: { params: { tableId: string }
   const [selectedCastForManagerCall, setSelectedCastForManagerCall] = useState<{id: string, name: string} | null>(null);
   const [managerCallStatus, setManagerCallStatus] = useState<'none' | 'pending' | 'accepted' | 'rejected'>('none');
   const [previousManagerCallStatus, setPreviousManagerCallStatus] = useState<'none' | 'pending' | 'accepted' | 'rejected'>('none');
+  const [showStaffCallDialog, setShowStaffCallDialog] = useState(false);
+  const [selectedCastForStaffCall, setSelectedCastForStaffCall] = useState<string>('');
+  const [staffCallStatus, setStaffCallStatus] = useState<'none' | 'pending' | 'accepted' | 'rejected'>('none');
+  const [staffCallId, setStaffCallId] = useState<string | null>(null);
   const [menuCategories, setMenuCategories] = useState<any[]>([]);
   const [menuItems, setMenuItems] = useState<any[]>([]);
   const [isMenuLoading, setIsMenuLoading] = useState(true);
@@ -211,25 +215,113 @@ export default function TableDashboard({ params }: { params: { tableId: string }
   const [availableCasts, setAvailableCasts] = useState<any[]>([]);
 
   useEffect(() => {
+    let authReceived = false;
+    let timeoutId: NodeJS.Timeout | null = null;
+
+    // 管理者からのpostMessageを受け取る
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data && event.data.type === 'ADMIN_TABLE_STORAGE_DATA') {
+        const { localStorageData, table, session } = event.data;
+        
+        if (table && table.id.toString() === params.tableId) {
+          authReceived = true;
+          if (timeoutId) {
+            clearTimeout(timeoutId);
+            timeoutId = null;
+          }
+          
+          // ローカルストレージにデータを復元
+          if (localStorageData) {
+            Object.keys(localStorageData).forEach(key => {
+              const value = localStorageData[key];
+              if (typeof value === 'string') {
+                localStorage.setItem(key, value);
+              } else {
+                localStorage.setItem(key, JSON.stringify(value));
+              }
+            });
+          }
+
+          // テーブル認証情報を設定
+          const tableAuthData: TableAuth = {
+            table_id: table.id.toString(),
+            table_label: table.name,
+            area: table.area || '',
+            capacity: table.capacity || 0,
+            status: table.status || 'available',
+            login_time: new Date().toISOString()
+          };
+          
+          localStorage.setItem('table_auth', JSON.stringify(tableAuthData));
+          setTableAuth(tableAuthData);
+
+          // セッション情報がある場合は復元
+          if (session && session.id) {
+            localStorage.setItem('current_session_id', session.id.toString());
+            setIsSessionActive(true);
+            
+            // セッション情報から人数とセット延長回数を復元
+            if (session.client) {
+              setGuestCount(session.client.toString());
+              localStorage.setItem('guest_count', session.client.toString());
+            }
+          } else {
+            setIsSessionActive(table.status === 'occupied');
+          }
+          
+          setIsLoading(false);
+          loadMenuData();
+          loadServices();
+          loadCasts();
+          loadAddCharges();
+          
+          // セッションに関連するデータを取得
+          setTimeout(() => {
+            loadCartOrders();
+            loadServiceOrders();
+            loadNominations();
+            loadManagerCallStatus();
+            loadStaffCallStatus();
+          }, 100);
+        }
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+
+    // 通常の認証チェック
     const currentTable = getCurrentTable();
-    if (!currentTable || currentTable.table_id !== params.tableId) {
-      router.push('/');
-      return;
-    }
-    
-    setTableAuth(currentTable);
-    // 既存の未完了セッションがある場合は復元してセッション中として扱う
-    const existingSessionId = typeof window !== 'undefined' ? localStorage.getItem('current_session_id') : null;
-    if (existingSessionId) {
-      setIsSessionActive(true);
+    if (currentTable && currentTable.table_id === params.tableId) {
+      authReceived = true;
+      setTableAuth(currentTable);
+      // 既存の未完了セッションがある場合は復元してセッション中として扱う
+      const existingSessionId = typeof window !== 'undefined' ? localStorage.getItem('current_session_id') : null;
+      if (existingSessionId) {
+        setIsSessionActive(true);
+      } else {
+        setIsSessionActive(currentTable.status === 'occupied');
+      }
+      setIsLoading(false);
+      loadMenuData();
+      loadServices();
+      loadCasts();
+      loadAddCharges();
     } else {
-    setIsSessionActive(currentTable.status === 'occupied');
+      // 認証情報がない場合、管理者からのメッセージを待つ
+      // 一定時間待ってもメッセージが来ない場合はリダイレクト
+      timeoutId = setTimeout(() => {
+        if (!authReceived) {
+          router.push('/');
+        }
+      }, 5000); // 5秒待つ
     }
-    setIsLoading(false);
-    loadMenuData();
-    loadServices();
-    loadCasts();
-    loadAddCharges();
+
+    return () => {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+      window.removeEventListener('message', handleMessage);
+    };
   }, [params.tableId, router]);
 
   // tableAuthが設定された後にカートを読み込む
@@ -293,7 +385,9 @@ export default function TableDashboard({ params }: { params: { tableId: string }
       // その後APIから最新データを取得
       loadCartOrders();
       loadServiceOrders();
+      loadServices();
       loadManagerCallStatus();
+      loadStaffCallStatus();
       loadNominations();
     }
   }, [tableAuth]);
@@ -304,6 +398,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
     
     const interval = setInterval(() => {
       loadManagerCallStatus();
+      loadStaffCallStatus();
       loadCartOrdersSilently();
       loadServiceOrdersSilently();
     }, 500); // 500msごとに更新
@@ -537,12 +632,12 @@ export default function TableDashboard({ params }: { params: { tableId: string }
         
         // データベースのステータスに基づいてUI表示を更新
         result.data.forEach((order: any) => {
-          if (order.status === 'pending') {
-            setServiceRequestStatus(prev => ({ ...prev, [order.id]: 'sent' }));
-          } else if (order.status === 'accepted') {
-            setServiceRequestStatus(prev => ({ ...prev, [order.id]: 'accepted' }));
-          } else if (order.status === 'rejected') {
-            setServiceRequestStatus(prev => ({ ...prev, [order.id]: 'rejected' }));
+          // ステータスをそのまま反映（pending, accepted, rejected）
+          if (order.status) {
+            setServiceRequestStatus(prev => ({ ...prev, [order.id]: order.status }));
+          } else {
+            // ステータスがない場合はpendingとして扱う
+            setServiceRequestStatus(prev => ({ ...prev, [order.id]: 'pending' }));
           }
         });
       }
@@ -620,12 +715,12 @@ export default function TableDashboard({ params }: { params: { tableId: string }
         
         // データベースのステータスに基づいてUI表示を更新
         result.data.forEach((order: any) => {
-          if (order.status === 'pending') {
-            setServiceRequestStatus(prev => ({ ...prev, [order.id]: 'sent' }));
-          } else if (order.status === 'accepted') {
-            setServiceRequestStatus(prev => ({ ...prev, [order.id]: 'accepted' }));
-          } else if (order.status === 'rejected') {
-            setServiceRequestStatus(prev => ({ ...prev, [order.id]: 'rejected' }));
+          // ステータスをそのまま反映（pending, accepted, rejected）
+          if (order.status) {
+            setServiceRequestStatus(prev => ({ ...prev, [order.id]: order.status }));
+          } else {
+            // ステータスがない場合はpendingとして扱う
+            setServiceRequestStatus(prev => ({ ...prev, [order.id]: 'pending' }));
           }
         });
       }
@@ -812,6 +907,35 @@ export default function TableDashboard({ params }: { params: { tableId: string }
     }
   };
 
+  const handleServiceOrderFromCall = (serviceName: string) => {
+    if (isTimeExpired) {
+      error('エラー', 'セット時間が終了したため、サービスを注文できません');
+      return;
+    }
+    if (!tableAuth) {
+      error('エラー', 'テーブル情報が見つかりません');
+      return;
+    }
+
+    // サービス名からサービスを検索
+    const foundService = services.find((s: any) => 
+      s.name === serviceName || 
+      s.name.includes(serviceName) || 
+      serviceName.includes(s.name)
+    );
+
+    if (!foundService) {
+      error('エラー', `サービス「${serviceName}」が見つかりません`);
+      return;
+    }
+
+    setSelectedService(foundService);
+    setServiceOrderQuantity(1);
+    setSelectedServiceCast('none');
+    setShowServiceOrderDialog(true);
+    loadCasts();
+  };
+
   const handleServiceOrder = (service: any) => {
     if (isTimeExpired) {
       error('エラー', 'セット時間が終了したため、サービスを注文できません');
@@ -860,12 +984,25 @@ export default function TableDashboard({ params }: { params: { tableId: string }
         setSelectedService(null);
         setServiceOrderQuantity(1);
         setSelectedServiceCast('none');
-        loadServiceOrders(); // サービス注文を更新
         
-        // 即座に送信済みステータスに設定
-        if (result.data && result.data.id) {
-          setServiceRequestStatus(prev => ({ ...prev, [result.data.id]: 'sent' }));
+        // サービス注文をカートに追加
+        if (result.data) {
+          const newServiceOrder = {
+            ...result.data,
+            service_name: selectedService.name,
+            cast_name: selectedServiceCast && selectedServiceCast !== 'none' ? 
+              casts.find(c => c.id.toString() === selectedServiceCast)?.name || '未選択' : null
+          };
+          
+          setServiceOrders(prev => [...prev, newServiceOrder]);
+          
+          // ステータスをpendingに設定（管理者の承認待ち）
+          if (result.data.id) {
+            setServiceRequestStatus(prev => ({ ...prev, [result.data.id]: 'pending' }));
+          }
         }
+        
+        loadServiceOrders(); // サービス注文を更新
 
         // 管理者に通知を送信
         try {
@@ -1705,6 +1842,18 @@ export default function TableDashboard({ params }: { params: { tableId: string }
       return;
     }
 
+    if (callType === 'service') {
+      // スタッフ呼び出しの場合はキャスト選択モーダルを表示
+      if (staffCallStatus === 'pending' || staffCallStatus === 'accepted') {
+        error('エラー', '既にスタッフ呼び出しが送信されています');
+        return;
+      }
+      setShowStaffCallDialog(true);
+      loadCasts();
+      return;
+    }
+
+    // マネージャー呼び出しなどの他のタイプは従来通り
     try {
       await createStaffCall(
         tableAuth.table_id,
@@ -1726,6 +1875,70 @@ export default function TableDashboard({ params }: { params: { tableId: string }
 
       success('呼び出し完了', 'スタッフに通知されました');
     } catch (err) {
+      error('エラー', '呼び出しに失敗しました');
+    }
+  };
+
+  const handleStaffCallConfirm = async () => {
+    if (!tableAuth || !selectedCastForStaffCall) {
+      error('エラー', 'キャストを選択してください');
+      return;
+    }
+
+    if (isTimeExpired) {
+      error('エラー', 'セット時間が終了したため、スタッフ呼び出しはできません');
+      return;
+    }
+
+    try {
+      const sessionId = localStorage.getItem('current_session_id');
+      if (!sessionId) {
+        error('エラー', 'セッションが見つかりません');
+        return;
+      }
+
+      // callmanagerテーブルにスタッフ呼び出しを保存
+      const response = await fetch('/api/callmanager', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          cast_id: parseInt(selectedCastForStaffCall),
+          table_id: parseInt(tableAuth.table_id),
+          session_id: parseInt(sessionId),
+          calltype: 'service'
+        }),
+      });
+
+      const result = await response.json();
+      
+      if (result.success) {
+        setStaffCallStatus('pending');
+        setStaffCallId(result.data.id.toString());
+        setShowStaffCallDialog(false);
+        setSelectedCastForStaffCall('');
+        success('呼び出し完了', 'スタッフに通知されました');
+
+        // スタッフ呼び出し通知を作成
+        try {
+          const selectedCast = casts.find(c => c.id.toString() === selectedCastForStaffCall);
+          await createOrderNotification(
+            tableAuth.table_id,
+            tableAuth.table_label,
+            'staff_call',
+            `スタッフ呼び出し (${selectedCast?.name || 'キャスト'})`,
+            'high',
+            1
+          );
+        } catch (notificationError) {
+          console.error('通知送信エラー:', notificationError);
+        }
+      } else {
+        error('エラー', result.error || '呼び出しに失敗しました');
+      }
+    } catch (err) {
+      console.error('スタッフ呼び出しエラー:', err);
       error('エラー', '呼び出しに失敗しました');
     }
   };
@@ -1852,6 +2065,38 @@ export default function TableDashboard({ params }: { params: { tableId: string }
     }
   };
 
+  const loadStaffCallStatus = async () => {
+    if (!tableAuth || !isSessionActive) return;
+
+    try {
+      const currentSessionId = localStorage.getItem('current_session_id');
+      if (!currentSessionId) return;
+
+      const response = await fetch(`/api/callmanager?table_id=${tableAuth.table_id}&session_id=${currentSessionId}`);
+      const result = await response.json();
+      
+      if (result.success && result.data.length > 0) {
+        // calltypeが'service'のものを探す
+        const serviceCall = result.data.find((call: any) => call.calltype === 'service');
+        if (serviceCall) {
+          const newStatus = serviceCall.status;
+          setStaffCallStatus(newStatus);
+          if (!staffCallId) {
+            setStaffCallId(serviceCall.id.toString());
+          }
+        } else {
+          setStaffCallStatus('none');
+          setStaffCallId(null);
+        }
+      } else {
+        setStaffCallStatus('none');
+        setStaffCallId(null);
+      }
+    } catch (err) {
+      console.error('スタッフ呼び出し状態確認エラー:', err);
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -1900,11 +2145,31 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                   variant="outline" 
                   size="sm"
                   onClick={() => handleStaffCall('service', 'スタッフ呼び出し')}
-                  className="flex items-center text-xs sm:text-sm"
-                  disabled={isTimeExpired}
+                  className={`flex items-center text-xs sm:text-sm ${
+                    staffCallStatus === 'pending' 
+                      ? 'bg-orange-50 border-orange-300 text-orange-700' 
+                      : staffCallStatus === 'accepted'
+                      ? 'bg-green-50 border-green-300 text-green-700'
+                      : ''
+                  }`}
+                  disabled={isTimeExpired || staffCallStatus === 'pending' || staffCallStatus === 'accepted'}
                 >
-                  <Bell className="w-4 h-4 mr-1" />
-                  スタッフ呼び出し
+                  {staffCallStatus === 'pending' ? (
+                    <>
+                      <Clock className="w-4 h-4 mr-1 animate-pulse" />
+                      待機中...
+                    </>
+                  ) : staffCallStatus === 'accepted' ? (
+                    <>
+                      <CheckCircle className="w-4 h-4 mr-1" />
+                      承認済み
+                    </>
+                  ) : (
+                    <>
+                      <Bell className="w-4 h-4 mr-1" />
+                      スタッフ呼び出し
+                    </>
+                  )}
                 </Button>
               )}
               <Badge 
@@ -2104,7 +2369,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                             <div className={`grid grid-cols-2 gap-2 ${isTimeExpired ? 'pointer-events-none opacity-50' : ''}`}>
                               <Button 
                                 variant="outline"
-                                onClick={() => handleStaffCall('service', 'おしぼり交換')}
+                                onClick={() => handleServiceOrderFromCall('おしぼり')}
                                 disabled={isTimeExpired}
                                 className="h-12 flex-col space-y-0.5 text-green-700 border-green-300 hover:bg-green-50"
                               >
@@ -2113,7 +2378,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                               </Button>
                               <Button 
                                 variant="outline"
-                                onClick={() => handleStaffCall('service', '灰皿交換')}
+                                onClick={() => handleServiceOrderFromCall('灰皿交換')}
                                 disabled={isTimeExpired}
                                 className="h-12 flex-col space-y-0.5 text-orange-700 border-orange-300 hover:bg-orange-50"
                               >
@@ -2122,7 +2387,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                               </Button>
                               <Button 
                                 variant="outline"
-                                onClick={() => handleStaffCall('service', 'グラス交換')}
+                                onClick={() => handleServiceOrderFromCall('グラス交換')}
                                 disabled={isTimeExpired}
                                 className="h-12 flex-col space-y-0.5 text-blue-700 border-blue-300 hover:bg-blue-50"
                               >
@@ -2203,7 +2468,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                           <CardHeader className="pb-2">
                             <CardTitle className="flex items-center text-sm">
                               <Coffee className="w-4 h-4 mr-1" />
-                              サービス・予約
+                              追加注文
                             </CardTitle>
                           </CardHeader>
                           <CardContent>
@@ -2303,7 +2568,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                                       <div className="relative">
                                         {serviceRequestStatus[order.id] === 'pending' && (
                                           <div className="w-6 h-6 flex items-center justify-center">
-                                            <Clock className="w-4 h-4 text-orange-500 animate-pulse" />
+                                            <Bell className="w-4 h-4 text-blue-500 animate-bounce" />
                                           </div>
                                         )}
                                         {serviceRequestStatus[order.id] === 'sent' && (
@@ -3393,7 +3658,9 @@ export default function TableDashboard({ params }: { params: { tableId: string }
               {selectedService && (
                 <div className="bg-gray-50 rounded-lg p-4">
                   <h4 className="font-medium text-gray-900 mb-2">{selectedService.name}</h4>
-                  <p className="text-sm text-gray-600">{selectedService.description}</p>
+                  {(selectedService.description || selectedService.other) && (
+                    <p className="text-sm text-gray-600">{selectedService.description || selectedService.other}</p>
+                  )}
                 </div>
               )}
 
@@ -3684,6 +3951,86 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                   確認
                 </Button>
               </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* スタッフ呼び出しキャスト選択ダイアログ */}
+        <Dialog open={showStaffCallDialog} onOpenChange={setShowStaffCallDialog}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle className="flex items-center">
+                <Bell className="w-5 h-5 mr-2" />
+                スタッフ呼び出し - キャスト選択
+              </DialogTitle>
+              <DialogDescription>
+                スタッフ呼び出しを行うキャストを選択してください
+              </DialogDescription>
+            </DialogHeader>
+            
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label>キャスト選択</Label>
+                {isCastsLoading ? (
+                  <div className="text-center py-8">
+                    <div className="w-8 h-8 border-2 border-purple-600 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+                    <p className="text-gray-500">キャストを読み込み中...</p>
+                  </div>
+                ) : casts.length === 0 ? (
+                  <div className="text-center py-8 text-gray-500">
+                    <Users className="w-12 h-12 mx-auto mb-3 text-gray-400" />
+                    <p>キャストがありません</p>
+                  </div>
+                ) : (
+                  <Select value={selectedCastForStaffCall} onValueChange={setSelectedCastForStaffCall}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="キャストを選択してください" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {casts.map((cast) => (
+                        <SelectItem key={cast.id} value={cast.id.toString()}>
+                          {cast.name} {cast.mail ? `(${cast.mail})` : ''}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </div>
+              
+              {/* スタッフ呼び出し情報表示 */}
+              <div className="bg-gray-50 rounded-lg p-4">
+                <h4 className="font-medium text-gray-900 mb-2">スタッフ呼び出し情報</h4>
+                <div className="space-y-1 text-sm">
+                  <div className="flex justify-between">
+                    <span>テーブル:</span>
+                    <span>{tableAuth?.table_label}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>セッションID:</span>
+                    <span>{localStorage.getItem('current_session_id') || '未設定'}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <div className="flex justify-end space-x-2">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowStaffCallDialog(false);
+                  setSelectedCastForStaffCall('');
+                }}
+              >
+                キャンセル
+              </Button>
+              <Button
+                onClick={handleStaffCallConfirm}
+                disabled={!selectedCastForStaffCall || isCastsLoading}
+                className="bg-blue-600 hover:bg-blue-700"
+              >
+                <CheckCircle className="w-4 h-4 mr-2" />
+                確認
+              </Button>
             </div>
           </DialogContent>
         </Dialog>
