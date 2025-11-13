@@ -80,6 +80,9 @@ export default function TableDashboard({ params }: { params: { tableId: string }
   const [showPaymentDialog, setShowPaymentDialog] = useState(false);
   const [paymentAmount, setPaymentAmount] = useState<number>(0);
   const [isPaymentCompleted, setIsPaymentCompleted] = useState<boolean>(false);
+  const [showPaymentMethodDialog, setShowPaymentMethodDialog] = useState(false);
+  const [showCashPaymentDialog, setShowCashPaymentDialog] = useState(false);
+  const [cashPaymentAmount, setCashPaymentAmount] = useState<string>('');
   const [guestCount, setGuestCount] = useState<string>('');
   const [setExtensionCountdown, setSetExtensionCountdown] = useState<number>(0); // 再計算で設定する（初期表示のリセットを防止）
   const [setExtensions, setSetExtensions] = useState<Array<{ count: number; timestamp: number }>>([]); // 延長履歴
@@ -972,6 +975,18 @@ export default function TableDashboard({ params }: { params: { tableId: string }
       return;
     }
     
+    // 人数がテーブルの定員を超えていないかチェック
+    const numGuestCount = parseInt(guestCount);
+    if (isNaN(numGuestCount) || numGuestCount <= 0) {
+      error('エラー', '有効な人数を入力してください');
+      return;
+    }
+    
+    if (tableAuth.capacity && numGuestCount > tableAuth.capacity) {
+      error('エラー', `人数はテーブルの定員（${tableAuth.capacity}名）以下で入力してください`);
+      return;
+    }
+    
     try {
       // 人数をローカルストレージに保存
       localStorage.setItem('guest_count', guestCount);
@@ -1605,11 +1620,97 @@ export default function TableDashboard({ params }: { params: { tableId: string }
       return;
     }
     
+    // 決済方法選択ダイアログを表示
+    setShowPaymentMethodDialog(true);
+  };
+
+  const handleCreditCardPayment = () => {
     // 支払い金額は合計の1.1倍（10%追加）
     const paymentAmount = calculatePaymentAmount();
     
     setPaymentAmount(paymentAmount);
+    setShowPaymentMethodDialog(false);
     setShowPaymentDialog(true);
+  };
+
+  const handleCashPayment = () => {
+    setShowPaymentMethodDialog(false);
+    setShowCashPaymentDialog(true);
+    setCashPaymentAmount('');
+  };
+
+  const handleCashPaymentConfirm = async () => {
+    const amount = parseFloat(cashPaymentAmount);
+    
+    if (isNaN(amount) || amount <= 0) {
+      error('エラー', '有効な金額を入力してください');
+      return;
+    }
+
+    const totalAmount = calculateTotal();
+    if (amount < totalAmount) {
+      error('エラー', `支払い金額は合計金額（${formatCurrency(totalAmount)}）以上である必要があります`);
+      return;
+    }
+    
+    // ローカルストレージのfullcostに保存
+    localStorage.setItem('fullcost', amount.toString());
+    
+    // 支払い金額をローカルストレージに保存（表示用）
+    localStorage.setItem('paid_amount', amount.toString());
+    
+    // 支払い完了状態を設定
+    setIsPaymentCompleted(true);
+    localStorage.setItem('payment_completed', 'true');
+    
+    // sessionsテーブルも更新
+    const sessionId = localStorage.getItem('current_session_id');
+    if (sessionId) {
+      const currentCost = localStorage.getItem('cost') || '0';
+      const newCost = parseInt(currentCost) + amount;
+      localStorage.setItem('cost', newCost.toString());
+      
+      fetch(`/api/sessions/${sessionId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          cost: newCost
+        }),
+      }).catch(err => console.error('セッション更新エラー:', err));
+    }
+    
+    // 承認待ち（pending/sent）の注文は決済完了時に拒否へ更新
+    try {
+      const ordersToReject = cartOrders.filter((order: any) => {
+        const st = (orderRequestStatus as any)[order.id] || order.status;
+        return st === 'pending' || st === 'sent';
+      });
+      await Promise.all(
+        ordersToReject.map((order: any) =>
+          fetch(`/api/salesorder/${order.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: 'rejected' })
+          }).catch(err => console.error('注文拒否更新エラー:', err))
+        )
+      );
+      // ローカル状態も反映
+      setOrderRequestStatus(prev => {
+        const next: any = { ...prev };
+        ordersToReject.forEach((o: any) => { next[o.id] = 'rejected'; });
+        return next;
+      });
+      // 最新データを取得
+      await loadCartOrders();
+    } catch (e) {
+      console.error('決済後の注文更新処理エラー:', e);
+    }
+    
+    success('決済成功', `支払いが完了しました`);
+    setShowCashPaymentDialog(false);
+    setCashPaymentAmount('');
   };
 
   const handlePaymentSuccess = async (paymentIntentId: string) => {
@@ -2171,6 +2272,11 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                         }}
                         className="w-full"
                       />
+                      {tableAuth?.capacity && (
+                        <p className="text-sm text-gray-500">
+                          定員: {tableAuth.capacity}名まで
+                        </p>
+                      )}
                     </div>
                     <Button 
                       onClick={startSession}
@@ -3016,7 +3122,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                         disabled={calculateTotal() <= 0 || isNaN(calculateTotal())}
                       >
                         <CreditCard className="w-4 h-4 mr-2" />
-                        支払い確定 ({formatCurrency(calculatePaymentAmount())})
+                        決済
                       </Button>
                     )}
                     
@@ -3810,6 +3916,94 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                 <CheckCircle className="w-4 h-4 mr-2" />
                 延長確定
               </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* 決済方法選択ダイアログ */}
+        <Dialog open={showPaymentMethodDialog} onOpenChange={setShowPaymentMethodDialog}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle className="flex items-center">
+                <CreditCard className="w-5 h-5 mr-2" />
+                決済方法を選択
+              </DialogTitle>
+              <DialogDescription>
+                支払い方法を選択してください
+              </DialogDescription>
+            </DialogHeader>
+            
+            <div className="space-y-4">
+              <Button
+                onClick={handleCreditCardPayment}
+                className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
+                size="lg"
+              >
+                <CreditCard className="w-5 h-5 mr-2" />
+                クレジットカードで決済 ({formatCurrency(calculatePaymentAmount())})
+              </Button>
+              
+              <Button
+                onClick={handleCashPayment}
+                className="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700"
+                size="lg"
+              >
+                <DollarSign className="w-5 h-5 mr-2" />
+                現金で決済 ({formatCurrency(calculateTotal())})
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* 現金決済ダイアログ */}
+        <Dialog open={showCashPaymentDialog} onOpenChange={setShowCashPaymentDialog}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle className="flex items-center">
+                <DollarSign className="w-5 h-5 mr-2" />
+                現金決済
+              </DialogTitle>
+              <DialogDescription>
+                受け取った金額を入力してください
+              </DialogDescription>
+            </DialogHeader>
+            
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="cash-amount">受け取った金額</Label>
+                <Input
+                  id="cash-amount"
+                  type="number"
+                  min={calculateTotal()}
+                  placeholder="金額を入力"
+                  value={cashPaymentAmount}
+                  onChange={(e) => setCashPaymentAmount(e.target.value)}
+                  className="w-full"
+                />
+                <p className="text-sm text-gray-500">
+                  合計金額: {formatCurrency(calculateTotal())}
+                </p>
+              </div>
+              
+              <div className="flex justify-end space-x-2">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setShowCashPaymentDialog(false);
+                    setCashPaymentAmount('');
+                  }}
+                >
+                  キャンセル
+                </Button>
+                <Button
+                  onClick={handleCashPaymentConfirm}
+                  disabled={!cashPaymentAmount || parseFloat(cashPaymentAmount) < calculateTotal()}
+                  className="bg-green-600 hover:bg-green-700"
+                >
+                  <CheckCircle className="w-4 h-4 mr-2" />
+                  確認
+                </Button>
+              </div>
             </div>
           </DialogContent>
         </Dialog>

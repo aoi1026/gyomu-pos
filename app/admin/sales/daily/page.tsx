@@ -203,10 +203,10 @@ export default function DailySalesPage() {
                 <div className="text-sm text-blue-700 mb-1">
                 総売上: {formatCurrency(salesData.total_yen)}
                 </div>
-                <div className="flex items-center text-sm text-blue-700">
+                {/* <div className="flex items-center text-sm text-blue-700">
                   <TrendingUp className="w-4 h-4 mr-1" />
                   前日比 +12.5%
-                </div>
+                </div> */}
               </CardContent>
             </Card>
 

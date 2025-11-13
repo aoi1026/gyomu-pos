@@ -134,12 +134,20 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
       setStep('table');
     } else {
       setStep('login');
-      // デフォルトのテストアカウントを設定
-      const defaultAccount = testAccounts[role as 'cast' | 'admin' | 'superadmin'][0];
-      setCredentials({
-        email: defaultAccount.email,
-        password: defaultAccount.password
-      });
+      // cast と admin の場合はモックデータを設定しない
+      if (role === 'cast' || role === 'admin') {
+        setCredentials({
+          email: '',
+          password: ''
+        });
+      } else {
+        // スーパー管理者の場合のみデフォルトのテストアカウントを設定
+        const defaultAccount = testAccounts[role as 'cast' | 'admin' | 'superadmin'][0];
+        setCredentials({
+          email: defaultAccount.email,
+          password: defaultAccount.password
+        });
+      }
     }
   };
 

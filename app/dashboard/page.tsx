@@ -508,9 +508,9 @@ export default function Dashboard() {
                   <div className="text-2xl font-bold text-blue-900 mb-1">
                     {formatCurrency(todaySales.total_yen)}
                   </div>
-                  <p className="text-sm text-blue-700">
+                  {/* <p className="text-sm text-blue-700">
                     前日比 +12.5%
-                  </p>
+                  </p> */}
                 </CardContent>
               </Card>
 
@@ -526,7 +526,7 @@ export default function Dashboard() {
                     {todaySales.customer_count}組
                   </div>
                   <p className="text-sm text-green-700">
-                    平均客単価 {formatCurrency(Math.floor(todaySales.total_yen / todaySales.customer_count))}
+                    平均客単価 {todaySales.customer_count > 0 ? `¥${new Intl.NumberFormat('ja-JP', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(todaySales.total_yen / todaySales.customer_count)}` : '¥0.00'}
                   </p>
                 </CardContent>
               </Card>

@@ -236,10 +236,12 @@ export default function CustomerManagementPage() {
                   <div>
                     <p className="text-sm text-green-700">平均客単価</p>
                     <p className="text-xl font-bold text-green-900">
-                      {formatCurrency(
-                        customers.reduce((sum, c) => sum + c.total_spent, 0) / 
-                        customers.reduce((sum, c) => sum + c.total_visits, 0) || 0
-                      )}
+                      {(() => {
+                        const totalSpent = customers.reduce((sum, c) => sum + c.total_spent, 0);
+                        const totalVisits = customers.reduce((sum, c) => sum + c.total_visits, 0);
+                        const avgValue = totalVisits > 0 ? totalSpent / totalVisits : 0;
+                        return `¥${new Intl.NumberFormat('ja-JP', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(avgValue)}`;
+                      })()}
                     </p>
                   </div>
                 </div>

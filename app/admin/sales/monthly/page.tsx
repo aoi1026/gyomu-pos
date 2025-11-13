@@ -289,7 +289,7 @@ export default function MonthlySalesPage() {
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold text-orange-900 mb-1">
-                  {formatCurrency(salesData.avg_customer_spend)}
+                  {salesData.avg_customer_spend ? `¥${new Intl.NumberFormat('ja-JP', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(salesData.avg_customer_spend)}` : '¥0.00'}
                 </div>
                 <div className="flex items-center text-sm text-orange-700">
                   <TrendingUp className="w-4 h-4 mr-1" />
