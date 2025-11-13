@@ -10,6 +10,11 @@ const inter = Inter({ subsets: ['latin'] });
 export const metadata: Metadata = {
   title: 'NightWork POS - ナイトワーク特化POSシステム',
   description: 'ナイトワーク業界に特化した次世代POSシステム。注文管理から給与計算まで一元管理。',
+  icons: {
+    icon: '/icon.svg',
+    shortcut: '/icon.svg',
+    apple: '/icon.svg',
+  },
 };
 
 export default function RootLayout({
