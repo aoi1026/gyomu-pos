@@ -215,113 +215,25 @@ export default function TableDashboard({ params }: { params: { tableId: string }
   const [availableCasts, setAvailableCasts] = useState<any[]>([]);
 
   useEffect(() => {
-    let authReceived = false;
-    let timeoutId: NodeJS.Timeout | null = null;
-
-    // 管理者からのpostMessageを受け取る
-    const handleMessage = (event: MessageEvent) => {
-      if (event.data && event.data.type === 'ADMIN_TABLE_STORAGE_DATA') {
-        const { localStorageData, table, session } = event.data;
-        
-        if (table && table.id.toString() === params.tableId) {
-          authReceived = true;
-          if (timeoutId) {
-            clearTimeout(timeoutId);
-            timeoutId = null;
-          }
-          
-          // ローカルストレージにデータを復元
-          if (localStorageData) {
-            Object.keys(localStorageData).forEach(key => {
-              const value = localStorageData[key];
-              if (typeof value === 'string') {
-                localStorage.setItem(key, value);
-              } else {
-                localStorage.setItem(key, JSON.stringify(value));
-              }
-            });
-          }
-
-          // テーブル認証情報を設定
-          const tableAuthData: TableAuth = {
-            table_id: table.id.toString(),
-            table_label: table.name,
-            area: table.area || '',
-            capacity: table.capacity || 0,
-            status: table.status || 'available',
-            login_time: new Date().toISOString()
-          };
-          
-          localStorage.setItem('table_auth', JSON.stringify(tableAuthData));
-          setTableAuth(tableAuthData);
-
-          // セッション情報がある場合は復元
-          if (session && session.id) {
-            localStorage.setItem('current_session_id', session.id.toString());
-            setIsSessionActive(true);
-            
-            // セッション情報から人数とセット延長回数を復元
-            if (session.client) {
-              setGuestCount(session.client.toString());
-              localStorage.setItem('guest_count', session.client.toString());
-            }
-          } else {
-            setIsSessionActive(table.status === 'occupied');
-          }
-          
-          setIsLoading(false);
-          loadMenuData();
-          loadServices();
-          loadCasts();
-          loadAddCharges();
-          
-          // セッションに関連するデータを取得
-          setTimeout(() => {
-            loadCartOrders();
-            loadServiceOrders();
-            loadNominations();
-            loadManagerCallStatus();
-            loadStaffCallStatus();
-          }, 100);
-        }
-      }
-    };
-
-    window.addEventListener('message', handleMessage);
-
-    // 通常の認証チェック
     const currentTable = getCurrentTable();
-    if (currentTable && currentTable.table_id === params.tableId) {
-      authReceived = true;
-      setTableAuth(currentTable);
-      // 既存の未完了セッションがある場合は復元してセッション中として扱う
-      const existingSessionId = typeof window !== 'undefined' ? localStorage.getItem('current_session_id') : null;
-      if (existingSessionId) {
-        setIsSessionActive(true);
-      } else {
-        setIsSessionActive(currentTable.status === 'occupied');
-      }
-      setIsLoading(false);
-      loadMenuData();
-      loadServices();
-      loadCasts();
-      loadAddCharges();
-    } else {
-      // 認証情報がない場合、管理者からのメッセージを待つ
-      // 一定時間待ってもメッセージが来ない場合はリダイレクト
-      timeoutId = setTimeout(() => {
-        if (!authReceived) {
-          router.push('/');
-        }
-      }, 5000); // 5秒待つ
+    if (!currentTable || currentTable.table_id !== params.tableId) {
+      router.push('/');
+      return;
     }
-
-    return () => {
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-      }
-      window.removeEventListener('message', handleMessage);
-    };
+    
+    setTableAuth(currentTable);
+    // 既存の未完了セッションがある場合は復元してセッション中として扱う
+    const existingSessionId = typeof window !== 'undefined' ? localStorage.getItem('current_session_id') : null;
+    if (existingSessionId) {
+      setIsSessionActive(true);
+    } else {
+    setIsSessionActive(currentTable.status === 'occupied');
+    }
+    setIsLoading(false);
+    loadMenuData();
+    loadServices();
+    loadCasts();
+    loadAddCharges();
   }, [params.tableId, router]);
 
   // tableAuthが設定された後にカートを読み込む
@@ -1103,6 +1015,17 @@ export default function TableDashboard({ params }: { params: { tableId: string }
       localStorage.setItem('set_extension_total_seconds', '3600');
       localStorage.removeItem('set_extensions'); // 延長履歴をクリア
       setSetExtensionCountdown(3600);
+      
+      // DBにset_extensionsを初期化（空配列）
+      try {
+        await fetch(`/api/sessions/${result.data.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ set_extensions: [] })
+        });
+      } catch (err) {
+        console.error('set_extensions初期化エラー:', err);
+      }
       // 指名料金をクリア
       setNominationCharges([]);
       localStorage.removeItem('nomination_charges');
@@ -1188,6 +1111,20 @@ export default function TableDashboard({ params }: { params: { tableId: string }
           localStorage.removeItem('set_extension_total_seconds');
           localStorage.removeItem('set_extensions');
           setSetExtensionCountdown(0);
+          
+          // DBにset_extensionsをクリア
+          if (sessionId) {
+            try {
+              await fetch(`/api/sessions/${sessionId}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ set_extensions: [] })
+              });
+            } catch (err) {
+              console.error('set_extensionsクリアエラー:', err);
+            }
+          }
+          
           // 指名料金をクリア
           setNominationCharges([]);
           localStorage.removeItem('nomination_charges');
@@ -1304,14 +1241,17 @@ export default function TableDashboard({ params }: { params: { tableId: string }
     const newSetCount = currentSetCount ? parseInt(currentSetCount) + 1 : 2;
     localStorage.setItem('set_count', newSetCount.toString());
     
-    // DBにset_countを同期
+    // DBにset_countとset_extensionsを同期
     const sessionId = localStorage.getItem('current_session_id');
     if (sessionId) {
       try {
         await fetch(`/api/sessions/${sessionId}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ set_count: newSetCount })
+          body: JSON.stringify({ 
+            set_count: newSetCount,
+            set_extensions: updatedExtensions
+          })
         });
       } catch (err) {
         console.error('セット回数のDB同期エラー:', err);
@@ -2366,44 +2306,47 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                           </CardTitle>
                           </CardHeader>
                           <CardContent>
-                            <div className={`grid grid-cols-2 gap-2 ${isTimeExpired ? 'pointer-events-none opacity-50' : ''}`}>
-                              <Button 
-                                variant="outline"
-                                onClick={() => handleServiceOrderFromCall('おしぼり')}
-                                disabled={isTimeExpired}
-                                className="h-12 flex-col space-y-0.5 text-green-700 border-green-300 hover:bg-green-50"
-                              >
-                                <Utensils className="w-4 h-4" />
-                                <span className="text-xs">おしぼり</span>
-                              </Button>
-                              <Button 
-                                variant="outline"
-                                onClick={() => handleServiceOrderFromCall('灰皿交換')}
-                                disabled={isTimeExpired}
-                                className="h-12 flex-col space-y-0.5 text-orange-700 border-orange-300 hover:bg-orange-50"
-                              >
-                                <Coffee className="w-4 h-4" />
-                                <span className="text-xs">灰皿交換</span>
-                              </Button>
-                              <Button 
-                                variant="outline"
-                                onClick={() => handleServiceOrderFromCall('グラス交換')}
-                                disabled={isTimeExpired}
-                                className="h-12 flex-col space-y-0.5 text-blue-700 border-blue-300 hover:bg-blue-50"
-                              >
-                                <Wine className="w-4 h-4" />
-                                <span className="text-xs">グラス交換</span>
-                              </Button>
-                              <Button 
-                                variant="outline"
-                                onClick={() => handleStaffCall('manager', 'マネージャー呼び出し')}
-                                disabled={isTimeExpired}
-                                className="h-12 flex-col space-y-0.5 text-red-700 border-red-300 hover:bg-red-50"
-                              >
-                                <Bell className="w-4 h-4" />
-                                <span className="text-xs">マネージャー</span>
-                              </Button>
-                            </div>
+                            {isServicesLoading ? (
+                              <div className="flex items-center justify-center py-4">
+                                <div className="w-4 h-4 border-2 border-purple-600 border-t-transparent rounded-full animate-spin" />
+                              </div>
+                            ) : services.length === 0 ? (
+                              <div className="text-center py-4 text-sm text-gray-500">
+                                サービスがありません
+                              </div>
+                            ) : (
+                              <div className={`grid grid-cols-2 gap-2 ${isTimeExpired ? 'pointer-events-none opacity-50' : ''}`}>
+                                {services.map((service: any, index: number) => {
+                                  // 色の配列を定義
+                                  const colorClasses = [
+                                    'text-green-700 border-green-300 hover:bg-green-50',
+                                    'text-orange-700 border-orange-300 hover:bg-orange-50',
+                                    'text-blue-700 border-blue-300 hover:bg-blue-50',
+                                    'text-purple-700 border-purple-300 hover:bg-purple-50',
+                                    'text-pink-700 border-pink-300 hover:bg-pink-50',
+                                    'text-red-700 border-red-300 hover:bg-red-50',
+                                    'text-cyan-700 border-cyan-300 hover:bg-cyan-50',
+                                    'text-amber-700 border-amber-300 hover:bg-amber-50',
+                                    'text-indigo-700 border-indigo-300 hover:bg-indigo-50',
+                                    'text-teal-700 border-teal-300 hover:bg-teal-50',
+                                  ];
+                                  const colorClass = colorClasses[index % colorClasses.length];
+                                  
+                                  return (
+                                    <Button 
+                                      key={service.id}
+                                      variant="outline"
+                                      onClick={() => handleServiceOrder(service)}
+                                      disabled={isTimeExpired}
+                                      className={`h-12 flex-col space-y-0.5 ${colorClass}`}
+                                    >
+                                      <Utensils className="w-4 h-4" />
+                                      <span className="text-xs">{service.name}</span>
+                                    </Button>
+                                  );
+                                })}
+                              </div>
+                            )}
                           </CardContent>
                         </Card>
 

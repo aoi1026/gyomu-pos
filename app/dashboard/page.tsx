@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import { formatCurrency, formatDateTime, mockAttendance, mockBottles } from '@/lib/mock-data';
 import { getCurrentBackRate, formatBackRate } from '@/lib/cast-back-system';
+import { useNotificationContext } from '@/lib/notification-context';
 import RealTimeTableStatus from '@/components/admin/RealTimeTableStatus';
 
 export default function Dashboard() {
@@ -39,7 +40,10 @@ export default function Dashboard() {
   const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
   const [todaySalesKpi, setTodaySalesKpi] = useState<{ total_yen: number; customer_count: number; order_count: number }>({ total_yen: 0, customer_count: 0, order_count: 0 });
   const [showTableStatus, setShowTableStatus] = useState(false);
+  const [lastServiceOrderCount, setLastServiceOrderCount] = useState(0);
+  const [lastManagerCallCount, setLastManagerCallCount] = useState(0);
   const router = useRouter();
+  const { success } = useNotificationContext();
 
   const loadPendingOrderCount = async () => {
     try {
@@ -60,7 +64,16 @@ export default function Dashboard() {
       const result = await response.json();
       
       if (result.success) {
-        setPendingServiceOrderCount(result.data.length);
+        const currentCount = result.data.length;
+        // 新しいサービスリクエストを検出
+        if (currentCount > lastServiceOrderCount && lastServiceOrderCount > 0) {
+          const newOrders = result.data.slice(0, currentCount - lastServiceOrderCount);
+          newOrders.forEach((order: any) => {
+            success('新しいサービスリクエスト', `${order.table_name || 'テーブル'}からサービスリクエストが届きました`);
+          });
+        }
+        setPendingServiceOrderCount(currentCount);
+        setLastServiceOrderCount(currentCount);
       }
     } catch (err) {
       console.error('サービス注文数取得エラー:', err);
@@ -73,7 +86,16 @@ export default function Dashboard() {
       const result = await response.json();
       
       if (result.success) {
-        setPendingManagerCallCount(result.data.length);
+        const currentCount = result.data.length;
+        // 新しいスタッフ呼び出しリクエストを検出
+        if (currentCount > lastManagerCallCount && lastManagerCallCount > 0) {
+          const newCalls = result.data.slice(0, currentCount - lastManagerCallCount);
+          newCalls.forEach((call: any) => {
+            success('新しいスタッフ呼び出し', `${call.cast_name || 'キャスト'}から${call.table_name || 'テーブル'}へのスタッフ呼び出しリクエストが届きました`);
+          });
+        }
+        setPendingManagerCallCount(currentCount);
+        setLastManagerCallCount(currentCount);
       }
     } catch (err) {
       console.error('スタッフ呼び出し数取得エラー:', err);
@@ -689,9 +711,9 @@ export default function Dashboard() {
                   {/* <Users className="w-6 h-6 text-green-600" /> */}
                   <span className="w-6 h-5 text-green-600 text-2xl"><MdWifiCalling3 /></span>
                   <span className="text-sm font-medium">スタッフ呼び出し</span>
-                  {(pendingServiceOrderCount + pendingManagerCallCount + unreadNotificationCount) > 0 && (
+                  {pendingManagerCallCount > 0 && (
                     <Badge className="absolute -top-2 -right-2 bg-red-500 text-white text-xs">
-                      {pendingServiceOrderCount + pendingManagerCallCount + unreadNotificationCount}
+                      {pendingManagerCallCount}
                     </Badge>
                   )}
                 </Button>

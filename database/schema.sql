@@ -238,6 +238,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     end_at TIMESTAMP WITH TIME ZONE,
     client INTEGER,
     set_count INTEGER DEFAULT 1 CHECK (set_count >= 1),
+    set_extensions JSONB DEFAULT '[]'::jsonb,
     status INTEGER DEFAULT 0 CHECK (status IN (0, 1)),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP

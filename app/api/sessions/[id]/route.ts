@@ -7,9 +7,9 @@ export async function PATCH(
 ) {
   const client = await pool.connect();
   try {
-    const { cost, end_at, set_count, client: clientCount, status } = await request.json();
+    const { cost, end_at, set_count, client: clientCount, status, set_extensions } = await request.json();
     
-    if (cost === undefined && !end_at && set_count === undefined && clientCount === undefined && status === undefined) {
+    if (cost === undefined && !end_at && set_count === undefined && clientCount === undefined && status === undefined && set_extensions === undefined) {
       return NextResponse.json(
         { success: false, error: '更新するデータが必要です' },
         { status: 400 }
@@ -50,6 +50,12 @@ export async function PATCH(
       paramIndex++;
     }
 
+    if (set_extensions !== undefined) {
+      updateFields.push(`set_extensions = $${paramIndex}::jsonb`);
+      values.push(JSON.stringify(set_extensions));
+      paramIndex++;
+    }
+
     values.push(params.id);
 
     const query = `UPDATE sessions SET ${updateFields.join(', ')} WHERE id = $${paramIndex} RETURNING *`;
@@ -63,9 +69,23 @@ export async function PATCH(
       );
     }
 
+    // set_extensionsをJSONからパース
+    const row = result.rows[0];
+    if (row.set_extensions) {
+      try {
+        row.set_extensions = typeof row.set_extensions === 'string' 
+          ? JSON.parse(row.set_extensions) 
+          : row.set_extensions;
+      } catch (e) {
+        row.set_extensions = [];
+      }
+    } else {
+      row.set_extensions = [];
+    }
+
     return NextResponse.json({
       success: true,
-      data: result.rows[0]
+      data: row
     });
   } catch (error) {
     console.error('セッション更新エラー:', error);

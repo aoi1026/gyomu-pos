@@ -14,9 +14,25 @@ export async function GET() {
       ORDER BY s.created_at DESC
     `);
     
+    // set_extensionsをJSONからパース
+    const parsedRows = result.rows.map((row: any) => {
+      if (row.set_extensions) {
+        try {
+          row.set_extensions = typeof row.set_extensions === 'string' 
+            ? JSON.parse(row.set_extensions) 
+            : row.set_extensions;
+        } catch (e) {
+          row.set_extensions = [];
+        }
+      } else {
+        row.set_extensions = [];
+      }
+      return row;
+    });
+    
     return NextResponse.json({
       success: true,
-      data: result.rows
+      data: parsedRows
     });
   } catch (error) {
     console.error('セッションデータ取得エラー:', error);
