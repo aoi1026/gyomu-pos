@@ -22,7 +22,7 @@ export default function CastDashboard() {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [castUser, setCastUser] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [dailyPerf, setDailyPerf] = useState<{ nominations: number; totalSales: number; bottleSales: number }>({ nominations: 0, totalSales: 0, bottleSales: 0 });
+  const [dailyPerf, setDailyPerf] = useState<{ nominations: number; drinkSales: number; foodSales: number }>({ nominations: 0, drinkSales: 0, foodSales: 0 });
   const router = useRouter();
 
   useEffect(() => {
@@ -67,17 +67,17 @@ export default function CastDashboard() {
         const res = await fetch(`/api/cast/performance/daily?user_id=${id}&date=${today}`);
         const result = await res.json();
         if (result?.success) {
-          const nominations = Number(result.data.main_count || 0) + Number(result.data.inside_count || 0);
+          const nominations = Number(result.data.main_count || 0) + Number(result.data.inside_count || 0) + Number(result.data.together_count || 0);
           setDailyPerf({
             nominations,
-            totalSales: Number(result.data.total_sales || 0),
-            bottleSales: Number(result.data.bottle_sales || 0)
+            drinkSales: Number(result.data.drink_sales || 0),
+            foodSales: Number(result.data.food_sales || 0)
           });
         } else {
-          setDailyPerf({ nominations: 0, totalSales: 0, bottleSales: 0 });
+          setDailyPerf({ nominations: 0, drinkSales: 0, foodSales: 0 });
         }
       } catch (e) {
-        setDailyPerf({ nominations: 0, totalSales: 0, bottleSales: 0 });
+        setDailyPerf({ nominations: 0, drinkSales: 0, foodSales: 0 });
       }
     };
     loadDailyPerf();
@@ -257,7 +257,7 @@ export default function CastDashboard() {
                       <span className="font-medium text-green-900">¥45,000</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-sm text-green-700">ボトルバック</span>
+                      <span className="text-sm text-green-700">ドリンクバック</span>
                       <span className="font-medium text-green-900">¥32,000</span>
                     </div>
                     <hr className="border-green-300" />
@@ -283,13 +283,13 @@ export default function CastDashboard() {
                       <span className="font-medium text-green-900">{dailyPerf.nominations}件</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-sm text-green-700">売上貢献</span>
-                      <span className="font-medium text-green-900">{formatCurrency(dailyPerf.totalSales)}</span>
+                      <span className="text-sm text-green-700">飲料売上</span>
+                      <span className="font-medium text-green-900">{formatCurrency(dailyPerf.drinkSales)}</span>
                     </div>
                     {/* <hr className="border-green-300" /> */}
                     <div className="flex justify-between">
-                      <span className="text-sm text-green-700">ボトル売上</span>
-                      <span className="font-medium text-green-900">{formatCurrency(dailyPerf.bottleSales)}</span>
+                      <span className="text-sm text-green-700">食品売上</span>
+                      <span className="font-medium text-green-900">{formatCurrency(dailyPerf.foodSales)}</span>
                     </div>
                   </div>
                 </CardContent>
@@ -307,12 +307,12 @@ export default function CastDashboard() {
                   <CardContent>
                     <div className="space-y-2">
                       <div className="flex justify-between">
-                        <span className="text-sm text-green-700">ドリンクバック</span>
-                        <span className="font-medium text-green-900">{formatBackRate(currentBackRate.drink_back_rate)}</span>
+                        <span className="text-sm text-green-700">フードバック</span>
+                        <span className="font-medium text-green-900">{formatBackRate(currentBackRate.food_back_rate)}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-sm text-green-700">ボトルバック</span>
-                        <span className="font-medium text-green-900">{formatBackRate(currentBackRate.bottle_back_rate)}</span>
+                        <span className="text-sm text-green-700">ドリンクバック</span>
+                        <span className="font-medium text-green-900">{formatBackRate(currentBackRate.drink_back_rate)}</span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-sm text-green-700">本指名料</span>

@@ -3,8 +3,8 @@ export interface CastBackRate {
   id: string;
   cast_id: string;
   cast_name: string;
-  drink_back_rate: number; // ドリンクバック率 (0.05 = 5%)
-  bottle_back_rate: number; // ボトルバック率 (0.10 = 10%)
+  food_back_rate: number; // フードバック率 (0.05 = 5%)
+  drink_back_rate: number; // ドリンクバック率 (0.10 = 10%)
   nomination_rate: number; // 本指名料率 (0.15 = 15%)
   field_nomination_rate: number; // 場内指名料率 (0.08 = 8%)
   effective_from: string; // 適用開始日
@@ -29,8 +29,8 @@ export const mockCastBackRates: CastBackRate[] = [
     id: 'back-rate-1',
     cast_id: 'staff-1',
     cast_name: '田中美咲',
-    drink_back_rate: 0.05, // 5%
-    bottle_back_rate: 0.10, // 10%
+    food_back_rate: 0.05, // 5%
+    drink_back_rate: 0.10, // 10%
     nomination_rate: 0.15, // 15%
     field_nomination_rate: 0.08, // 8%
     effective_from: '2025-01-01',
@@ -41,8 +41,8 @@ export const mockCastBackRates: CastBackRate[] = [
     id: 'back-rate-2',
     cast_id: 'staff-2',
     cast_name: '佐藤花音',
-    drink_back_rate: 0.05,
-    bottle_back_rate: 0.10,
+    food_back_rate: 0.05,
+    drink_back_rate: 0.10,
     nomination_rate: 0.15,
     field_nomination_rate: 0.08,
     effective_from: '2025-01-01',
@@ -53,8 +53,8 @@ export const mockCastBackRates: CastBackRate[] = [
     id: 'back-rate-3',
     cast_id: 'staff-3',
     cast_name: '鈴木愛美',
-    drink_back_rate: 0.06, // 6%
-    bottle_back_rate: 0.12, // 12%
+    food_back_rate: 0.06, // 6%
+    drink_back_rate: 0.12, // 12%
     nomination_rate: 0.18, // 18%
     field_nomination_rate: 0.10, // 10%
     effective_from: '2025-01-01',
@@ -65,8 +65,8 @@ export const mockCastBackRates: CastBackRate[] = [
     id: 'back-rate-4',
     cast_id: 'staff-4',
     cast_name: '高橋麻衣',
-    drink_back_rate: 0.04, // 4%
-    bottle_back_rate: 0.08, // 8%
+    food_back_rate: 0.04, // 4%
+    drink_back_rate: 0.08, // 8%
     nomination_rate: 0.12, // 12%
     field_nomination_rate: 0.06, // 6%
     effective_from: '2025-01-01',
@@ -103,13 +103,13 @@ export const calculateBack = (
   if (itemType === 'drink' || itemType === 'bottle') {
     if (nominationType === 'main') {
       // 本指名の場合は通常のバック率
-      rate = itemType === 'drink' ? backRate.drink_back_rate : backRate.bottle_back_rate;
+      rate = itemType === 'drink' ? backRate.food_back_rate : backRate.drink_back_rate;
     } else if (nominationType === 'field') {
       // 場内指名の場合は場内指名率を適用
       rate = backRate.field_nomination_rate;
     } else {
       // フリーの場合は通常のバック率
-      rate = itemType === 'drink' ? backRate.drink_back_rate : backRate.bottle_back_rate;
+      rate = itemType === 'drink' ? backRate.food_back_rate : backRate.drink_back_rate;
     }
   } else {
     // 指名料の場合は指名種別に応じて
@@ -149,7 +149,7 @@ export const calculateMultipleBacks = (
 // バック率の更新
 export const updateBackRate = async (
   castId: string,
-  newRates: Partial<Pick<CastBackRate, 'drink_back_rate' | 'bottle_back_rate' | 'nomination_rate' | 'field_nomination_rate'>>,
+  newRates: Partial<Pick<CastBackRate, 'food_back_rate' | 'drink_back_rate' | 'nomination_rate' | 'field_nomination_rate'>>,
   effectiveFrom: string
 ): Promise<CastBackRate> => {
   // 現在のレートを終了
@@ -167,8 +167,8 @@ export const updateBackRate = async (
     id: `back-rate-${Date.now()}`,
     cast_id: castId,
     cast_name: currentRate?.cast_name || `Cast ${castId.slice(-4)}`,
-    drink_back_rate: newRates.drink_back_rate ?? currentRate?.drink_back_rate ?? 0.05,
-    bottle_back_rate: newRates.bottle_back_rate ?? currentRate?.bottle_back_rate ?? 0.10,
+    food_back_rate: newRates.food_back_rate ?? currentRate?.food_back_rate ?? 0.05,
+    drink_back_rate: newRates.drink_back_rate ?? currentRate?.drink_back_rate ?? 0.10,
     nomination_rate: newRates.nomination_rate ?? currentRate?.nomination_rate ?? 0.15,
     field_nomination_rate: newRates.field_nomination_rate ?? currentRate?.field_nomination_rate ?? 0.08,
     effective_from: effectiveFrom,
@@ -203,15 +203,15 @@ export const getAllCurrentBackRates = (): CastBackRate[] => {
 export const validateBackRate = (rate: Partial<CastBackRate>): string[] => {
   const errors: string[] = [];
   
-  if (rate.drink_back_rate !== undefined) {
-    if (rate.drink_back_rate < 0 || rate.drink_back_rate > 1) {
-      errors.push('ドリンクバック率は0-100%の範囲で設定してください');
+  if (rate.food_back_rate !== undefined) {
+    if (rate.food_back_rate < 0 || rate.food_back_rate > 1) {
+      errors.push('フードバック率は0-100%の範囲で設定してください');
     }
   }
   
-  if (rate.bottle_back_rate !== undefined) {
-    if (rate.bottle_back_rate < 0 || rate.bottle_back_rate > 1) {
-      errors.push('ボトルバック率は0-100%の範囲で設定してください');
+  if (rate.drink_back_rate !== undefined) {
+    if (rate.drink_back_rate < 0 || rate.drink_back_rate > 1) {
+      errors.push('ドリンクバック率は0-100%の範囲で設定してください');
     }
   }
   

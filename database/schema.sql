@@ -18,15 +18,84 @@ CREATE TABLE IF NOT EXISTS "user" (
     mail VARCHAR(255) UNIQUE NOT NULL,
     password VARCHAR(255) NOT NULL,
     role VARCHAR(50) NOT NULL CHECK (role IN ('admin', 'cast', 'manager')),
-    bottle_back DECIMAL(5,2) DEFAULT 0.00 CHECK (bottle_back >= 0 AND bottle_back <= 100),
     drink_back DECIMAL(5,2) DEFAULT 0.00 CHECK (drink_back >= 0 AND drink_back <= 100),
+    food_back DECIMAL(5,2) DEFAULT 0.00 CHECK (food_back >= 0 AND food_back <= 100),
     main_nomination DECIMAL(5,2) DEFAULT 0.00 CHECK (main_nomination >= 0 AND main_nomination <= 100),
     inside_nomination DECIMAL(5,2) DEFAULT 0.00 CHECK (inside_nomination >= 0 AND inside_nomination <= 100),
+    together_nomination DECIMAL(5,2) DEFAULT 0.00 CHECK (together_nomination >= 0 AND together_nomination <= 100),
     hourly_price DECIMAL(10,2) DEFAULT 0.00 CHECK (hourly_price >= 0),
     other TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
+
+-- 追加料金設定テーブル
+CREATE TABLE IF NOT EXISTS add_charges (
+    id SERIAL PRIMARY KEY,
+    charge_name VARCHAR(100) UNIQUE NOT NULL,
+    value DECIMAL(10,2) DEFAULT 0.00 CHECK (value >= 0),
+    other TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_add_charges_name ON add_charges(charge_name);
+
+CREATE TRIGGER update_add_charges_updated_at 
+    BEFORE UPDATE ON add_charges 
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- 初期追加料金データ
+INSERT INTO add_charges (charge_name, value, other) VALUES
+    ('main', 0.00, NULL),
+    ('inside', 0.00, NULL),
+    ('together', 0.00, NULL),
+    ('bottle_keep', 0.00, NULL),
+    ('vip_room', 0.00, NULL),
+    ('song_room', 0.00, NULL)
+ON CONFLICT (charge_name) DO NOTHING;
+
+CREATE TABLE IF NOT EXISTS nomination (
+    id SERIAL PRIMARY KEY,
+    cast_id INTEGER NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+    table_id INTEGER NOT NULL REFERENCES "table"(id) ON DELETE CASCADE,
+    session_id INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+    type_id VARCHAR(50) NOT NULL CHECK (type_id IN ('main', 'inside', 'together')),
+    cost DECIMAL(10,2) DEFAULT 0.00 CHECK (cost >= 0),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_nomination_cast_id ON nomination(cast_id);
+CREATE INDEX IF NOT EXISTS idx_nomination_table_id ON nomination(table_id);
+CREATE INDEX IF NOT EXISTS idx_nomination_session_id ON nomination(session_id);
+CREATE INDEX IF NOT EXISTS idx_nomination_type_id ON nomination(type_id);
+
+CREATE TRIGGER update_nomination_updated_at
+    BEFORE UPDATE ON nomination
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- ボトルキープテーブル
+CREATE TABLE IF NOT EXISTS bottle_keep (
+    id SERIAL PRIMARY KEY,
+    client_name VARCHAR(255) NOT NULL,
+    client_email VARCHAR(255),
+    bottle_name VARCHAR(255) NOT NULL,
+    amount INTEGER NOT NULL CHECK (amount >= 0),
+    session_id INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+    table_id INTEGER NOT NULL REFERENCES "table"(id) ON DELETE CASCADE,
+    other TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_bottle_keep_session_id ON bottle_keep(session_id);
+CREATE INDEX IF NOT EXISTS idx_bottle_keep_table_id ON bottle_keep(table_id);
+CREATE INDEX IF NOT EXISTS idx_bottle_keep_client_email ON bottle_keep(client_email);
+
+CREATE TRIGGER update_bottle_keep_updated_at
+    BEFORE UPDATE ON bottle_keep
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- インデックスの作成
 CREATE INDEX IF NOT EXISTS idx_table_name ON "table"(name);
@@ -145,8 +214,11 @@ CREATE TABLE IF NOT EXISTS salary (
     main_nomination_fee DECIMAL(12,2) DEFAULT 0.00 CHECK (main_nomination_fee >= 0),
     inside_nomination_count INTEGER DEFAULT 0 CHECK (inside_nomination_count >= 0),
     inside_nomination_fee DECIMAL(12,2) DEFAULT 0.00 CHECK (inside_nomination_fee >= 0),
-    bottle_back_yen DECIMAL(12,2) DEFAULT 0.00 CHECK (bottle_back_yen >= 0),
     drink_back_yen DECIMAL(12,2) DEFAULT 0.00 CHECK (drink_back_yen >= 0),
+    food_back_yen DECIMAL(12,2) DEFAULT 0.00 CHECK (food_back_yen >= 0),
+    together_nomination_cost DECIMAL(12,2) DEFAULT 0.00 CHECK (together_nomination_cost >= 0),
+    together_nomination_count INTEGER DEFAULT 0 CHECK (together_nomination_count >= 0),
+    together_nomination_fee DECIMAL(12,2) DEFAULT 0.00 CHECK (together_nomination_fee >= 0),
     overtime_wage_yen DECIMAL(12,2) DEFAULT 0.00 CHECK (overtime_wage_yen >= 0),
     deduction_yen DECIMAL(12,2) DEFAULT 0.00,
     total_pay_yen DECIMAL(12,2) DEFAULT 0.00,
@@ -164,16 +236,15 @@ CREATE TABLE IF NOT EXISTS sessions (
     table_id INTEGER NOT NULL REFERENCES "table"(id) ON DELETE CASCADE,
     cost DECIMAL(10,2) DEFAULT 0.00 CHECK (cost >= 0),
     end_at TIMESTAMP WITH TIME ZONE,
-    cast_id INTEGER REFERENCES "user"(id) ON DELETE SET NULL,
-    nomination_type VARCHAR(50) CHECK (nomination_type IN ('main', 'inside', 'other')),
-    status VARCHAR(20) DEFAULT 'active' CHECK (status IN ('active', 'ended', 'cancelled')),
+    client INTEGER,
+    set_count INTEGER DEFAULT 1 CHECK (set_count >= 1),
+    status INTEGER DEFAULT 0 CHECK (status IN (0, 1)),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 -- セッションテーブルのインデックス
 CREATE INDEX IF NOT EXISTS idx_sessions_table_id ON sessions(table_id);
-CREATE INDEX IF NOT EXISTS idx_sessions_cast_id ON sessions(cast_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_status ON sessions(status);
 CREATE INDEX IF NOT EXISTS idx_sessions_created_at ON sessions(created_at);
 
@@ -192,6 +263,7 @@ CREATE TABLE IF NOT EXISTS salesorder (
     session_id INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
     unit_price DECIMAL(10,2) NOT NULL CHECK (unit_price >= 0),
     total_price DECIMAL(10,2) NOT NULL CHECK (total_price >= 0),
+    for_cast INTEGER DEFAULT 0 CHECK (for_cast IN (0, 1)),
     status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'accepted', 'rejected', 'completed')),
     accepted_at TIMESTAMP WITH TIME ZONE,
     accepted_by INTEGER REFERENCES "user"(id),

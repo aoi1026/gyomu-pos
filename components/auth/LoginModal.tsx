@@ -267,8 +267,8 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
             name: result.user.name,
             email: result.user.email,
             role: result.user.role,
-            bottle_back: result.user.bottle_back,
             drink_back: result.user.drink_back,
+            food_back: result.user.food_back,
             main_nomination: result.user.main_nomination,
             inside_nomination: result.user.inside_nomination,
             login_time: new Date().toISOString()

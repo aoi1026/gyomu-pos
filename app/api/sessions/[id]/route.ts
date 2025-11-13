@@ -7,9 +7,9 @@ export async function PATCH(
 ) {
   const client = await pool.connect();
   try {
-    const { cast_id, nomination_type, cost, end_at } = await request.json();
+    const { cost, end_at, set_count, client: clientCount, status } = await request.json();
     
-    if (!cast_id && !nomination_type && cost === undefined && !end_at) {
+    if (cost === undefined && !end_at && set_count === undefined && clientCount === undefined && status === undefined) {
       return NextResponse.json(
         { success: false, error: '更新するデータが必要です' },
         { status: 400 }
@@ -20,18 +20,6 @@ export async function PATCH(
     const values = [];
     let paramIndex = 1;
 
-    if (cast_id !== undefined) {
-      updateFields.push(`cast_id = $${paramIndex}`);
-      values.push(cast_id);
-      paramIndex++;
-    }
-
-    if (nomination_type !== undefined) {
-      updateFields.push(`nomination_type = $${paramIndex}`);
-      values.push(nomination_type);
-      paramIndex++;
-    }
-
     if (cost !== undefined) {
       updateFields.push(`cost = $${paramIndex}`);
       values.push(cost);
@@ -41,6 +29,24 @@ export async function PATCH(
     if (end_at) {
       updateFields.push(`end_at = $${paramIndex}`);
       values.push(end_at);
+      paramIndex++;
+    }
+
+    if (set_count !== undefined) {
+      updateFields.push(`set_count = $${paramIndex}`);
+      values.push(set_count);
+      paramIndex++;
+    }
+
+    if (clientCount !== undefined) {
+      updateFields.push(`client = $${paramIndex}`);
+      values.push(clientCount);
+      paramIndex++;
+    }
+
+    if (status !== undefined) {
+      updateFields.push(`status = $${paramIndex}`);
+      values.push(status);
       paramIndex++;
     }
 

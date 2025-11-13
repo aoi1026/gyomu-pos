@@ -115,12 +115,12 @@ export default function CastBackRatesPage() {
               <CardContent>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                   <div className="p-4 bg-blue-50">
-                    <div className="text-sm text-blue-700">ドリンクバック</div>
-                    <div className="text-2xl font-bold text-blue-900">{Number(currentRate.drink_back || 0).toFixed(2)}%</div>
+                    <div className="text-sm text-blue-700">フードバック</div>
+                    <div className="text-2xl font-bold text-blue-900">{Number(currentRate.food_back || 0).toFixed(2)}%</div>
                   </div>
                   <div className="p-4 bg-green-50">
-                    <div className="text-sm text-green-700">ボトルバック</div>
-                    <div className="text-2xl font-bold text-green-900">{Number(currentRate.bottle_back || 0).toFixed(2)}%</div>
+                    <div className="text-sm text-green-700">ドリンクバック</div>
+                    <div className="text-2xl font-bold text-green-900">{Number(currentRate.drink_back || 0).toFixed(2)}%</div>
                   </div>
                   <div className="p-4 bg-purple-50">
                     <div className="text-sm text-purple-700">本指名料率</div>
@@ -129,6 +129,10 @@ export default function CastBackRatesPage() {
                   <div className="p-4 bg-orange-50">
                     <div className="text-sm text-orange-700">場内指名料率</div>
                     <div className="text-2xl font-bold text-orange-900">{Number(currentRate.inside_nomination || 0).toFixed(2)}%</div>
+                  </div>
+                  <div className="p-4 bg-pink-50">
+                    <div className="text-sm text-pink-700">同伴指名料率</div>
+                    <div className="text-2xl font-bold text-pink-900">{Number(currentRate.together_nomination || 0).toFixed(2)}%</div>
                   </div>
                   <div className="p-4 bg-gray-50">
                     <div className="text-sm text-gray-700">時間当たり価格</div>
@@ -200,11 +204,11 @@ export default function CastBackRatesPage() {
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                         <div className="text-center">
                           <div className="text-gray-600">ドリンク</div>
-                          <div className="font-medium">{formatBackRate(rate.drink_back_rate)}</div>
+                          <div className="font-medium">{formatBackRate(rate.food_back_rate)}</div>
                         </div>
                         <div className="text-center">
                           <div className="text-gray-600">ボトル</div>
-                          <div className="font-medium">{formatBackRate(rate.bottle_back_rate)}</div>
+                          <div className="font-medium">{formatBackRate(rate.drink_back_rate)}</div>
                         </div>
                         <div className="text-center">
                           <div className="text-gray-600">本指名</div>
@@ -230,9 +234,11 @@ export default function CastBackRatesPage() {
                 <div>
                   <h4 className="font-medium text-gray-900 mb-2">計算方法</h4>
                   <ul className="space-y-1">
+                    <li>• フードバック = 売上 × フードバック率</li>
                     <li>• ドリンクバック = 売上 × ドリンクバック率</li>
-                    <li>• ボトルバック = 売上 × ボトルバック率</li>
-                    <li>• 指名料 = 指名金額 × 指名料率</li>
+                    <li>• 本指名料 = 指名金額 × 本指名料率</li>
+                    <li>• 場内指名料 = 指名金額 × 場内指名料率</li>
+                    <li>• 同伴指名料 = 指名金額 × 同伴指名料率</li>
                     <li>• 給与に自動反映されます</li>
                   </ul>
                 </div>

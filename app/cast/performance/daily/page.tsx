@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { ArrowLeft, Calendar, TrendingUp, FileText, DollarSign } from 'lucide-react';
+import { ArrowLeft, Calendar, TrendingUp, FileText, Users } from 'lucide-react';
 import { getCurrentUser } from '@/lib/auth';
 
 export default function CastDailyPerformancePage() {
@@ -16,7 +16,7 @@ export default function CastDailyPerformancePage() {
   const [user, setUser] = useState<any>(null);
   const [selectedDate, setSelectedDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
   const [isLoading, setIsLoading] = useState(true);
-  const [data, setData] = useState<any>({ main_count: 0, inside_count: 0, total_sales: 0, products: [] });
+  const [data, setData] = useState<any>({ main_count: 0, inside_count: 0, together_count: 0, total_sales: 0, products: [] });
 
   useEffect(() => {
     // 新しいキャスト認証を優先
@@ -46,9 +46,9 @@ export default function CastDailyPerformancePage() {
         const res = await fetch(`/api/cast/performance/daily?user_id=${user.id}&date=${selectedDate}`);
         const result = await res.json();
         if (result.success) setData(result.data);
-        else setData({ main_count: 0, inside_count: 0, total_sales: 0, products: [] });
+        else setData({ main_count: 0, inside_count: 0, together_count: 0, total_sales: 0, products: [] });
       } catch (e) {
-        setData({ main_count: 0, inside_count: 0, total_sales: 0, products: [] });
+        setData({ main_count: 0, inside_count: 0, together_count: 0, total_sales: 0, products: [] });
       } finally {
         setIsLoading(false);
       }
@@ -110,10 +110,10 @@ export default function CastDailyPerformancePage() {
                 </Card>
                 <Card className="bg-purple-50 border-purple-200">
                   <CardHeader className="pb-2">
-                    <CardTitle className="flex items-center text-purple-800"><DollarSign className="w-5 h-5 mr-2" />総売上高</CardTitle>
+                    <CardTitle className="flex items-center text-purple-800"><Users className="w-5 h-5 mr-2" />同伴数</CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold text-purple-900">{new Intl.NumberFormat('ja-JP', { style: 'currency', currency: 'JPY' }).format(Number(data.total_sales || 0))}</div>
+                    <div className="text-2xl font-bold text-purple-900">{data.together_count}件</div>
                   </CardContent>
                 </Card>
               </div>

@@ -30,8 +30,9 @@ export async function GET(request: NextRequest) {
 		const sessionsAgg = await client.query(
 			`
 			SELECT 
-				COUNT(*)::int AS visitor_count,
-				COALESCE(AVG(cost), 0) AS avg_cost
+				COALESCE(SUM(client), 0)::int AS visitor_count,
+				COALESCE(AVG(cost), 0) AS avg_cost,
+				COALESCE(SUM(cost), 0) AS sessions_total_cost
 			FROM sessions
 			WHERE created_at >= $1::date
 			  AND created_at < ($1::date + INTERVAL '1 month')
@@ -125,6 +126,7 @@ export async function GET(request: NextRequest) {
 				order_count: Number(salesAgg.rows[0]?.order_count || 0),
 				visitor_count: Number(sessionsAgg.rows[0]?.visitor_count || 0),
 				avg_cost: Number(sessionsAgg.rows[0]?.avg_cost || 0),
+				sessions_total_cost: Number(sessionsAgg.rows[0]?.sessions_total_cost || 0),
 				category_sales: categoryAgg.rows,
 				product_sales: productAgg.rows,
 				cast_sales: castAgg.rows,

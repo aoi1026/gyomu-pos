@@ -42,7 +42,7 @@ export default function DailySalesPage() {
       const res = await fetch(`/api/admin/sales/daily?date=${date}`);
       const result = await res.json();
       if (result.success) {
-				const { total_sales, order_count, visitor_count, avg_cost, table_sales, cast_sales, product_sales } = result.data;
+				const { total_sales, order_count, visitor_count, avg_cost, sessions_total_cost, table_sales, cast_sales, product_sales } = result.data;
         setSalesData({
           subtotal_yen: 0,
           service_charge_yen: 0,
@@ -51,7 +51,8 @@ export default function DailySalesPage() {
           total_yen: total_sales,
           order_count: order_count,
           customer_count: visitor_count,
-          avg_cost: avg_cost
+          avg_cost: avg_cost,
+          sessions_total_cost: sessions_total_cost
         });
         setTableSales(table_sales || []);
         setCastSales(cast_sales || []);
@@ -65,7 +66,8 @@ export default function DailySalesPage() {
           total_yen: 0,
           order_count: 0,
           customer_count: 0,
-          avg_cost: 0
+          avg_cost: 0,
+          sessions_total_cost: 0
         });
         setTableSales([]);
         setCastSales([]);
@@ -80,7 +82,8 @@ export default function DailySalesPage() {
         total_yen: 0,
         order_count: 0,
         customer_count: 0,
-        avg_cost: 0
+        avg_cost: 0,
+        sessions_total_cost: 0
       });
       setTableSales([]);
       setCastSales([]);
@@ -103,7 +106,9 @@ export default function DailySalesPage() {
     );
   }
 
-  const avgOrderValue = Number(salesData?.avg_cost || 0);
+  const totalCost = Number(salesData?.sessions_total_cost || 0);
+  const customerCount = Number(salesData?.customer_count || 0);
+  const avgOrderValue = customerCount > 0 ? totalCost / customerCount : 0;
   const avgOrderValueDisplay = `¥${new Intl.NumberFormat('ja-JP', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(avgOrderValue)}`;
 
   return (
@@ -188,12 +193,15 @@ export default function DailySalesPage() {
               <CardHeader className="pb-3">
                 <CardTitle className="flex items-center text-blue-800">
                   <DollarSign className="w-5 h-5 mr-2" />
-                  総売上
+                  合計
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold text-blue-900 mb-1">
-                  {formatCurrency(salesData.total_yen)}
+                  {formatCurrency(salesData.sessions_total_cost || 0)}
+                </div>
+                <div className="text-sm text-blue-700 mb-1">
+                総売上: {formatCurrency(salesData.total_yen)}
                 </div>
                 <div className="flex items-center text-sm text-blue-700">
                   <TrendingUp className="w-4 h-4 mr-1" />
@@ -259,12 +267,12 @@ export default function DailySalesPage() {
 
 		  <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
 			  {/* 製品別売上 */}
-            <Card>
+            <Card className="flex flex-col">
               <CardHeader>
                 <CardTitle>製品別売上</CardTitle>
               </CardHeader>
-			  <CardContent className="space-y-4">
-				  <div className="space-y-3">
+			  <CardContent className="flex-1 overflow-hidden">
+				  <div className="space-y-3 max-h-96 overflow-y-auto">
 					  {productSales.map((row: any) => (
 						  <div key={row.product_id} className="flex justify-between items-center">
 							  <span className="text-gray-700">{row.product_name}</span>
@@ -276,39 +284,28 @@ export default function DailySalesPage() {
             </Card>
 
             {/* キャスト別売上 */}
-            <Card>
+            <Card className="flex flex-col">
               <CardHeader>
                 <CardTitle>キャスト別売上</CardTitle>
               </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {castSales.map((cast: any, index: number) => (
-                    <div key={cast.cast_id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                      <div className="flex items-center space-x-3">
-                        <div className="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center">
-                          <span className="font-bold text-purple-600">{index + 1}</span>
-                        </div>
-                        <div>
-                          <h4 className="font-medium">{cast.cast_name}</h4>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <div className="font-bold text-purple-600">
-                          {formatCurrency(cast.total_sales)}
-                        </div>
-                      </div>
+              <CardContent className="flex-1 overflow-hidden">
+                <div className="space-y-3 max-h-96 overflow-y-auto">
+                  {castSales.map((cast: any) => (
+                    <div key={cast.cast_id} className="flex justify-between items-center">
+                      <span className="text-gray-700">{cast.cast_name}</span>
+                      <span className="font-medium">{formatCurrency(cast.total_sales)}</span>
                     </div>
                   ))}
                 </div>
               </CardContent>
             </Card>
             {/* テーブル別売上 */}
-            <Card>
+            <Card className="flex flex-col">
               <CardHeader>
                 <CardTitle>テーブル別売上</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-3">
+              <CardContent className="flex-1 overflow-hidden">
+                <div className="space-y-3 max-h-96 overflow-y-auto">
                   {tableSales.map((row: any) => (
                     <div key={row.table_id} className="flex justify-between items-center">
                       <span className="text-gray-700">{row.table_name}</span>

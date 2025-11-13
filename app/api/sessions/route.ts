@@ -8,11 +8,9 @@ export async function GET() {
       SELECT 
         s.*,
         t.name as table_name,
-        t.capacity,
-        u.name as cast_name
+        t.capacity
       FROM sessions s
       LEFT JOIN "table" t ON s.table_id = t.id
-      LEFT JOIN "user" u ON s.cast_id = u.id
       ORDER BY s.created_at DESC
     `);
     
@@ -34,7 +32,7 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   const client = await pool.connect();
   try {
-    const { table_id, cost, cast_id, nomination_type } = await request.json();
+    const { table_id, cost, client: clientCount, status } = await request.json();
     
     if (!table_id) {
       return NextResponse.json(
@@ -44,8 +42,8 @@ export async function POST(request: NextRequest) {
     }
 
     const result = await client.query(
-      'INSERT INTO sessions (table_id, cost, cast_id, nomination_type) VALUES ($1, $2, $3, $4) RETURNING *',
-      [table_id, cost || 0, cast_id || null, nomination_type || 'main']
+      'INSERT INTO sessions (table_id, cost, set_count, client, status) VALUES ($1, $2, $3, $4, $5) RETURNING *',
+      [table_id, cost || 0, 1, clientCount || 0, status !== undefined ? status : 1]
     );
 
     return NextResponse.json({

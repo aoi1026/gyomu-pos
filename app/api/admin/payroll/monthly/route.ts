@@ -22,44 +22,63 @@ export async function GET(request: NextRequest) {
     const result = await client.query(
       `
       WITH casts AS (
-        SELECT id AS user_id, name, mail AS email, hourly_price, main_nomination, inside_nomination, bottle_back, drink_back
+        SELECT id AS user_id, name, mail AS email, hourly_price, main_nomination, inside_nomination, together_nomination, drink_back, food_back
         FROM "user"
         WHERE role = 'cast'
       ),
       att AS (
         SELECT a.staff_id AS user_id, COALESCE(SUM(a.total_work_hours), 0) AS hours
         FROM attendance a
-        WHERE a.status = 'saved'
-          AND a.clock_in >= $1::date AND a.clock_in < ${endExpr}
+        WHERE a.created_at >= $1::date AND a.created_at < ${endExpr}
         GROUP BY a.staff_id
       ),
-      ses_main AS (
-        SELECT s.cast_id AS user_id, COUNT(*) AS cnt, COALESCE(SUM(s.cost), 0) AS cost_sum
-        FROM sessions s
-        WHERE s.nomination_type = 'main'
-          AND s.created_at >= $1::date AND s.created_at < ${endExpr}
-        GROUP BY s.cast_id
+      nom_main AS (
+        SELECT n.cast_id AS user_id, COALESCE(SUM(n.cost), 0) AS total_cost
+        FROM nomination n
+        WHERE n.type_id = 'main'
+          AND n.created_at >= $1::date AND n.created_at < ${endExpr}
+        GROUP BY n.cast_id
       ),
-      ses_inside AS (
-        SELECT s.cast_id AS user_id, COUNT(*) AS cnt, COALESCE(SUM(s.cost), 0) AS cost_sum
-        FROM sessions s
-        WHERE s.nomination_type = 'inside'
-          AND s.created_at >= $1::date AND s.created_at < ${endExpr}
-        GROUP BY s.cast_id
+      nom_inside AS (
+        SELECT n.cast_id AS user_id, COALESCE(SUM(n.cost), 0) AS total_cost
+        FROM nomination n
+        WHERE n.type_id = 'inside'
+          AND n.created_at >= $1::date AND n.created_at < ${endExpr}
+        GROUP BY n.cast_id
       ),
-      so_bottle AS (
-        SELECT so.cast_id AS user_id, COALESCE(SUM(so.total_price), 0) AS total
-        FROM salesorder so
-        JOIN product p ON p.id = so.product_id
-        WHERE p.category_id = 1
-          AND so.accepted_at >= $1::date AND so.accepted_at < ${endExpr}
-        GROUP BY so.cast_id
+      nom_together AS (
+        SELECT 
+          n.cast_id AS user_id, 
+          COUNT(*) AS cnt,
+          COALESCE(SUM(n.cost), 0) AS sum_cost
+        FROM nomination n
+        WHERE n.type_id = 'together'
+          AND n.created_at >= $1::date AND n.created_at < ${endExpr}
+        GROUP BY n.cast_id
+      ),
+      ac AS (
+        SELECT COALESCE(value, 0) AS together_unit
+        FROM add_charges 
+        WHERE charge_name = 'together'
+        LIMIT 1
       ),
       so_drink AS (
         SELECT so.cast_id AS user_id, COALESCE(SUM(so.total_price), 0) AS total
         FROM salesorder so
         JOIN product p ON p.id = so.product_id
-        WHERE p.category_id = 2
+        WHERE p.category_id IN (1, 2)
+          AND so.for_cast = 1
+          AND so.status = 'accepted'
+          AND so.accepted_at >= $1::date AND so.accepted_at < ${endExpr}
+        GROUP BY so.cast_id
+      ),
+      so_food AS (
+        SELECT so.cast_id AS user_id, COALESCE(SUM(so.total_price), 0) AS total
+        FROM salesorder so
+        JOIN product p ON p.id = so.product_id
+        WHERE p.category_id = 3
+          AND so.for_cast = 1
+          AND so.status = 'accepted'
           AND so.accepted_at >= $1::date AND so.accepted_at < ${endExpr}
         GROUP BY so.cast_id
       ),
@@ -70,58 +89,62 @@ export async function GET(request: NextRequest) {
         c.user_id,
         c.name,
         c.email,
-        COALESCE(sal.basic_hours, att.hours, 0)::DECIMAL(10,2) AS basic_hours,
-        att.hours AS att_hours,
+        COALESCE(att.hours, 0)::DECIMAL(10,2) AS basic_hours,
         c.hourly_price,
-        (COALESCE(sal.basic_hours, att.hours, 0) * COALESCE(c.hourly_price, 0))::DECIMAL(12,2) AS base_pay,
-        COALESCE(sal.main_nomination_count, sesm.cnt, 0)::INT AS main_nomination_count,
-        COALESCE(sesm.cnt, 0)::INT AS sessions_main_cnt,
-        (COALESCE(sesm.cost_sum, 0) * (COALESCE(c.main_nomination, 0) / 100.0))::DECIMAL(12,2) AS main_nomination_fee,
-        COALESCE(sali.cnt, 0)::INT AS inside_nomination_count,
-        COALESCE(sali.cnt, 0)::INT AS sessions_inside_cnt,
-        (COALESCE(sali.cost_sum, 0) * (COALESCE(c.inside_nomination, 0) / 100.0))::DECIMAL(12,2) AS inside_nomination_fee,
-        COALESCE(sal.bottle_back_yen, (COALESCE(sob.total, 0) * (COALESCE(c.bottle_back, 0) / 100.0)), 0)::DECIMAL(12,2) AS bottle_back_yen,
-        (COALESCE(sob.total, 0) * (COALESCE(c.bottle_back, 0) / 100.0))::DECIMAL(12,2) AS bottle_back_yen_raw,
-        COALESCE(sal.drink_back_yen, (COALESCE(sod.total, 0) * (COALESCE(c.drink_back, 0) / 100.0)), 0)::DECIMAL(12,2) AS drink_back_yen,
-        (COALESCE(sod.total, 0) * (COALESCE(c.drink_back, 0) / 100.0))::DECIMAL(12,2) AS drink_back_yen_raw,
+        (COALESCE(att.hours, 0) * COALESCE(c.hourly_price, 0))::DECIMAL(12,2) AS base_pay,
+        COALESCE(sal.main_nomination_count, COALESCE(nm.total_cost, 0))::DECIMAL(12,2) AS main_nomination_count,
+        (COALESCE(sal.main_nomination_count, COALESCE(nm.total_cost, 0)) * COALESCE(c.main_nomination, 0))::DECIMAL(12,2) AS main_nomination_fee,
+        COALESCE(sal.inside_nomination_count, COALESCE(ni.total_cost, 0))::DECIMAL(12,2) AS inside_nomination_count,
+        (COALESCE(sal.inside_nomination_count, COALESCE(ni.total_cost, 0)) * COALESCE(c.inside_nomination, 0))::DECIMAL(12,2) AS inside_nomination_fee,
+        COALESCE(sal.together_nomination_cost, COALESCE(nt.sum_cost, 0))::DECIMAL(12,2) AS together_nomination_cost,
+        COALESCE(nt.cnt, 0)::INT AS together_nomination_count,
+        (
+          (COALESCE(ac.together_unit, 0) * COALESCE(nt.cnt, 0) * COALESCE(c.together_nomination, 0)) +
+          ((COALESCE(nt.sum_cost, 0) - (COALESCE(ac.together_unit, 0) * COALESCE(nt.cnt, 0))) * COALESCE(c.main_nomination, 0))
+        )::DECIMAL(12,2) AS together_nomination_fee,
+        COALESCE(sal.drink_back_yen, (COALESCE(sd.total, 0) * COALESCE(c.drink_back, 0)))::DECIMAL(12,2) AS drink_back_yen,
+        COALESCE(sal.food_back_yen, (COALESCE(sf.total, 0) * COALESCE(c.food_back, 0)))::DECIMAL(12,2) AS food_back_yen,
         COALESCE(sal.overtime_wage_yen, 0)::DECIMAL(12,2) AS overtime_wage_yen,
         COALESCE(sal.deduction_yen, 0)::DECIMAL(12,2) AS deduction_yen
       FROM casts c
       LEFT JOIN att att ON att.user_id = c.user_id
-      LEFT JOIN ses_main sesm ON sesm.user_id = c.user_id
-      LEFT JOIN ses_inside sali ON sali.user_id = c.user_id
-      LEFT JOIN so_bottle sob ON sob.user_id = c.user_id
-      LEFT JOIN so_drink sod ON sod.user_id = c.user_id
+      LEFT JOIN nom_main nm ON nm.user_id = c.user_id
+      LEFT JOIN nom_inside ni ON ni.user_id = c.user_id
+      LEFT JOIN nom_together nt ON nt.user_id = c.user_id
+      LEFT JOIN so_drink sd ON sd.user_id = c.user_id
+      LEFT JOIN so_food sf ON sf.user_id = c.user_id
       LEFT JOIN sal sal ON sal.user_id = c.user_id
+      LEFT JOIN ac ac ON TRUE
       ORDER BY c.name
       `,
       [start, year, month]
     );
 
     const rows = result.rows.map((r: any) => {
-      if (source === 'sessions') {
-        r.main_nomination_count = Number(r.sessions_main_cnt || 0);
-        r.inside_nomination_count = Number(r.sessions_inside_cnt || 0);
-        r.basic_hours = Number(r.att_hours || 0);
-        r.base_pay = Number(r.basic_hours || 0) * Number(r.hourly_price || 0);
-        r.bottle_back_yen = Number(r.bottle_back_yen_raw || 0);
-        r.drink_back_yen = Number(r.drink_back_yen_raw || 0);
-      }
       const total =
         Number(r.base_pay || 0) +
         Number(r.main_nomination_fee || 0) +
         Number(r.inside_nomination_fee || 0) +
-        Number(r.bottle_back_yen || 0) +
+        Number(r.together_nomination_fee || 0) +
         Number(r.drink_back_yen || 0) +
+        Number(r.food_back_yen || 0) +
         Number(r.overtime_wage_yen || 0) -
         Number(r.deduction_yen || 0);
       return { ...r, total_pay_yen: total };
     });
 
     return NextResponse.json({ success: true, year, month, rows });
-  } catch (error) {
+  } catch (error: any) {
     console.error('月次給与集計エラー:', error);
-    return NextResponse.json({ success: false, error: '給与集計の取得に失敗しました' }, { status: 500 });
+    const errorMessage = error?.message || '給与集計の取得に失敗しました';
+    // カラムが存在しない場合のエラーメッセージ
+    if (errorMessage.includes('together_nomination_cost') && errorMessage.includes('does not exist')) {
+      return NextResponse.json({ 
+        success: false, 
+        error: 'データベースマイグレーションが必要です。migration_add_together_nomination_cost.sql を実行してください。' 
+      }, { status: 500 });
+    }
+    return NextResponse.json({ success: false, error: errorMessage }, { status: 500 });
   } finally {
     client.release();
   }
@@ -131,7 +154,7 @@ export async function PUT(request: NextRequest) {
   const client = await pool.connect();
   try {
     const body = await request.json();
-    const { user_id, year, month, basic_hours, main_nomination_count, inside_nomination_count, bottle_back_yen, drink_back_yen, overtime_wage_yen, deduction_yen, base_pay, main_nomination_fee, inside_nomination_fee } = body;
+    const { user_id, year, month, basic_hours, main_nomination_count, inside_nomination_count, together_nomination_cost, together_nomination_count, drink_back_yen, food_back_yen, overtime_wage_yen, deduction_yen, base_pay, main_nomination_fee, inside_nomination_fee, together_nomination_fee } = body;
     if (!user_id || !year || !month) {
       return NextResponse.json({ success: false, error: 'user_id, year, month は必須です' }, { status: 400 });
     }
@@ -139,8 +162,8 @@ export async function PUT(request: NextRequest) {
     await client.query('BEGIN');
     const upsert = await client.query(
       `
-      INSERT INTO salary (user_id, year, month, basic_hours, base_pay, main_nomination_count, main_nomination_fee, inside_nomination_count, inside_nomination_fee, bottle_back_yen, drink_back_yen, overtime_wage_yen, deduction_yen, total_pay_yen)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+      INSERT INTO salary (user_id, year, month, basic_hours, base_pay, main_nomination_count, main_nomination_fee, inside_nomination_count, inside_nomination_fee, together_nomination_cost, together_nomination_count, together_nomination_fee, drink_back_yen, food_back_yen, overtime_wage_yen, deduction_yen, total_pay_yen)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
       ON CONFLICT (user_id, year, month)
       DO UPDATE SET 
         basic_hours = EXCLUDED.basic_hours,
@@ -149,8 +172,11 @@ export async function PUT(request: NextRequest) {
         main_nomination_fee = EXCLUDED.main_nomination_fee,
         inside_nomination_count = EXCLUDED.inside_nomination_count,
         inside_nomination_fee = EXCLUDED.inside_nomination_fee,
-        bottle_back_yen = EXCLUDED.bottle_back_yen,
+        together_nomination_cost = EXCLUDED.together_nomination_cost,
+        together_nomination_count = EXCLUDED.together_nomination_count,
+        together_nomination_fee = EXCLUDED.together_nomination_fee,
         drink_back_yen = EXCLUDED.drink_back_yen,
+        food_back_yen = EXCLUDED.food_back_yen,
         overtime_wage_yen = EXCLUDED.overtime_wage_yen,
         deduction_yen = EXCLUDED.deduction_yen,
         total_pay_yen = EXCLUDED.total_pay_yen,
@@ -164,11 +190,14 @@ export async function PUT(request: NextRequest) {
         main_nomination_fee ?? 0,
         inside_nomination_count ?? 0,
         inside_nomination_fee ?? 0,
-        bottle_back_yen ?? 0,
+        together_nomination_cost ?? 0,
+        together_nomination_count ?? 0,
+        together_nomination_fee ?? 0,
         drink_back_yen ?? 0,
+        food_back_yen ?? 0,
         overtime_wage_yen ?? 0,
         deduction_yen ?? 0,
-        (Number(base_pay || 0) + Number(main_nomination_fee || 0) + Number(inside_nomination_fee || 0) + Number(bottle_back_yen || 0) + Number(drink_back_yen || 0) + Number(overtime_wage_yen || 0) - Number(deduction_yen || 0))
+        (Number(base_pay || 0) + Number(main_nomination_fee || 0) + Number(inside_nomination_fee || 0) + Number(together_nomination_fee || 0) + Number(drink_back_yen || 0) + Number(food_back_yen || 0) + Number(overtime_wage_yen || 0) - Number(deduction_yen || 0))
       ]
     );
     await client.query('COMMIT');

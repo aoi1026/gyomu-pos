@@ -18,7 +18,7 @@ export async function POST(request: NextRequest) {
     
     try {
       const result = await client.query(
-        'SELECT id, name, mail, password, role, bottle_back, drink_back, main_nomination, inside_nomination FROM "user" WHERE mail = $1 AND role = $2',
+        'SELECT id, name, mail, password, role, drink_back, food_back, main_nomination, inside_nomination FROM "user" WHERE mail = $1 AND role = $2',
         [email, 'cast']
       );
 
@@ -47,8 +47,8 @@ export async function POST(request: NextRequest) {
           name: user.name,
           email: user.mail,
           role: user.role,
-          bottle_back: user.bottle_back,
           drink_back: user.drink_back,
+          food_back: user.food_back,
           main_nomination: user.main_nomination,
           inside_nomination: user.inside_nomination
         }

@@ -63,7 +63,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const client = await pool.connect();
   try {
-    const { cast_id, product_id, amount, table_id, session_id } = await request.json();
+    const { cast_id, product_id, amount, table_id, session_id, for_cast } = await request.json();
     
     if (!product_id || !amount || !table_id || !session_id) {
       return NextResponse.json(
@@ -109,10 +109,11 @@ export async function POST(request: NextRequest) {
       // 売上注文を作成
       const unitPrice = parseFloat(product.sale_price);
       const totalPrice = unitPrice * amount;
+      const forCastValue = for_cast ? 1 : 0;
 
       const salesOrderResult = await client.query(
-        'INSERT INTO salesorder (cast_id, product_id, amount, table_id, session_id, unit_price, total_price) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
-        [cast_id || null, product_id, amount, table_id, session_id, unitPrice, totalPrice]
+        'INSERT INTO salesorder (cast_id, product_id, amount, table_id, session_id, unit_price, total_price, for_cast) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *',
+        [cast_id || null, product_id, amount, table_id, session_id, unitPrice, totalPrice, forCastValue]
       );
 
       // トランザクションコミット

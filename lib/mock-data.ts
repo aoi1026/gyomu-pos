@@ -67,7 +67,7 @@ export interface MenuCategory {
   name: string;
   service_charge_applicable: boolean;
   tax_applicable: boolean;
-  bottle_back_applicable: boolean;
+  drink_back_applicable: boolean;
   sort_order: number;
 }
 
@@ -217,7 +217,7 @@ export interface PayrollItem {
   nomination_count: number;
   nomination_amount_yen: number;
   bottle_sales_yen: number;
-  bottle_back_yen: number;
+  drink_back_yen: number;
   overtime_hours: number;
   overtime_wage_yen: number;
   deduction_yen: number;
@@ -682,7 +682,7 @@ export const mockCategories: MenuCategory[] = [
     name: 'ボトル',
     service_charge_applicable: true,
     tax_applicable: true,
-    bottle_back_applicable: true,
+    drink_back_applicable: true,
     sort_order: 1
   },
   {
@@ -691,7 +691,7 @@ export const mockCategories: MenuCategory[] = [
     name: 'ドリンク',
     service_charge_applicable: true,
     tax_applicable: true,
-    bottle_back_applicable: false,
+    drink_back_applicable: false,
     sort_order: 2
   },
   {
@@ -700,7 +700,7 @@ export const mockCategories: MenuCategory[] = [
     name: 'フード',
     service_charge_applicable: true,
     tax_applicable: true,
-    bottle_back_applicable: false,
+    drink_back_applicable: false,
     sort_order: 3
   },
   {
@@ -709,7 +709,7 @@ export const mockCategories: MenuCategory[] = [
     name: 'セット',
     service_charge_applicable: true,
     tax_applicable: true,
-    bottle_back_applicable: false,
+    drink_back_applicable: false,
     sort_order: 4
   }
 ];
@@ -1078,7 +1078,7 @@ export const mockPayrollItems: PayrollItem[] = [
     nomination_count: 15,
     nomination_amount_yen: 75000,
     bottle_sales_yen: 500000,
-    bottle_back_yen: 50000,
+    drink_back_yen: 50000,
     overtime_hours: 5,
     overtime_wage_yen: 15000,
     deduction_yen: 5000,
@@ -1094,7 +1094,7 @@ export const mockPayrollItems: PayrollItem[] = [
     nomination_count: 8,
     nomination_amount_yen: 24000,
     bottle_sales_yen: 0,
-    bottle_back_yen: 0,
+    drink_back_yen: 0,
     overtime_hours: 2,
     overtime_wage_yen: 5000,
     deduction_yen: 2000,

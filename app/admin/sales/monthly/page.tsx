@@ -43,12 +43,13 @@ export default function MonthlySalesPage() {
       const res = await fetch(`/api/admin/sales/monthly?year=${year}&month=${month}`);
       const result = await res.json();
       if (result.success) {
-        const { total_sales, order_count, visitor_count, avg_cost, category_sales, product_sales, cast_sales, daily_sales } = result.data;
+        const { total_sales, order_count, visitor_count, avg_cost, sessions_total_cost, category_sales, product_sales, cast_sales, daily_sales } = result.data;
         setSalesData({
           total_yen: total_sales,
           order_count: order_count,
           customer_count: visitor_count,
-          avg_customer_spend: avg_cost
+          avg_customer_spend: avg_cost,
+          sessions_total_cost: sessions_total_cost
         });
         setCategorySales(category_sales || []);
         setProductSales(product_sales || []);
@@ -62,7 +63,8 @@ export default function MonthlySalesPage() {
           total_yen: 0,
           order_count: 0,
           customer_count: 0,
-          avg_customer_spend: 0
+          avg_customer_spend: 0,
+          sessions_total_cost: 0
         });
         setCategorySales([]);
         setProductSales([]);
@@ -74,7 +76,8 @@ export default function MonthlySalesPage() {
         total_yen: 0,
         order_count: 0,
         customer_count: 0,
-        avg_customer_spend: 0
+        avg_customer_spend: 0,
+        sessions_total_cost: 0
       });
       setCategorySales([]);
       setProductSales([]);
@@ -223,12 +226,16 @@ export default function MonthlySalesPage() {
               <CardHeader className="pb-3">
                 <CardTitle className="flex items-center text-blue-800">
                   <DollarSign className="w-5 h-5 mr-2" />
-                  月間売上
+                  合計 
+                  {/* <span className="flex items-center text-sm text-blue-700">(指名料とサービス手数料を含む)</span> */}
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold text-blue-900 mb-1">
-                  {formatCurrency(salesData.total_yen)}
+                  {formatCurrency(salesData.sessions_total_cost || 0)}
+                </div>
+                <div className="text-sm text-blue-700 mb-1">
+                  月間売上: {formatCurrency(salesData.total_yen)}
                 </div>
                 <div className="flex items-center text-sm text-blue-700">
                   <TrendingUp className="w-4 h-4 mr-1" />

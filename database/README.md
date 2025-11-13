@@ -32,8 +32,8 @@
 | mail | VARCHAR(255) | UNIQUE, NOT NULL | メールアドレス |
 | password | VARCHAR(255) | NOT NULL | パスワード（MD5ハッシュ化済み） |
 | role | VARCHAR(50) | CHECK IN ('admin', 'cast', 'manager') | ロール |
-| bottle_back | DECIMAL(5,2) | DEFAULT 0.00, CHECK 0-100 | ボトルバック率（%） |
 | drink_back | DECIMAL(5,2) | DEFAULT 0.00, CHECK 0-100 | ドリンクバック率（%） |
+| food_back | DECIMAL(5,2) | DEFAULT 0.00, CHECK 0-100 | フードバック率（%） |
 | main_nomination | DECIMAL(5,2) | DEFAULT 0.00, CHECK 0-100 | メイン指名率（%） |
 | inside_nomination | DECIMAL(5,2) | DEFAULT 0.00, CHECK 0-100 | インサイド指名率（%） |
 | created_at | TIMESTAMP | DEFAULT CURRENT_TIMESTAMP | 作成日時 |

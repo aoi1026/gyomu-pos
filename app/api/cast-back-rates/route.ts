@@ -1,26 +1,31 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/database';
 
-async function ensureHourlyPriceColumn(client: any) {
+async function ensureBackRateColumns(client: any) {
 	await client.query(`
 		ALTER TABLE "user" 
 		ADD COLUMN IF NOT EXISTS hourly_price DECIMAL(10,2) DEFAULT 0.00 CHECK (hourly_price >= 0)
+	`);
+	await client.query(`
+		ALTER TABLE "user" 
+		ADD COLUMN IF NOT EXISTS together_nomination DECIMAL(5,2) DEFAULT 0.00 CHECK (together_nomination >= 0 AND together_nomination <= 100)
 	`);
 }
 
 export async function GET() {
 	const client = await pool.connect();
 	try {
-		await ensureHourlyPriceColumn(client);
+		await ensureBackRateColumns(client);
     const result = await client.query(`
 			SELECT 
 				id,
 				name,
 				mail AS email,
+				food_back,
 				drink_back,
-				bottle_back,
 				main_nomination,
 				inside_nomination,
+				together_nomination,
 				hourly_price,
 				created_at
 			FROM "user"
@@ -32,10 +37,11 @@ export async function GET() {
       id: row.id,
       name: row.name,
       email: row.email,
+      food_back: row.food_back !== null ? parseFloat(row.food_back) : 0,
       drink_back: row.drink_back !== null ? parseFloat(row.drink_back) : 0,
-      bottle_back: row.bottle_back !== null ? parseFloat(row.bottle_back) : 0,
       main_nomination: row.main_nomination !== null ? parseFloat(row.main_nomination) : 0,
       inside_nomination: row.inside_nomination !== null ? parseFloat(row.inside_nomination) : 0,
+      together_nomination: row.together_nomination !== null ? parseFloat(row.together_nomination) : 0,
       hourly_price: row.hourly_price !== null ? parseFloat(row.hourly_price) : 0,
       created_at: row.created_at
     }));
@@ -52,8 +58,8 @@ export async function GET() {
 export async function PUT(request: NextRequest) {
 	const client = await pool.connect();
 	try {
-		await ensureHourlyPriceColumn(client);
-		const { castId, drinkBack, bottleBack, mainNomination, insideNomination, hourlyPrice } = await request.json();
+		await ensureBackRateColumns(client);
+		const { castId, drinkBack, bottleBack, mainNomination, insideNomination, togetherNomination, hourlyPrice } = await request.json();
 		if (!castId) {
 			return NextResponse.json({ success: false, error: 'castIdが必要です' }, { status: 400 });
 		}
@@ -61,10 +67,11 @@ export async function PUT(request: NextRequest) {
 		const updates: string[] = [];
 		const params: any[] = [];
 		let p = 1;
-		if (drinkBack !== undefined) { updates.push(`drink_back = $${p++}`); params.push(drinkBack); }
-		if (bottleBack !== undefined) { updates.push(`bottle_back = $${p++}`); params.push(bottleBack); }
+		if (drinkBack !== undefined) { updates.push(`food_back = $${p++}`); params.push(drinkBack); }
+		if (bottleBack !== undefined) { updates.push(`drink_back = $${p++}`); params.push(bottleBack); }
 		if (mainNomination !== undefined) { updates.push(`main_nomination = $${p++}`); params.push(mainNomination); }
 		if (insideNomination !== undefined) { updates.push(`inside_nomination = $${p++}`); params.push(insideNomination); }
+		if (togetherNomination !== undefined) { updates.push(`together_nomination = $${p++}`); params.push(togetherNomination); }
 		if (hourlyPrice !== undefined) { updates.push(`hourly_price = $${p++}`); params.push(hourlyPrice); }
 
 		if (updates.length === 0) {

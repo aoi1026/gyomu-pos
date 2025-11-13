@@ -8,8 +8,8 @@ INSERT INTO "user" (
     mail, 
     password, 
     role, 
-    bottle_back, 
     drink_back, 
+    food_back, 
     main_nomination, 
     inside_nomination,
     other

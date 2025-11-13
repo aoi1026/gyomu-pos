@@ -1,7 +1,7 @@
 
 'use client';
 
-import { MdOutlineCalendarMonth } from "react-icons/md"; 
+import { MdOutlineCalendarMonth, MdOutlinePriceChange } from "react-icons/md"; 
 import { FaRegChartBar } from "react-icons/fa"; 
 import { BsFillMenuButtonWideFill } from "react-icons/bs"; 
 import { GiTimeTrap } from "react-icons/gi"; 
@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import { formatCurrency, formatDateTime, mockAttendance, mockBottles } from '@/lib/mock-data';
 import { getCurrentBackRate, formatBackRate } from '@/lib/cast-back-system';
+import RealTimeTableStatus from '@/components/admin/RealTimeTableStatus';
 
 export default function Dashboard() {
   const [user, setUser] = useState<AuthUser | null>(null);
@@ -37,6 +38,7 @@ export default function Dashboard() {
   const [pendingManagerCallCount, setPendingManagerCallCount] = useState(0);
   const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
   const [todaySalesKpi, setTodaySalesKpi] = useState<{ total_yen: number; customer_count: number; order_count: number }>({ total_yen: 0, customer_count: 0, order_count: 0 });
+  const [showTableStatus, setShowTableStatus] = useState(false);
   const router = useRouter();
 
   const loadPendingOrderCount = async () => {
@@ -354,7 +356,7 @@ export default function Dashboard() {
                       <span className="font-medium text-green-900">¥45,000</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-sm text-green-700">ボトルバック</span>
+                      <span className="text-sm text-green-700">ドリンクバック</span>
                       <span className="font-medium text-green-900">¥32,000</span>
                     </div>
                     <hr className="border-green-300" />
@@ -403,12 +405,12 @@ export default function Dashboard() {
                   <CardContent>
                     <div className="space-y-2">
                       <div className="flex justify-between">
-                        <span className="text-sm text-green-700">ドリンクバック</span>
-                        <span className="font-medium text-green-900">{formatBackRate(currentBackRate.drink_back_rate)}</span>
+                        <span className="text-sm text-green-700">フードバック</span>
+                        <span className="font-medium text-green-900">{formatBackRate(currentBackRate.food_back_rate)}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-sm text-green-700">ボトルバック</span>
-                        <span className="font-medium text-green-900">{formatBackRate(currentBackRate.bottle_back_rate)}</span>
+                        <span className="text-sm text-green-700">ドリンクバック</span>
+                        <span className="font-medium text-green-900">{formatBackRate(currentBackRate.drink_back_rate)}</span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-sm text-green-700">本指名料</span>
@@ -641,14 +643,14 @@ export default function Dashboard() {
                   <span className="text-sm font-medium">キャンペーン</span>
                 </Button> */}
                 
-                {/* <Button 
+                <Button 
                   variant="outline" 
                   className="h-24 flex-col space-y-2 hover:bg-teal-50 hover:border-teal-300"
-                  onClick={() => router.push('/admin/bottles')}
+                  onClick={() => router.push('/admin/bottle-keep')}
                 >
                   <Wine className="w-6 h-6 text-teal-600" />
-                  <span className="text-sm font-medium">ボトル管理</span>
-                </Button> */}
+                  <span className="text-sm font-medium">ボトル保管管理</span>
+                </Button>
                 
                 <Button 
                   variant="outline" 
@@ -658,6 +660,15 @@ export default function Dashboard() {
                   {/* <DollarSign className="w-6 h-6 text-indigo-600" /> */}
                   <span className="w-6 h-5 text-indigo-600 text-2xl"><FaPercentage /></span>
                   <span className="text-sm font-medium">バック率設定</span>
+                </Button>
+                
+                <Button 
+                  variant="outline" 
+                  className="h-24 flex-col space-y-2 hover:bg-slate-50 hover:border-slate-300"
+                  onClick={() => router.push('/admin/add-charges')}
+                >
+                  <span className="w-6 h-5 text-slate-600 text-2xl"><MdOutlinePriceChange /></span>
+                  <span className="text-sm font-medium">追加料金設定</span>
                 </Button>
                 
                 <Button 
@@ -774,6 +785,24 @@ export default function Dashboard() {
           </div>
         )}
       </div>
+
+      {/* Floating Real-Time Table Status Button (Admin only on Dashboard) */}
+      {(adminUser || hasRole(user, 'admin') || hasRole(user, 'superadmin')) && (
+        <>
+          <button
+            onClick={() => setShowTableStatus(true)}
+            className="fixed bottom-6 right-6 z-50 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white rounded-full p-4 shadow-lg hover:shadow-xl transition-all duration-200 flex items-center space-x-2"
+            aria-label="リアルタイムテーブル状態"
+          >
+            <Table className="w-6 h-6" />
+            <span className="hidden sm:inline font-medium">テーブル状態</span>
+          </button>
+          <RealTimeTableStatus 
+            open={showTableStatus} 
+            onClose={() => setShowTableStatus(false)} 
+          />
+        </>
+      )}
     </div>
   );
 }

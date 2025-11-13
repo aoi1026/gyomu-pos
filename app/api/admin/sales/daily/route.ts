@@ -27,8 +27,9 @@ export async function GET(request: NextRequest) {
 		const sessionsAgg = await client.query(
 			`
 			SELECT 
-				COUNT(*)::int AS visitor_count,
-				COALESCE(AVG(cost), 0) AS avg_cost
+				COALESCE(SUM(client), 0)::int AS visitor_count,
+				COALESCE(AVG(cost), 0) AS avg_cost,
+				COALESCE(SUM(cost), 0) AS sessions_total_cost
 			FROM sessions
 			WHERE created_at >= $1::date
 			  AND created_at < ($1::date + INTERVAL '1 day')
@@ -40,6 +41,7 @@ export async function GET(request: NextRequest) {
 		const order_count = Number(ordersAgg.rows[0]?.order_count || 0);
 		const visitor_count = Number(sessionsAgg.rows[0]?.visitor_count || 0);
 		const avg_cost = Number(sessionsAgg.rows[0]?.avg_cost || 0);
+		const sessions_total_cost = Number(sessionsAgg.rows[0]?.sessions_total_cost || 0);
 
 		// テーブル別売上集計
 		const tableSalesResult = await client.query(
@@ -105,6 +107,7 @@ export async function GET(request: NextRequest) {
 				order_count,
 				visitor_count,
 				avg_cost,
+				sessions_total_cost,
 				table_sales: tableSalesResult.rows,
 				cast_sales: castSalesResult.rows,
 				product_sales: productSalesResult.rows

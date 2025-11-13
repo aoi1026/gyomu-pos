@@ -19,10 +19,11 @@ interface Cast {
   id: string;
   name: string;
   email: string;
+  food_back: number;
   drink_back: number;
-  bottle_back: number;
   main_nomination: number;
   inside_nomination: number;
+  together_nomination: number;
   hourly_price?: number;
   created_at: string;
 }
@@ -30,10 +31,11 @@ interface Cast {
 interface EditBackRateForm {
   cast_id: string;
   cast_name: string;
+  food_back: number;
   drink_back: number;
-  bottle_back: number;
   main_nomination: number;
   inside_nomination: number;
+  together_nomination: number;
   hourly_price: number;
 }
 
@@ -45,10 +47,11 @@ export default function CastBackRatesPage() {
   const [editForm, setEditForm] = useState<EditBackRateForm>({
     cast_id: '',
     cast_name: '',
-    drink_back: 0.05,
-    bottle_back: 0.10,
+    food_back: 0.05,
+    drink_back: 0.10,
     main_nomination: 0.15,
     inside_nomination: 0.08,
+    together_nomination: 0.10,
     hourly_price: 0
   });
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
@@ -67,7 +70,19 @@ export default function CastBackRatesPage() {
       const result = await response.json();
       
       if (result.success) {
-        setCasts(result.casts);
+        const normalizedCasts: Cast[] = result.casts.map((cast: any) => ({
+          id: String(cast.id),
+          name: cast.name,
+          email: cast.email,
+          food_back: Number(cast.food_back ?? 0),
+          drink_back: Number(cast.drink_back ?? 0),
+          main_nomination: Number(cast.main_nomination ?? 0),
+          inside_nomination: Number(cast.inside_nomination ?? 0),
+          together_nomination: Number(cast.together_nomination ?? 0),
+          hourly_price: cast.hourly_price !== undefined && cast.hourly_price !== null ? Number(cast.hourly_price) : undefined,
+          created_at: cast.created_at
+        }));
+        setCasts(normalizedCasts);
       } else {
         error('エラー', 'キャストの読み込みに失敗しました');
       }
@@ -83,11 +98,12 @@ export default function CastBackRatesPage() {
     setEditForm({
       cast_id: cast.id,
       cast_name: cast.name,
-      drink_back: cast.drink_back,
-      bottle_back: cast.bottle_back,
-      main_nomination: cast.main_nomination,
-      inside_nomination: cast.inside_nomination,
-      hourly_price: cast.hourly_price || 0
+      food_back: Number(cast.food_back ?? 0),
+      drink_back: Number(cast.drink_back ?? 0),
+      main_nomination: Number(cast.main_nomination ?? 0),
+      inside_nomination: Number(cast.inside_nomination ?? 0),
+      together_nomination: Number(cast.together_nomination ?? 0),
+      hourly_price: Number(cast.hourly_price ?? 0)
     });
     setValidationErrors([]);
     setIsEditDialogOpen(true);
@@ -107,10 +123,11 @@ export default function CastBackRatesPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           castId: editForm.cast_id,
-          drinkBack: editForm.drink_back,
-          bottleBack: editForm.bottle_back,
+          drinkBack: editForm.food_back,
+          bottleBack: editForm.drink_back,
           mainNomination: editForm.main_nomination,
           insideNomination: editForm.inside_nomination,
+          togetherNomination: editForm.together_nomination,
           hourlyPrice: editForm.hourly_price
         })
       });
@@ -139,17 +156,20 @@ export default function CastBackRatesPage() {
   const validateBackRates = (form: EditBackRateForm): string[] => {
     const errors: string[] = [];
     
+    if (form.food_back < 0 || form.food_back > 100) {
+      errors.push('フードバック率は0-100%の範囲で入力してください');
+    }
     if (form.drink_back < 0 || form.drink_back > 100) {
       errors.push('ドリンクバック率は0-100%の範囲で入力してください');
-    }
-    if (form.bottle_back < 0 || form.bottle_back > 100) {
-      errors.push('ボトルバック率は0-100%の範囲で入力してください');
     }
     if (form.main_nomination < 0 || form.main_nomination > 100) {
       errors.push('本指名料率は0-100%の範囲で入力してください');
     }
     if (form.inside_nomination < 0 || form.inside_nomination > 100) {
       errors.push('場内指名料率は0-100%の範囲で入力してください');
+    }
+    if (form.together_nomination < 0 || form.together_nomination > 100) {
+      errors.push('同伴料率は0-100%の範囲で入力してください');
     }
     if (form.hourly_price < 0) {
       errors.push('時間当たり価格は0以上で入力してください');
@@ -159,8 +179,9 @@ export default function CastBackRatesPage() {
   };
 
   // バック率のフォーマット関数（小数点以下2桁）
-  const formatBackRate = (rate: number): string => {
-    return `${rate.toFixed(2)}%`;
+  const formatBackRate = (rate: number | null | undefined): string => {
+    const value = Number.isFinite(rate) ? Number(rate) : 0;
+    return `${value.toFixed(2)}%`;
   };
 
   if (isLoading) {
@@ -209,11 +230,11 @@ export default function CastBackRatesPage() {
                   <h3 className="font-semibold text-gray-900 mb-2">バック率について</h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-gray-600">
                     <div>
-                      <h4 className="font-medium text-gray-900 mb-1">ドリンクバック</h4>
+                      <h4 className="font-medium text-gray-900 mb-1">フードバック</h4>
                       <p>通常のドリンク注文に対するバック率（通常5%）</p>
                     </div>
                     <div>
-                      <h4 className="font-medium text-gray-900 mb-1">ボトルバック</h4>
+                      <h4 className="font-medium text-gray-900 mb-1">ドリンクバック</h4>
                       <p>ボトル注文に対するバック率（通常10%）</p>
                     </div>
                     <div>
@@ -224,6 +245,10 @@ export default function CastBackRatesPage() {
                       <h4 className="font-medium text-gray-900 mb-1">場内指名料</h4>
                       <p>店内での指名に対する料率（通常8%）</p>
                     </div>
+                  <div>
+                    <h4 className="font-medium text-gray-900 mb-1">同伴料</h4>
+                    <p>同伴時に適用される料率（通常10%）</p>
+                  </div>
                   </div>
                 </div>
               </div>
@@ -247,10 +272,11 @@ export default function CastBackRatesPage() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>キャスト名</TableHead>
+                      <TableHead className="text-center">フードバック</TableHead>
                       <TableHead className="text-center">ドリンクバック</TableHead>
-                      <TableHead className="text-center">ボトルバック</TableHead>
                       <TableHead className="text-center">本指名料</TableHead>
                       <TableHead className="text-center">場内指名料</TableHead>
+                      <TableHead className="text-center">同伴料</TableHead>
                       <TableHead className="text-center">時間当たり価格</TableHead>
                       <TableHead className="text-center">登録日</TableHead>
                       <TableHead className="text-center">操作</TableHead>
@@ -272,12 +298,12 @@ export default function CastBackRatesPage() {
                         </TableCell>
                         <TableCell className="text-center">
                           <Badge variant="outline" className="bg-green-50 text-green-700">
-                            {formatBackRate(cast.drink_back)}
+                            {formatBackRate(cast.food_back)}
                           </Badge>
                         </TableCell>
                         <TableCell className="text-center">
                           <Badge variant="outline" className="bg-blue-50 text-blue-700">
-                            {formatBackRate(cast.bottle_back)}
+                            {formatBackRate(cast.drink_back)}
                           </Badge>
                         </TableCell>
                         <TableCell className="text-center">
@@ -288,6 +314,11 @@ export default function CastBackRatesPage() {
                         <TableCell className="text-center">
                           <Badge variant="outline" className="bg-orange-50 text-orange-700">
                             {formatBackRate(cast.inside_nomination)}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <Badge variant="outline" className="bg-amber-50 text-amber-700">
+                            {formatBackRate(cast.together_nomination)}
                           </Badge>
                         </TableCell>
                         <TableCell className="text-center">
@@ -348,6 +379,22 @@ export default function CastBackRatesPage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-4">
                     <div className="space-y-2">
+                      <Label htmlFor="food_back">フードバック率 (%)</Label>
+                      <Input
+                        id="food_back"
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        max="100"
+                        value={editForm.food_back}
+                        onChange={(e) => setEditForm(prev => ({
+                          ...prev,
+                          food_back: parseFloat(e.target.value)
+                        }))}
+                      />
+                    </div>
+                    
+                    <div className="space-y-2">
                       <Label htmlFor="drink_back">ドリンクバック率 (%)</Label>
                       <Input
                         id="drink_back"
@@ -359,22 +406,6 @@ export default function CastBackRatesPage() {
                         onChange={(e) => setEditForm(prev => ({
                           ...prev,
                           drink_back: parseFloat(e.target.value)
-                        }))}
-                      />
-                    </div>
-                    
-                    <div className="space-y-2">
-                      <Label htmlFor="bottle_back">ボトルバック率 (%)</Label>
-                      <Input
-                        id="bottle_back"
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        max="100"
-                        value={editForm.bottle_back}
-                        onChange={(e) => setEditForm(prev => ({
-                          ...prev,
-                          bottle_back: parseFloat(e.target.value)
                         }))}
                       />
                     </div>
@@ -413,6 +444,21 @@ export default function CastBackRatesPage() {
                       />
                     </div>
                     <div className="space-y-2">
+                      <Label htmlFor="together_nomination">同伴料率 (%)</Label>
+                      <Input
+                        id="together_nomination"
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        max="100"
+                        value={editForm.together_nomination}
+                        onChange={(e) => setEditForm(prev => ({
+                          ...prev,
+                          together_nomination: parseFloat(e.target.value)
+                        }))}
+                      />
+                    </div>
+                    <div className="space-y-2">
                       <Label htmlFor="hourly_price">時間当たり価格 (円/時)</Label>
                       <Input
                         id="hourly_price"
@@ -432,14 +478,14 @@ export default function CastBackRatesPage() {
                 {/* プレビュー */}
                 <div className="bg-gray-50 rounded-lg p-4">
                   <h4 className="font-medium text-gray-900 mb-3">設定プレビュー</h4>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                  <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-sm">
+                    <div>
+                      <div className="text-gray-600">フードバック</div>
+                      <div className="font-medium">{formatBackRate(editForm.food_back)}</div>
+                    </div>
                     <div>
                       <div className="text-gray-600">ドリンクバック</div>
                       <div className="font-medium">{formatBackRate(editForm.drink_back)}</div>
-                    </div>
-                    <div>
-                      <div className="text-gray-600">ボトルバック</div>
-                      <div className="font-medium">{formatBackRate(editForm.bottle_back)}</div>
                     </div>
                     <div>
                       <div className="text-gray-600">本指名料</div>
@@ -449,7 +495,11 @@ export default function CastBackRatesPage() {
                       <div className="text-gray-600">場内指名料</div>
                       <div className="font-medium">{formatBackRate(editForm.inside_nomination)}</div>
                     </div>
-                    <div className="col-span-2">
+                    <div>
+                      <div className="text-gray-600">同伴料</div>
+                      <div className="font-medium">{formatBackRate(editForm.together_nomination)}</div>
+                    </div>
+                    <div className="col-span-2 md:col-span-2">
                       <div className="text-gray-600">時間当たり価格</div>
                       <div className="font-medium">
                         {new Intl.NumberFormat('ja-JP', { style: 'currency', currency: 'JPY', maximumFractionDigits: 0 }).format(editForm.hourly_price)} / 時

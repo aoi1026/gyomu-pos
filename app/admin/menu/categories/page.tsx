@@ -90,10 +90,10 @@ export default function CategoryManagementPage() {
     setIsDeleteDialogOpen(true);
   };
 
-  // 固定カテゴリ（ID:1,2）を先頭に表示するための並び替え済み配列
+  // 固定カテゴリ（ID:1,2,3）を先頭に表示するための並び替え済み配列
   const sortedCategories = [...categories].sort((a, b) => {
-    const pinA = a.id === 1 || a.id === 2 ? 0 : 1;
-    const pinB = b.id === 1 || b.id === 2 ? 0 : 1;
+    const pinA = a.id === 1 || a.id === 2 || a.id === 3 ? 0 : 1;
+    const pinB = b.id === 1 || b.id === 2 || b.id === 3 ? 0 : 1;
     if (pinA !== pinB) return pinA - pinB;
     // 同一グループ内はIDの小さい→大きい順（昇順）で表示
     return a.id - b.id;
@@ -285,7 +285,7 @@ export default function CategoryManagementPage() {
                             <div>
                               <div className="font-medium flex items-center space-x-2">
                                 <span>{category.name}</span>
-                                {(category.id === 1 || category.id === 2) && (
+                                {(category.id === 1 || category.id === 2 || category.id === 3) && (
                                   <Badge variant="outline" className="text-xs">固定</Badge>
                                 )}
                               </div>
@@ -318,7 +318,7 @@ export default function CategoryManagementPage() {
                               <Edit className="w-4 h-4 mr-1" />
                               編集
                             </Button>
-                            {(category.id !== 1 && category.id !== 2) && (
+                            {(category.id !== 1 && category.id !== 2 && category.id !== 3) && (
                               <Button
                                 size="sm"
                                 variant="outline"

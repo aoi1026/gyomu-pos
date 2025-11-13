@@ -20,7 +20,7 @@ export interface PayrollCalculation {
   field_nomination_count: number;
   field_nomination_amount_yen: number;
   bottle_sales_yen: number;
-  bottle_back_yen: number;
+  drink_back_yen: number;
   overtime_hours: number;
   overtime_wage_yen: number;
   deduction_yen: number;
@@ -114,7 +114,7 @@ export async function calculateStaffPayroll(
   // 指名料データを取得
   const nominationSummary = getCastNominationSummary(staff.id, periodStart);
   
-  // ボトルバックを計算（売上データから）
+  // ドリンクバックを計算（売上データから）
   const bottleBack = Math.round(castSalesData.bottle_sales_yen * 0.05); // 5% bottle back rate
 
   const totalYen = baseWage + overtimeWage + 
@@ -130,7 +130,7 @@ export async function calculateStaffPayroll(
     field_nomination_count: nominationSummary.field_nomination_count,
     field_nomination_amount_yen: nominationSummary.total_field_nomination_amount,
     bottle_sales_yen: castSalesData.bottle_sales_yen,
-    bottle_back_yen: bottleBack,
+    drink_back_yen: bottleBack,
     overtime_hours: overtimeHours,
     overtime_wage_yen: overtimeWage,
     deduction_yen: deductionYen,
