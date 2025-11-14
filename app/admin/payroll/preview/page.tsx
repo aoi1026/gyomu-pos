@@ -464,16 +464,22 @@ export default function PayrollPreviewPage() {
                   </div>
                   <div className="flex flex-col space-y-2">
                     {/* <Label htmlFor="year">年</Label> */}
-                    <Input
+                    <select
                       id="year"
-                      type="number"
-                      min="2020"
-                      max="2035"
                       value={selectedYear}
                       onChange={(e) => setSelectedYear(Number(e.target.value))}
-                      className="w-24"
+                      className="w-24 h-10 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white cursor-pointer"
                       disabled={payrollRun?.status === 'confirmed'}
-                    />
+                    >
+                      {Array.from({ length: 16 }, (_, i) => {
+                        const year = 2020 + i;
+                        return (
+                          <option key={year} value={year}>
+                            {year}年
+                          </option>
+                        );
+                      })}
+                    </select>
                   </div>
                   <div className="flex flex-col space-y-2">
                     {/* <Label htmlFor="month">月</Label> */}

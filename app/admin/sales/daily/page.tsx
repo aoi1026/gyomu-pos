@@ -180,9 +180,9 @@ export default function DailySalesPage() {
                 >
                   今日
                 </Button>
-                <div className="text-sm text-gray-500">
+                {/* <div className="text-sm text-gray-500">
                   {formatDate ? formatDate(selectedDate) : selectedDate}
-                </div>
+                </div> */}
               </div>
             </CardContent>
           </Card>

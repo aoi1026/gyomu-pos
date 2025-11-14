@@ -410,7 +410,7 @@ export default function AdminAttendancePage() {
                               {(() => {
                                 const calculatedHours = calculateTotalWorkHours(attendance.detailed_times);
                                 return calculatedHours > 0 ? 
-                                  `${Math.floor(calculatedHours)}時間${Math.floor((calculatedHours % 1) * 60)}分${Math.floor(((calculatedHours % 1) * 60 % 1) * 60)}秒` : 
+                                  `${Math.floor(calculatedHours)}h ${Math.floor((calculatedHours % 1) * 60)}m ${Math.floor(((calculatedHours % 1) * 60 % 1) * 60)}s` : 
                                   '未計算';
                               })()}
                             </span>

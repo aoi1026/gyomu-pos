@@ -25,7 +25,7 @@ import { Label } from '@/components/ui/label';
 import { 
   Wine, Users, BarChart3, Clock, CreditCard, Settings,
   Shield, TrendingUp, Calendar, DollarSign,
-  FileText, AlertCircle, Star, Bell, Crown, Table
+  FileText, AlertCircle, Star, Bell, Crown, Table, Database, Download, Upload, CheckCircle
 } from 'lucide-react';
 import { formatCurrency, formatDateTime, mockAttendance, mockBottles } from '@/lib/mock-data';
 import { getCurrentBackRate, formatBackRate } from '@/lib/cast-back-system';
@@ -48,6 +48,12 @@ export default function Dashboard() {
   const [storeName, setStoreName] = useState<string>('銀座エレガンス');
   const [showStoreNameDialog, setShowStoreNameDialog] = useState(false);
   const [storeNameInput, setStoreNameInput] = useState<string>('');
+  const [showBackupDialog, setShowBackupDialog] = useState(false);
+  const [showRestoreDialog, setShowRestoreDialog] = useState(false);
+  const [backupFiles, setBackupFiles] = useState<Array<{ filename: string; size: number; created: string }>>([]);
+  const [selectedBackupFile, setSelectedBackupFile] = useState<string>('');
+  const [isLoadingBackups, setIsLoadingBackups] = useState(false);
+  const [isRestoring, setIsRestoring] = useState(false);
   const router = useRouter();
   const { success, error } = useNotificationContext();
 
@@ -220,6 +226,80 @@ export default function Dashboard() {
     }
   };
 
+  const loadBackupFiles = async () => {
+    setIsLoadingBackups(true);
+    try {
+      const response = await fetch('/api/backup');
+      const result = await response.json();
+      if (result.success) {
+        setBackupFiles(result.files);
+      } else {
+        error('エラー', result.error || 'バックアップファイルリストの取得に失敗しました');
+      }
+    } catch (err) {
+      console.error('バックアップファイルリスト取得エラー:', err);
+      error('エラー', 'バックアップファイルリストの取得に失敗しました');
+    } finally {
+      setIsLoadingBackups(false);
+    }
+  };
+
+  const handleCreateBackup = async () => {
+    try {
+      const response = await fetch('/api/backup', {
+        method: 'POST',
+      });
+      const result = await response.json();
+      if (result.success) {
+        success('バックアップ完了', `バックアップが完了しました: ${result.filename}`);
+        await loadBackupFiles();
+      } else {
+        error('エラー', result.error || 'バックアップに失敗しました');
+      }
+    } catch (err) {
+      console.error('バックアップエラー:', err);
+      error('エラー', 'バックアップに失敗しました');
+    }
+  };
+
+  const handleRestore = async () => {
+    if (!selectedBackupFile) {
+      error('エラー', 'バックアップファイルを選択してください');
+      return;
+    }
+
+    setIsRestoring(true);
+    try {
+      const response = await fetch('/api/backup/restore', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename: selectedBackupFile }),
+      });
+      const result = await response.json();
+      if (result.success) {
+        success('復元完了', 'データベースの復元が完了しました');
+        setShowBackupDialog(false);
+        setShowRestoreDialog(false);
+        setSelectedBackupFile('');
+      } else {
+        error('エラー', result.error || 'データベースの復元に失敗しました');
+      }
+    } catch (err) {
+      console.error('リストアエラー:', err);
+      error('エラー', 'データベースの復元に失敗しました');
+    } finally {
+      setIsRestoring(false);
+    }
+  };
+
+  const formatFileSize = (bytes: number) => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+  };
+
   useEffect(() => {
     if (adminUser || user) {
       loadPendingOrderCount();
@@ -288,19 +368,33 @@ export default function Dashboard() {
             </div>
             <div className="flex items-center space-x-2 sm:space-x-4">
               {((adminUser && (adminUser.role === 'admin' || adminUser.role === 'superadmin')) || hasRole(user, 'admin') || hasRole(user, 'superadmin')) && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="text-xs sm:text-sm"
-                  onClick={() => {
-                    setStoreNameInput(storeName);
-                    setShowStoreNameDialog(true);
-                  }}
-                >
-                  <Settings className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
-                  <span className="hidden sm:inline">店舗名設定</span>
-                  <span className="sm:hidden">設定</span>
-                </Button>
+                <>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-xs sm:text-sm"
+                    onClick={async () => {
+                      setShowBackupDialog(true);
+                      await loadBackupFiles();
+                    }}
+                  >
+                    <Database className="w-4 h-4 mr-1 sm:mr-2" />
+                    <span className="hidden sm:inline">バックアップ</span>
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-xs sm:text-sm"
+                    onClick={() => {
+                      setStoreNameInput(storeName);
+                      setShowStoreNameDialog(true);
+                    }}
+                  >
+                    <Settings className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
+                    <span className="hidden sm:inline">店舗名設定</span>
+                    <span className="sm:hidden">設定</span>
+                  </Button>
+                </>
               )}
               <div className="hidden sm:block text-right">
                 <p className="text-sm font-medium text-gray-900">{currentUser?.name || 'ユーザー'}</p>
@@ -933,6 +1027,170 @@ export default function Dashboard() {
                 className="bg-purple-600 hover:bg-purple-700"
               >
                 保存
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* バックアップダイアログ */}
+      <Dialog open={showBackupDialog} onOpenChange={setShowBackupDialog}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center">
+              <Database className="w-5 h-5 mr-2" />
+              データベースバックアップ管理
+            </DialogTitle>
+            <DialogDescription>
+              バックアップファイルの作成と復元を行います
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            <div className="flex justify-end">
+              <Button
+                onClick={handleCreateBackup}
+                className="bg-blue-600 hover:bg-blue-700"
+              >
+                <Download className="w-4 h-4 mr-2" />
+                新規バックアップ作成
+              </Button>
+            </div>
+
+            <div className="space-y-2">
+              <Label>バックアップファイル一覧</Label>
+              {isLoadingBackups ? (
+                <div className="text-center py-8">
+                  <div className="w-8 h-8 border-2 border-purple-600 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+                  <p className="text-gray-500">読み込み中...</p>
+                </div>
+              ) : backupFiles.length === 0 ? (
+                <div className="text-center py-8 text-gray-500">
+                  <Database className="w-12 h-12 mx-auto mb-3 text-gray-400" />
+                  <p>バックアップファイルがありません</p>
+                </div>
+              ) : (
+                <div className="border rounded-lg divide-y">
+                  {backupFiles.map((file) => (
+                    <div
+                      key={file.filename}
+                      className={`p-4 hover:bg-gray-50 cursor-pointer transition-colors ${
+                        selectedBackupFile === file.filename ? 'bg-blue-50 border-blue-200' : ''
+                      }`}
+                      onClick={() => setSelectedBackupFile(file.filename)}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center space-x-2">
+                            <FileText className="w-4 h-4 text-gray-400" />
+                            <span className="font-medium">{file.filename}</span>
+                          </div>
+                          <div className="mt-1 text-sm text-gray-500">
+                            <span>サイズ: {formatFileSize(file.size)}</span>
+                            <span className="mx-2">•</span>
+                            <span>作成日時: {new Date(file.created).toLocaleString('ja-JP')}</span>
+                          </div>
+                        </div>
+                        {selectedBackupFile === file.filename && (
+                          <div className="ml-4">
+                            <div className="w-4 h-4 bg-blue-600 rounded-full flex items-center justify-center">
+                              <CheckCircle className="w-3 h-3 text-white" />
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end space-x-2 pt-4 border-t">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowBackupDialog(false);
+                  setSelectedBackupFile('');
+                }}
+              >
+                閉じる
+              </Button>
+              <Button
+                onClick={() => {
+                  if (selectedBackupFile) {
+                    setShowRestoreDialog(true);
+                  } else {
+                    error('エラー', 'バックアップファイルを選択してください');
+                  }
+                }}
+                disabled={!selectedBackupFile}
+                className="bg-orange-600 hover:bg-orange-700"
+              >
+                <Upload className="w-4 h-4 mr-2" />
+                選択したファイルで復元
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* リストア確認ダイアログ */}
+      <Dialog open={showRestoreDialog} onOpenChange={setShowRestoreDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center text-orange-600">
+              <AlertCircle className="w-5 h-5 mr-2" />
+              データベース復元の確認
+            </DialogTitle>
+            <DialogDescription>
+              この操作は取り消せません
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
+              <div className="flex items-start space-x-3">
+                <AlertCircle className="w-5 h-5 text-orange-600 mt-0.5" />
+                <div>
+                  <p className="font-semibold text-orange-900 mb-1">警告</p>
+                  <p className="text-sm text-orange-800">
+                    この操作を実行すると、最終バックアップ以降から現在までのデータが消失します。
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {selectedBackupFile && (
+              <div className="bg-gray-50 rounded-lg p-3">
+                <p className="text-sm text-gray-600 mb-1">復元するファイル:</p>
+                <p className="font-medium">{selectedBackupFile}</p>
+              </div>
+            )}
+
+            <div className="flex justify-end space-x-2 pt-4">
+              <Button
+                variant="outline"
+                onClick={() => setShowRestoreDialog(false)}
+                disabled={isRestoring}
+              >
+                取消
+              </Button>
+              <Button
+                onClick={handleRestore}
+                disabled={isRestoring}
+                className="bg-red-600 hover:bg-red-700"
+              >
+                {isRestoring ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                    復元中...
+                  </>
+                ) : (
+                  <>
+                    <Upload className="w-4 h-4 mr-2" />
+                    確認
+                  </>
+                )}
               </Button>
             </div>
           </div>

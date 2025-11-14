@@ -206,7 +206,7 @@ export default function MonthlySalesPage() {
                 </div>
                 
                 <div className="flex items-center space-x-2">
-                  <Button
+                  {/* <Button
                     variant="outline"
                     size="sm"
                     onClick={() => loadMonthlySalesData(selectedYear, selectedMonth)}
@@ -214,7 +214,7 @@ export default function MonthlySalesPage() {
                   >
                     <RefreshCw className="w-4 h-4 mr-2" />
                     更新
-                  </Button>
+                  </Button> */}
                 </div>
               </div>
             </CardContent>
@@ -308,10 +308,10 @@ export default function MonthlySalesPage() {
               {dailySales.length === 0 ? (
                 <div className="text-sm text-gray-500">データがありません</div>
               ) : (
-                <div className="flex items-start space-x-4">
-					<div className="overflow-x-auto flex-1">
+                <div className="flex flex-col lg:flex-row items-start space-y-4 lg:space-y-0 lg:space-x-4">
+					<div className="flex-1 w-full">
 						<div className="relative h-64 bg-gray-50 rounded-lg p-4">
-                      <svg width={svgWidth} height={chartHeight} viewBox={`0 0 ${svgWidth} ${chartHeight}`}>
+                      <svg className="w-full h-full" viewBox={`0 0 ${svgWidth} ${chartHeight}`} preserveAspectRatio="xMidYMid meet">
                     {[0, 1, 2, 3, 4].map((i) => (
                       <line
                         key={i}
@@ -375,11 +375,12 @@ export default function MonthlySalesPage() {
                         if (index % step !== 0) return null;
                         const plotWidth = svgWidth - leftPad - rightPad;
                         const x = leftPad + index * (plotWidth / Math.max(1, dailySales.length - 1));
+                        const xPercent = (x / svgWidth) * 100;
                           return (
                             <span
                               key={index}
                               className="absolute text-xs text-gray-500"
-                              style={{ left: `${x}px`, bottom: '6px', transform: 'translateX(-50%)' }}
+                              style={{ left: `${xPercent}%`, bottom: '6px', transform: 'translateX(-50%)' }}
                             >
                               {item.date}
                             </span>
@@ -388,14 +389,14 @@ export default function MonthlySalesPage() {
                       </div>
                     </div>
                   </div>
-                  <div className="w-56">
-                    <div className="space-y-4">
-                      <div className="bg-green-50 border border-green-200 rounded-md p-3">
+                  <div className="w-full lg:w-56">
+                    <div className="flex flex-row lg:flex-col space-x-4 lg:space-x-0 lg:space-y-4">
+                      <div className="bg-green-50 border border-green-200 rounded-md p-3 flex-1 lg:flex-none">
                         <div className="text-xs text-green-700">最高売上日</div>
                         <div className="text-sm font-semibold text-green-900">{maxItem?.date || '-'}</div>
                         <div className="text-lg font-bold text-green-800">{maxItem ? formatCurrency(maxItem.value) : '-'}</div>
                       </div>
-                      <div className="bg-red-50 border border-red-200 rounded-md p-3">
+                      <div className="bg-red-50 border border-red-200 rounded-md p-3 flex-1 lg:flex-none">
                         <div className="text-xs text-red-700">最低売上日</div>
                         <div className="text-sm font-semibold text-red-900">{minItem?.date || '-'}</div>
                         <div className="text-lg font-bold text-red-800">{minItem ? formatCurrency(minItem.value) : '-'}</div>

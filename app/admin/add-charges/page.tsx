@@ -30,12 +30,12 @@ interface AddCharge {
 }
 
 const CHARGE_LABELS: Record<ChargeName, { title: string; description: string }> = {
-  main: { title: '本指名料', description: '来店時に発生する本指名料です。' },
-  inside: { title: '場内指名料', description: '店内滞在に対して発生する本指名料です。' },
-  together: { title: '同伴料', description: 'キャストとの同伴にかかる料金です。' },
-  bottle_keep: { title: 'ボトル保管料', description: 'ボトルをキープする際に発生する料金です。' },
-  vip_room: { title: '個室使用料', description: 'VIPルーム利用時の追加料金です。' },
-  song_room: { title: 'カラオケ利用料', description: 'カラオケ設備の利用に対する料金です。' },
+  main: { title: '本指名料', description: '' }, //来店時に発生する本指名料です。
+  inside: { title: '場内指名料', description: '' }, //店内滞在に対して発生する本指名料です。
+  together: { title: '同伴料', description: '' }, //キャストとの同伴にかかる料金です。
+  bottle_keep: { title: 'ボトル保管料', description: '' }, //ボトルをキープする際に発生する料金です。
+  vip_room: { title: '個室使用料', description: '' }, //VIPルーム利用時の追加料金です。
+  song_room: { title: 'カラオケ利用料', description: '' }, //カラオケ設備の利用に対する料金です。
 };
 
 const currencyFormatter = new Intl.NumberFormat('ja-JP', {
@@ -192,7 +192,7 @@ export default function AddChargesPage() {
                   <TableRow>
                     <TableHead>項目</TableHead>
                     <TableHead className="text-center w-32">現在の料金</TableHead>
-                    <TableHead className="text-center w-48">メモ</TableHead>
+                    <TableHead className="text-center w-75">メモ</TableHead>
                     <TableHead className="w-24 text-center">操作</TableHead>
                   </TableRow>
                 </TableHeader>

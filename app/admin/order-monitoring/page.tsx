@@ -334,51 +334,40 @@ export default function OrderMonitoringPage() {
         </div>
       </div>
 
-      <Tabs defaultValue="pending" className="w-full">
-        <TabsList className="grid w-full grid-cols-4">
-          <TabsTrigger value="pending" className="relative">
-            製品注文
+      <Tabs defaultValue="products" className="w-full">
+        <TabsList className="grid w-full grid-cols-2">
+          <TabsTrigger value="products" className="relative">
+            製品注文リスト
             {pendingCount > 0 && (
               <div className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center">
                 {pendingCount}
               </div>
             )}
           </TabsTrigger>
-          <TabsTrigger value="service-pending" className="relative">
-            サービス注文
+          <TabsTrigger value="services" className="relative">
+            サービス注文リスト
             {servicePendingCount > 0 && (
               <div className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center">
                 {servicePendingCount}
               </div>
             )}
           </TabsTrigger>
-          <TabsTrigger value="all">全製品注文</TabsTrigger>
-          <TabsTrigger value="all-services">全サービス注文</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="pending" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center">
-                <AlertCircle className="w-5 h-5 mr-2 text-orange-500" />
-                新規注文リクエスト
-              </CardTitle>
-              <CardDescription>
-                受付待ちの注文リクエスト一覧
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {isLoading ? (
-                <div className="text-center py-8">
-                  <Clock className="w-8 h-8 mx-auto mb-3 text-gray-400 animate-spin" />
-                  <p className="text-gray-500">読み込み中...</p>
-                </div>
-               ) : pendingOrders.length === 0 ? (
-                <div className="text-center py-8 text-gray-500">
-                  <Bell className="w-12 h-12 mx-auto mb-3 text-gray-400" />
-                  <p>新規の注文リクエストはありません</p>
-                </div>
-              ) : (
+        <TabsContent value="products" className="space-y-4">
+          {/* 新規注文リクエスト */}
+          {pendingOrders.length > 0 && (
+            <Card className="border-orange-300 border-2">
+              <CardHeader>
+                <CardTitle className="flex items-center">
+                  <AlertCircle className="w-5 h-5 mr-2 text-orange-500" />
+                  新規注文リクエスト
+                </CardTitle>
+                <CardDescription>
+                  受付待ちの注文リクエスト一覧
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
                 <div className="overflow-x-auto">
                   <Table>
                     <TableHeader>
@@ -392,82 +381,81 @@ export default function OrderMonitoringPage() {
                         <TableHead className="text-center">操作</TableHead>
                       </TableRow>
                     </TableHeader>
-                     <TableBody>
-                       {pendingOrders.map((order) => (
-                         <TableRow key={order.id}>
-                           <TableCell>
-                             <div className="flex items-center">
-                               <Users className="w-4 h-4 mr-2 text-gray-400" />
-                               <span className="font-medium">{order.table_name}</span>
-                             </div>
-                           </TableCell>
-                           <TableCell>
-                             {order.cast_name ? (
-                               <div className="flex flex-col">
-                                 <span className="font-medium">{order.cast_name}</span>
-                                 {order.cast_email && (
-                                   <span className="text-xs text-gray-500">{order.cast_email}</span>
-                                 )}
-                               </div>
-                             ) : (
-                               <span className="text-gray-500">-</span>
-                             )}
-                           </TableCell>
-                           <TableCell>
-                             <div className="flex flex-col">
-                               <span className="font-medium">{order.product_name}</span>
-                               <span className="text-sm text-gray-500">
-                                 ¥{order.unit_price.toLocaleString()}
-                               </span>
-                             </div>
-                           </TableCell>
-                           <TableCell>
-                             <div className="flex items-center">
-                               <Package className="w-4 h-4 mr-1 text-gray-400" />
-                               <span className="font-medium">{order.amount}個</span>
-                             </div>
-                           </TableCell>
-                           <TableCell>
-                             <div className="flex items-center">
-                               <Calendar className="w-4 h-4 mr-2 text-gray-400" />
-                               <span className="text-sm">{formatDateTime(order.created_at)}</span>
-                             </div>
-                           </TableCell>
-                           <TableCell>
-                             {getStatusBadge(order.status)}
-                           </TableCell>
-                           <TableCell className="text-center">
-                             <div className="flex space-x-2">
-                               <Button
-                                 size="sm"
-                                 onClick={() => handleAcceptRequest(order.id)}
-                                 className="bg-green-600 hover:bg-green-700 text-white"
-                               >
-                                 <CheckCircle className="w-4 h-4 mr-1" />
-                                 受付
-                               </Button>
-                               <Button
-                                 size="sm"
-                                 variant="outline"
-                                 onClick={() => handleRejectRequest(order.id)}
-                                 className="text-red-600 hover:text-red-700"
-                               >
-                                 <X className="w-4 h-4 mr-1" />
-                                 拒否
-                               </Button>
-                             </div>
-                           </TableCell>
-                         </TableRow>
-                       ))}
+                    <TableBody>
+                      {pendingOrders.map((order) => (
+                        <TableRow key={order.id} className="bg-orange-50">
+                          <TableCell>
+                            <div className="flex items-center">
+                              <Users className="w-4 h-4 mr-2 text-gray-400" />
+                              <span className="font-medium">{order.table_name}</span>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            {order.cast_name ? (
+                              <div className="flex flex-col">
+                                <span className="font-medium">{order.cast_name}</span>
+                                {order.cast_email && (
+                                  <span className="text-xs text-gray-500">{order.cast_email}</span>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="text-gray-500">-</span>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex flex-col">
+                              <span className="font-medium">{order.product_name}</span>
+                              <span className="text-sm text-gray-500">
+                                ¥{order.unit_price.toLocaleString()}
+                              </span>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center">
+                              <Package className="w-4 h-4 mr-1 text-gray-400" />
+                              <span className="font-medium">{order.amount}個</span>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center">
+                              <Calendar className="w-4 h-4 mr-2 text-gray-400" />
+                              <span className="text-sm">{formatDateTime(order.created_at)}</span>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            {getStatusBadge(order.status)}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <div className="flex space-x-2">
+                              <Button
+                                size="sm"
+                                onClick={() => handleAcceptRequest(order.id)}
+                                className="bg-green-600 hover:bg-green-700 text-white"
+                              >
+                                <CheckCircle className="w-4 h-4 mr-1" />
+                                受付
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleRejectRequest(order.id)}
+                                className="text-red-600 hover:text-red-700"
+                              >
+                                <X className="w-4 h-4 mr-1" />
+                                拒否
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
                     </TableBody>
                   </Table>
                 </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
+              </CardContent>
+            </Card>
+          )}
 
-        <TabsContent value="all" className="space-y-4">
+          {/* 全注文リクエスト */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center">
@@ -484,7 +472,7 @@ export default function OrderMonitoringPage() {
                   <Clock className="w-8 h-8 mx-auto mb-3 text-gray-400 animate-spin" />
                   <p className="text-gray-500">読み込み中...</p>
                 </div>
-               ) : allOrders.length === 0 ? (
+              ) : allOrders.length === 0 ? (
                 <div className="text-center py-8 text-gray-500">
                   <ShoppingCart className="w-12 h-12 mx-auto mb-3 text-gray-400" />
                   <p>注文リクエストがありません</p>
@@ -503,59 +491,59 @@ export default function OrderMonitoringPage() {
                         <TableHead>受付時間</TableHead>
                       </TableRow>
                     </TableHeader>
-                     <TableBody>
-                       {allOrders.map((order) => (
-                         <TableRow key={order.id}>
-                           <TableCell>
-                             <div className="flex items-center">
-                               <Users className="w-4 h-4 mr-2 text-gray-400" />
-                               <span className="font-medium">{order.table_name}</span>
-                             </div>
-                           </TableCell>
-                           <TableCell>
-                             {order.cast_name ? (
-                               <div className="flex flex-col">
-                                 <span className="font-medium">{order.cast_name}</span>
-                                 {order.cast_email && (
-                                   <span className="text-xs text-gray-500">{order.cast_email}</span>
-                                 )}
-                               </div>
-                             ) : (
-                               <span className="text-gray-500">-</span>
-                             )}
-                           </TableCell>
-                           <TableCell>
-                             <div className="flex flex-col">
-                               <span className="font-medium">{order.product_name}</span>
-                               <span className="text-sm text-gray-500">
-                                 ¥{order.unit_price.toLocaleString()}
-                               </span>
-                             </div>
-                           </TableCell>
-                           <TableCell>
-                             <div className="flex items-center">
-                               <Package className="w-4 h-4 mr-1 text-gray-400" />
-                               <span className="font-medium">{order.amount}個</span>
-                             </div>
-                           </TableCell>
-                           <TableCell>
-                             <div className="flex items-center">
-                               <Calendar className="w-4 h-4 mr-2 text-gray-400" />
-                               <span className="text-sm">{formatDateTime(order.created_at)}</span>
-                             </div>
-                           </TableCell>
-                           <TableCell>
-                             {getStatusBadge(order.status)}
-                           </TableCell>
-                           <TableCell>
-                             {order.accepted_at ? (
-                               <span className="text-sm">{formatDateTime(order.accepted_at)}</span>
-                             ) : (
-                               <span className="text-gray-500">-</span>
-                             )}
-                           </TableCell>
-                         </TableRow>
-                       ))}
+                    <TableBody>
+                      {allOrders.map((order) => (
+                        <TableRow key={order.id}>
+                          <TableCell>
+                            <div className="flex items-center">
+                              <Users className="w-4 h-4 mr-2 text-gray-400" />
+                              <span className="font-medium">{order.table_name}</span>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            {order.cast_name ? (
+                              <div className="flex flex-col">
+                                <span className="font-medium">{order.cast_name}</span>
+                                {order.cast_email && (
+                                  <span className="text-xs text-gray-500">{order.cast_email}</span>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="text-gray-500">-</span>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex flex-col">
+                              <span className="font-medium">{order.product_name}</span>
+                              <span className="text-sm text-gray-500">
+                                ¥{order.unit_price.toLocaleString()}
+                              </span>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center">
+                              <Package className="w-4 h-4 mr-1 text-gray-400" />
+                              <span className="font-medium">{order.amount}個</span>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center">
+                              <Calendar className="w-4 h-4 mr-2 text-gray-400" />
+                              <span className="text-sm">{formatDateTime(order.created_at)}</span>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            {getStatusBadge(order.status)}
+                          </TableCell>
+                          <TableCell>
+                            {order.accepted_at ? (
+                              <span className="text-sm">{formatDateTime(order.accepted_at)}</span>
+                            ) : (
+                              <span className="text-gray-500">-</span>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      ))}
                     </TableBody>
                   </Table>
                 </div>
@@ -564,29 +552,20 @@ export default function OrderMonitoringPage() {
           </Card>
         </TabsContent>
 
-        <TabsContent value="service-pending" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center">
-                <AlertCircle className="w-5 h-5 mr-2 text-orange-500" />
-                新規サービス注文リクエスト
-              </CardTitle>
-              <CardDescription>
-                受付待ちのサービス注文リクエスト一覧
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {isLoading ? (
-                <div className="text-center py-8">
-                  <Clock className="w-8 h-8 mx-auto mb-3 text-gray-400 animate-spin" />
-                  <p className="text-gray-500">読み込み中...</p>
-                </div>
-              ) : pendingServiceOrders.length === 0 ? (
-                <div className="text-center py-8 text-gray-500">
-                  <Bell className="w-12 h-12 mx-auto mb-3 text-gray-400" />
-                  <p>新規のサービス注文リクエストはありません</p>
-                </div>
-              ) : (
+        <TabsContent value="services" className="space-y-4">
+          {/* 新規サービス注文リクエスト */}
+          {pendingServiceOrders.length > 0 && (
+            <Card className="border-orange-300 border-2">
+              <CardHeader>
+                <CardTitle className="flex items-center">
+                  <AlertCircle className="w-5 h-5 mr-2 text-orange-500" />
+                  新規サービス注文リクエスト
+                </CardTitle>
+                <CardDescription>
+                  受付待ちのサービス注文リクエスト一覧
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
                 <div className="overflow-x-auto">
                   <Table>
                     <TableHeader>
@@ -602,7 +581,7 @@ export default function OrderMonitoringPage() {
                     </TableHeader>
                     <TableBody>
                       {pendingServiceOrders.map((order) => (
-                        <TableRow key={order.id}>
+                        <TableRow key={order.id} className="bg-orange-50">
                           <TableCell>
                             <div className="flex items-center">
                               <Users className="w-4 h-4 mr-2 text-gray-400" />
@@ -667,12 +646,11 @@ export default function OrderMonitoringPage() {
                     </TableBody>
                   </Table>
                 </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
+              </CardContent>
+            </Card>
+          )}
 
-        <TabsContent value="all-services" className="space-y-4">
+          {/* 全サービス注文リクエスト */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center">
