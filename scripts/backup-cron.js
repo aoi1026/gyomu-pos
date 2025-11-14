@@ -114,7 +114,7 @@ async function runBackup() {
 runBackup();
 
 // 2分ごとに実行（120000ミリ秒 = 2分）
-setInterval(runBackup, 120000);
+setInterval(runBackup, 7200000);
 
 console.log('バックアップスクリプトが開始されました。2分ごとにバックアップを実行します。');
 
