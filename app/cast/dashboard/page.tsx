@@ -23,6 +23,7 @@ export default function CastDashboard() {
   const [castUser, setCastUser] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [dailyPerf, setDailyPerf] = useState<{ nominations: number; drinkSales: number; foodSales: number }>({ nominations: 0, drinkSales: 0, foodSales: 0 });
+  const [storeName, setStoreName] = useState<string>('銀座エレガンス');
   const router = useRouter();
 
   useEffect(() => {
@@ -57,6 +58,18 @@ export default function CastDashboard() {
     setIsLoading(false);
   }, [router]);
 
+  const loadStoreName = async () => {
+    try {
+      const response = await fetch('/api/project-variables?name=store_name');
+      const result = await response.json();
+      if (result.success && result.data) {
+        setStoreName(result.data.value || '銀座エレガンス');
+      }
+    } catch (err) {
+      console.error('店舗名取得エラー:', err);
+    }
+  };
+
   // 今日の実績（DB集計）: フックは早期returnより前に配置して順序を安定化
   useEffect(() => {
     const loadDailyPerf = async () => {
@@ -82,6 +95,7 @@ export default function CastDashboard() {
       }
     };
     loadDailyPerf();
+    loadStoreName();
   }, [castUser, user]);
 
   if (isLoading) {
@@ -121,7 +135,7 @@ export default function CastDashboard() {
               </div>
               <div className="min-w-0">
                 <h1 className="text-lg sm:text-xl font-bold text-gray-900 truncate">NightWork POS</h1>
-                <p className="text-xs sm:text-sm text-gray-500 truncate">銀座エレガンス</p>
+                <p className="text-xs sm:text-sm text-gray-500 truncate">{storeName}</p>
               </div>
             </div>
             <div className="flex items-center space-x-2 sm:space-x-4">

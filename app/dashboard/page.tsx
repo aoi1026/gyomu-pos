@@ -19,6 +19,9 @@ import { getCurrentUser, hasRole, AuthUser } from '@/lib/auth';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { 
   Wine, Users, BarChart3, Clock, CreditCard, Settings,
   Shield, TrendingUp, Calendar, DollarSign,
@@ -42,8 +45,11 @@ export default function Dashboard() {
   const [showTableStatus, setShowTableStatus] = useState(false);
   const [lastServiceOrderCount, setLastServiceOrderCount] = useState(0);
   const [lastManagerCallCount, setLastManagerCallCount] = useState(0);
+  const [storeName, setStoreName] = useState<string>('銀座エレガンス');
+  const [showStoreNameDialog, setShowStoreNameDialog] = useState(false);
+  const [storeNameInput, setStoreNameInput] = useState<string>('');
   const router = useRouter();
-  const { success } = useNotificationContext();
+  const { success, error } = useNotificationContext();
 
   const loadPendingOrderCount = async () => {
     try {
@@ -171,12 +177,56 @@ export default function Dashboard() {
     setIsLoading(false);
   }, [router]);
 
+  const loadStoreName = async () => {
+    try {
+      const response = await fetch('/api/project-variables?name=store_name');
+      const result = await response.json();
+      if (result.success && result.data) {
+        setStoreName(result.data.value || '銀座エレガンス');
+      }
+    } catch (err) {
+      console.error('店舗名取得エラー:', err);
+    }
+  };
+
+  const handleStoreNameUpdate = async () => {
+    if (!storeNameInput.trim()) {
+      error('エラー', '店舗名を入力してください');
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/project-variables', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: 'store_name',
+          value: storeNameInput.trim()
+        })
+      });
+
+      const result = await response.json();
+      if (result.success) {
+        setStoreName(storeNameInput.trim());
+        setShowStoreNameDialog(false);
+        setStoreNameInput('');
+        success('店舗名を更新しました', '店舗名が正常に更新されました');
+      } else {
+        error('エラー', result.error || '店舗名の更新に失敗しました');
+      }
+    } catch (err) {
+      console.error('店舗名更新エラー:', err);
+      error('エラー', '店舗名の更新に失敗しました');
+    }
+  };
+
   useEffect(() => {
     if (adminUser || user) {
       loadPendingOrderCount();
       loadPendingServiceOrderCount();
       loadPendingManagerCallCount();
       loadUnreadNotificationCount();
+      loadStoreName();
       // 本日KPIを日次売上APIから取得
       const today = new Date().toISOString().split('T')[0];
       fetch(`/api/admin/sales/daily?date=${today}`)
@@ -233,10 +283,25 @@ export default function Dashboard() {
               </div>
               <div className="min-w-0">
                 <h1 className="text-lg sm:text-xl font-bold text-gray-900 truncate">NightWork POS</h1>
-                <p className="text-xs sm:text-sm text-gray-500 truncate">銀座エレガンス</p>
+                <p className="text-xs sm:text-sm text-gray-500 truncate">{storeName}</p>
               </div>
             </div>
             <div className="flex items-center space-x-2 sm:space-x-4">
+              {((adminUser && (adminUser.role === 'admin' || adminUser.role === 'superadmin')) || hasRole(user, 'admin') || hasRole(user, 'superadmin')) && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="text-xs sm:text-sm"
+                  onClick={() => {
+                    setStoreNameInput(storeName);
+                    setShowStoreNameDialog(true);
+                  }}
+                >
+                  <Settings className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
+                  <span className="hidden sm:inline">店舗名設定</span>
+                  <span className="sm:hidden">設定</span>
+                </Button>
+              )}
               <div className="hidden sm:block text-right">
                 <p className="text-sm font-medium text-gray-900">{currentUser?.name || 'ユーザー'}</p>
                 <div className="flex space-x-1">
@@ -523,7 +588,7 @@ export default function Dashboard() {
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold text-green-900 mb-1">
-                    {todaySales.customer_count}組
+                    {todaySales.customer_count}名
                   </div>
                   <p className="text-sm text-green-700">
                     平均客単価 {todaySales.customer_count > 0 ? `¥${new Intl.NumberFormat('ja-JP', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(todaySales.total_yen / todaySales.customer_count)}` : '¥0.00'}
@@ -825,6 +890,54 @@ export default function Dashboard() {
           />
         </>
       )}
+
+      {/* 店舗名設定ダイアログ */}
+      <Dialog open={showStoreNameDialog} onOpenChange={setShowStoreNameDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center">
+              <Settings className="w-5 h-5 mr-2" />
+              店舗名設定
+            </DialogTitle>
+            <DialogDescription>
+              店舗名を変更します
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="store-name">店舗名</Label>
+              <Input
+                id="store-name"
+                type="text"
+                placeholder="店舗名を入力"
+                value={storeNameInput}
+                onChange={(e) => setStoreNameInput(e.target.value)}
+                className="w-full"
+              />
+            </div>
+            
+            <div className="flex justify-end space-x-2">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowStoreNameDialog(false);
+                  setStoreNameInput('');
+                }}
+              >
+                キャンセル
+              </Button>
+              <Button
+                onClick={handleStoreNameUpdate}
+                disabled={!storeNameInput.trim()}
+                className="bg-purple-600 hover:bg-purple-700"
+              >
+                保存
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -83,6 +83,8 @@ export default function TableDashboard({ params }: { params: { tableId: string }
   const [showPaymentMethodDialog, setShowPaymentMethodDialog] = useState(false);
   const [showCashPaymentDialog, setShowCashPaymentDialog] = useState(false);
   const [cashPaymentAmount, setCashPaymentAmount] = useState<string>('');
+  const [showStoreCreditCardPaymentDialog, setShowStoreCreditCardPaymentDialog] = useState(false);
+  const [storeCreditCardPaymentAmount, setStoreCreditCardPaymentAmount] = useState<string>('');
   const [guestCount, setGuestCount] = useState<string>('');
   const [setExtensionCountdown, setSetExtensionCountdown] = useState<number>(0); // 再計算で設定する（初期表示のリセットを防止）
   const [setExtensions, setSetExtensions] = useState<Array<{ count: number; timestamp: number }>>([]); // 延長履歴
@@ -1637,6 +1639,86 @@ export default function TableDashboard({ params }: { params: { tableId: string }
     setShowPaymentMethodDialog(false);
     setShowCashPaymentDialog(true);
     setCashPaymentAmount('');
+  };
+
+  const handleStoreCreditCardPayment = () => {
+    setShowPaymentMethodDialog(false);
+    setShowStoreCreditCardPaymentDialog(true);
+    setStoreCreditCardPaymentAmount('');
+  };
+
+  const handleStoreCreditCardPaymentConfirm = async () => {
+    const amount = parseFloat(storeCreditCardPaymentAmount);
+    
+    if (isNaN(amount) || amount <= 0) {
+      error('エラー', '有効な金額を入力してください');
+      return;
+    }
+
+    const totalAmount = calculateTotal();
+    if (amount < totalAmount) {
+      error('エラー', `支払い金額は合計金額（${formatCurrency(totalAmount)}）以上である必要があります`);
+      return;
+    }
+    
+    // ローカルストレージのfullcostに保存
+    localStorage.setItem('fullcost', amount.toString());
+    
+    // 支払い金額をローカルストレージに保存（表示用）
+    localStorage.setItem('paid_amount', amount.toString());
+    
+    // 支払い完了状態を設定
+    setIsPaymentCompleted(true);
+    localStorage.setItem('payment_completed', 'true');
+    
+    // sessionsテーブルも更新
+    const sessionId = localStorage.getItem('current_session_id');
+    if (sessionId) {
+      const currentCost = localStorage.getItem('cost') || '0';
+      const newCost = parseInt(currentCost) + amount;
+      localStorage.setItem('cost', newCost.toString());
+      
+      fetch(`/api/sessions/${sessionId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          cost: newCost
+        }),
+      }).catch(err => console.error('セッション更新エラー:', err));
+    }
+    
+    // 承認待ち（pending/sent）の注文は決済完了時に拒否へ更新
+    try {
+      const ordersToReject = cartOrders.filter((order: any) => {
+        const st = (orderRequestStatus as any)[order.id] || order.status;
+        return st === 'pending' || st === 'sent';
+      });
+      await Promise.all(
+        ordersToReject.map((order: any) =>
+          fetch(`/api/salesorder/${order.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: 'rejected' })
+          }).catch(err => console.error('注文拒否更新エラー:', err))
+        )
+      );
+      // ローカル状態も反映
+      setOrderRequestStatus(prev => {
+        const next: any = { ...prev };
+        ordersToReject.forEach((o: any) => { next[o.id] = 'rejected'; });
+        return next;
+      });
+      // 最新データを取得
+      await loadCartOrders();
+    } catch (e) {
+      console.error('決済後の注文更新処理エラー:', e);
+    }
+    
+    success('決済成功', `支払いが完了しました`);
+    setShowStoreCreditCardPaymentDialog(false);
+    setStoreCreditCardPaymentAmount('');
   };
 
   const handleCashPaymentConfirm = async () => {
@@ -3944,6 +4026,15 @@ export default function TableDashboard({ params }: { params: { tableId: string }
               </Button>
               
               <Button
+                onClick={handleStoreCreditCardPayment}
+                className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
+                size="lg"
+              >
+                <CreditCard className="w-5 h-5 mr-2" />
+                店舗用クレジットカード決済 
+              </Button>
+              
+              <Button
                 onClick={handleCashPayment}
                 className="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700"
                 size="lg"
@@ -3951,6 +4042,59 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                 <DollarSign className="w-5 h-5 mr-2" />
                 現金で決済 ({formatCurrency(calculateTotal())})
               </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* 店舗用クレジットカード決済ダイアログ */}
+        <Dialog open={showStoreCreditCardPaymentDialog} onOpenChange={setShowStoreCreditCardPaymentDialog}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle className="flex items-center">
+                <CreditCard className="w-5 h-5 mr-2" />
+                店舗用クレジットカード決済
+              </DialogTitle>
+              <DialogDescription>
+                決済金額を入力してください
+              </DialogDescription>
+            </DialogHeader>
+            
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="store-credit-card-amount">決済金額</Label>
+                <Input
+                  id="store-credit-card-amount"
+                  type="number"
+                  min={calculateTotal()}
+                  placeholder="金額を入力"
+                  value={storeCreditCardPaymentAmount}
+                  onChange={(e) => setStoreCreditCardPaymentAmount(e.target.value)}
+                  className="w-full"
+                />
+                <p className="text-sm text-gray-500">
+                  合計金額: {formatCurrency(calculateTotal())}
+                </p>
+              </div>
+              
+              <div className="flex justify-end space-x-2">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setShowStoreCreditCardPaymentDialog(false);
+                    setStoreCreditCardPaymentAmount('');
+                  }}
+                >
+                  キャンセル
+                </Button>
+                <Button
+                  onClick={handleStoreCreditCardPaymentConfirm}
+                  disabled={!storeCreditCardPaymentAmount || parseFloat(storeCreditCardPaymentAmount) < calculateTotal()}
+                  className="bg-purple-600 hover:bg-purple-700"
+                >
+                  <CheckCircle className="w-4 h-4 mr-2" />
+                  確認
+                </Button>
+              </div>
             </div>
           </DialogContent>
         </Dialog>

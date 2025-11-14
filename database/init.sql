@@ -34,3 +34,8 @@ INSERT INTO "table" (name, capacity, other) VALUES
     ('テーブル5', 2, '一般席')
 ON CONFLICT DO NOTHING;
 
+-- プロジェクト変数の初期データ
+INSERT INTO project_variable (name, value, other) VALUES
+    ('store_name', '銀座エレガンス', '店舗名')
+ON CONFLICT (name) DO NOTHING;
+

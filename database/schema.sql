@@ -366,3 +366,21 @@ CREATE TRIGGER update_notifications_updated_at
     BEFORE UPDATE ON notifications 
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+-- プロジェクト変数管理テーブル
+CREATE TABLE IF NOT EXISTS project_variable (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(100) UNIQUE NOT NULL,
+    value TEXT,
+    other TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- プロジェクト変数テーブルのインデックス
+CREATE INDEX IF NOT EXISTS idx_project_variable_name ON project_variable(name);
+
+-- プロジェクト変数更新時のトリガー
+CREATE TRIGGER update_project_variable_updated_at 
+    BEFORE UPDATE ON project_variable 
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
