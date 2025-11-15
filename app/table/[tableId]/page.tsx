@@ -122,6 +122,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
   });
   const isOrderingLocked = isPaymentCompleted && hasAcceptedOrders;
   const isTimeExpired = isSessionActive && setExtensionCountdown <= 0;
+  const isOrderingDisabled = isTimeExpired || isPaymentCompleted;
   
   const router = useRouter();
   const { success, error, confirm } = useNotificationContext();
@@ -270,16 +271,9 @@ export default function TableDashboard({ params }: { params: { tableId: string }
           console.error('延長情報の復元エラー:', e);
         }
       }
-      // タイマー開始時刻と合計秒数から残り時間を復元
-      const startAtStr = localStorage.getItem('set_extension_start_time');
-      const totalStr = localStorage.getItem('set_extension_total_seconds');
-      if (startAtStr && totalStr) {
-        const startAt = parseInt(startAtStr);
-        const total = parseInt(totalStr);
-        if (!isNaN(startAt) && !isNaN(total)) {
-          const elapsed = Math.floor((Date.now() - startAt) / 1000);
-          setSetExtensionCountdown(Math.max(0, total - elapsed));
-        }
+      // セッション情報を取得してカウントダウンを計算（DBから取得）
+      if (isSessionActive) {
+        loadSession();
       }
       // 指名料金を復元
       const savedNominationCharges = localStorage.getItem('nomination_charges');
@@ -309,18 +303,61 @@ export default function TableDashboard({ params }: { params: { tableId: string }
     }
   }, [tableAuth]);
 
+  // セッション情報から決済完了状態を確認
+  const checkPaymentStatus = async () => {
+    if (!tableAuth || !isSessionActive) return;
+    const sessionId = localStorage.getItem('current_session_id');
+    if (!sessionId) return;
+    
+    try {
+      const response = await fetch(`/api/sessions?id=${sessionId}`);
+      const result = await response.json();
+      if (result.success && result.data?.[0]) {
+        const sessionData = result.data[0];
+        if (sessionData.cost && parseFloat(sessionData.cost) > 0) {
+          setIsPaymentCompleted(true);
+          localStorage.setItem('payment_completed', 'true');
+          localStorage.setItem('paid_amount', sessionData.cost.toString());
+        }
+      }
+    } catch (err) {
+      console.error('決済状態確認エラー:', err);
+    }
+  };
+
   // 定期的にスタッフ呼び出しステータスと注文カートを確認
   useEffect(() => {
     if (!tableAuth || !isSessionActive) return;
+    
+    // 初回実行
+    checkPaymentStatus();
+    loadNominations();
+    loadAdditionalServices();
     
     const interval = setInterval(() => {
       loadManagerCallStatus();
       loadStaffCallStatus();
       loadCartOrdersSilently();
       loadServiceOrdersSilently();
-    }, 500); // 500msごとに更新
+      checkPaymentStatus();
+      // 指名リストは3秒ごとに更新（ちらつき防止）
+    }, 1000); // 1秒ごとに更新
 
-    return () => clearInterval(interval);
+    // 指名リストは別の間隔で更新
+    const nominationInterval = setInterval(() => {
+      loadNominations();
+    }, 3000); // 3秒ごとに更新
+
+    // 追加サービスは別の間隔で更新
+    const additionalServicesInterval = setInterval(() => {
+      loadAdditionalServices();
+    }, 3000); // 3秒ごとに更新
+
+    return () => {
+      clearInterval(interval);
+      clearInterval(nominationInterval);
+      clearInterval(additionalServicesInterval);
+    };
   }, [tableAuth, isSessionActive]);
 
   useEffect(() => {
@@ -328,25 +365,74 @@ export default function TableDashboard({ params }: { params: { tableId: string }
     loadNominations();
   }, [tableAuth, isSessionActive]);
 
-  // セット延長カウントダウンタイマー（開始時刻と合計秒数から算出）
+  // セッション情報を取得
+  const [session, setSession] = useState<{id: number; created_at: string; set_count: number; set_extensions?: Array<{ count: number; timestamp: number }>} | null>(null);
+  
+  const loadSession = async () => {
+    if (!tableAuth || !isSessionActive) return;
+    const sessionId = localStorage.getItem('current_session_id');
+    if (!sessionId) return;
+    
+    try {
+      const response = await fetch(`/api/sessions`);
+      const result = await response.json();
+      if (result.success) {
+        const activeSession = result.data.find((s: any) => s.id.toString() === sessionId && s.status === 1);
+        if (activeSession) {
+          setSession(activeSession);
+          // セット延長情報を同期
+          if (activeSession.set_extensions) {
+            setSetExtensions(activeSession.set_extensions);
+            localStorage.setItem('set_extensions', JSON.stringify(activeSession.set_extensions));
+          }
+        }
+      }
+    } catch (err) {
+      console.error('セッション情報取得エラー:', err);
+    }
+  };
+
+  // セット延長カウントダウンタイマー（データベースのセッション情報から算出）
+  useEffect(() => {
+    if (!isSessionActive || !session) return;
+    
+    const updateCountdown = () => {
+      const setCount = session.set_count || 1;
+      const setDuration = 3600; // 1セット = 3600秒
+      const totalSeconds = setCount * setDuration;
+      
+      // セッション開始時刻から経過時間を計算
+      const sessionStart = new Date(session.created_at).getTime();
+      const now = Date.now();
+      const elapsed = Math.floor((now - sessionStart) / 1000);
+      const remaining = Math.max(0, totalSeconds - elapsed);
+      
+      setSetExtensionCountdown(remaining);
+    };
+    
+    // 初回更新
+    updateCountdown();
+    
+    // 1秒ごとに更新
+    const interval = setInterval(updateCountdown, 1000);
+    
+    return () => clearInterval(interval);
+  }, [isSessionActive, session]);
+  
+  // セッション情報を定期的に取得（セット延長情報の同期のため）
   useEffect(() => {
     if (!isSessionActive) return;
     
+    // 初回読み込み
+    loadSession();
+    
+    // 3秒ごとに更新（セット延長情報の同期）
     const interval = setInterval(() => {
-      const startAtStr = localStorage.getItem('set_extension_start_time');
-      const totalStr = localStorage.getItem('set_extension_total_seconds');
-      if (startAtStr && totalStr) {
-        const startAt = parseInt(startAtStr);
-        const total = parseInt(totalStr);
-        if (!isNaN(startAt) && !isNaN(total)) {
-          const elapsed = Math.floor((Date.now() - startAt) / 1000);
-          setSetExtensionCountdown(Math.max(0, total - elapsed));
-        }
-      }
-    }, 1000); // 1秒ごとに計算
-
+      loadSession();
+    }, 3000);
+    
     return () => clearInterval(interval);
-  }, [isSessionActive]);
+  }, [isSessionActive, tableAuth]);
 
   const loadCasts = async () => {
     try {
@@ -389,24 +475,62 @@ export default function TableDashboard({ params }: { params: { tableId: string }
     if (!sessionId) return;
 
     try {
-      setIsNominationsLoading(true);
       const response = await fetch(`/api/nominations?table_id=${tableAuth.table_id}&session_id=${sessionId}`);
       const result = await response.json();
       if (result.success) {
-        setNominations(result.nominations || []);
+        const newNominations = result.nominations || [];
+        // データが変更された場合のみ状態を更新（ちらつき防止）
+        setNominations(prev => {
+          const prevStr = JSON.stringify(prev.map((n: any) => ({ id: n.id, cast_name: n.cast_name, type_id: n.type_id, created_at: n.created_at })));
+          const newStr = JSON.stringify(newNominations.map((n: any) => ({ id: n.id, cast_name: n.cast_name, type_id: n.type_id, created_at: n.created_at })));
+          if (prevStr !== newStr) {
+            return newNominations;
+          }
+          return prev;
+        });
       } else {
         error('エラー', result.error || '指名の取得に失敗しました');
       }
     } catch (err) {
       console.error('指名取得エラー:', err);
       error('エラー', '指名の取得に失敗しました');
-    } finally {
-      setIsNominationsLoading(false);
+    }
+  };
+
+  // 追加サービスをAPIから取得
+  const loadAdditionalServices = async () => {
+    if (!tableAuth) return;
+    const sessionId = localStorage.getItem('current_session_id');
+    if (!sessionId) return;
+
+    try {
+      const response = await fetch(`/api/additional-services?session_id=${sessionId}`);
+      const result = await response.json();
+      if (result.success) {
+        const newServices = result.data || [];
+        // データが変更された場合のみ状態を更新（ちらつき防止）
+        setAdditionalServices(prev => {
+          const prevStr = JSON.stringify(prev.map((s: any) => ({ id: s.id, type: s.type, count: s.count, charge: s.charge, timestamp: s.timestamp })));
+          const newStr = JSON.stringify(newServices.map((s: any) => ({ id: s.id, type: s.type, count: s.count, charge: s.charge, timestamp: s.timestamp })));
+          if (prevStr !== newStr) {
+            // ローカルストレージにも保存
+            localStorage.setItem('additional_services', JSON.stringify(newServices));
+            return newServices;
+          }
+          return prev;
+        });
+      }
+    } catch (err) {
+      console.error('追加サービス取得エラー:', err);
     }
   };
 
   const submitNomination = async (castId: string, typeId: 'main' | 'inside' | 'together', castName?: string) => {
     if (!tableAuth) return;
+    if (isOrderingDisabled) {
+      error('エラー', isPaymentCompleted ? '決済が完了しているため、指名を追加できません' : 'セット時間が終了したため、指名を追加できません');
+      return false;
+    }
     const sessionId = localStorage.getItem('current_session_id');
     if (!sessionId) {
       error('エラー', 'セッションIDが見つかりません');
@@ -694,8 +818,8 @@ export default function TableDashboard({ params }: { params: { tableId: string }
   };
 
   const addToCart = (menuItem: any) => {
-    if (isTimeExpired) {
-      error('エラー', 'セット時間が終了したため、商品の追加はできません');
+    if (isOrderingDisabled) {
+      error('エラー', isPaymentCompleted ? '決済が完了しているため、商品の追加はできません' : 'セット時間が終了したため、商品の追加はできません');
       return;
     }
     setSelectedProduct(menuItem);
@@ -707,8 +831,8 @@ export default function TableDashboard({ params }: { params: { tableId: string }
   };
 
   const handleOrderSubmit = async () => {
-    if (isTimeExpired) {
-      error('エラー', 'セット時間が終了したため、商品の追加はできません');
+    if (isOrderingDisabled) {
+      error('エラー', isPaymentCompleted ? '決済が完了しているため、商品の追加はできません' : 'セット時間が終了したため、商品の追加はできません');
       return;
     }
     if (!selectedProduct || !tableAuth) return;
@@ -854,8 +978,8 @@ export default function TableDashboard({ params }: { params: { tableId: string }
   };
 
   const handleServiceOrder = (service: any) => {
-    if (isTimeExpired) {
-      error('エラー', 'セット時間が終了したため、サービスを注文できません');
+    if (isOrderingDisabled) {
+      error('エラー', isPaymentCompleted ? '決済が完了しているため、サービスを注文できません' : 'セット時間が終了したため、サービスを注文できません');
       return;
     }
     setSelectedService(service);
@@ -866,8 +990,8 @@ export default function TableDashboard({ params }: { params: { tableId: string }
   };
 
   const handleServiceOrderSubmit = async () => {
-    if (isTimeExpired) {
-      error('エラー', 'セット時間が終了したため、サービスを注文できません');
+    if (isOrderingDisabled) {
+      error('エラー', isPaymentCompleted ? '決済が完了しているため、サービスを注文できません' : 'セット時間が終了したため、サービスを注文できません');
       return;
     }
     if (!selectedService || !tableAuth) return;
@@ -1026,12 +1150,11 @@ export default function TableDashboard({ params }: { params: { tableId: string }
       const updatedTable = await startTableSession(tableAuth.table_id);
       setTableAuth(updatedTable);
       setIsSessionActive(true);
-      // セット延長タイマーを初期化（開始時刻 + 合計秒=3600）
+      // セット延長タイマーを初期化（DBから取得したセッション情報で計算される）
       setSetExtensions([]); // 延長履歴をクリア
-      localStorage.setItem('set_extension_start_time', Date.now().toString());
-      localStorage.setItem('set_extension_total_seconds', '3600');
       localStorage.removeItem('set_extensions'); // 延長履歴をクリア
-      setSetExtensionCountdown(3600);
+      // セッション情報を取得してカウントダウンを更新
+      await loadSession();
       
       // DBにset_extensionsを初期化（空配列）
       try {
@@ -1063,16 +1186,11 @@ export default function TableDashboard({ params }: { params: { tableId: string }
       async () => {
         try {
           const sessionId = localStorage.getItem('current_session_id');
-          const cost = localStorage.getItem('cost');
-          const fullcost = localStorage.getItem('fullcost');
           const setCount = localStorage.getItem('set_count');
           const endAt = new Date().toISOString();
           
-          // costがある場合はそれを優先、ない場合はfullcostを使用
-          const finalCost = cost ? parseFloat(cost) : (fullcost ? parseFloat(fullcost) : 0);
-          
           if (sessionId) {
-            // データベースにセッション終了情報を保存
+            // データベースにセッション終了情報を保存（costは保存しない）
             const guestCountLocal = localStorage.getItem('guest_count');
             const response = await fetch(`/api/sessions/${sessionId}`, {
               method: 'PATCH',
@@ -1080,7 +1198,6 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                 'Content-Type': 'application/json',
               },
               body: JSON.stringify({
-                cost: finalCost,
                 end_at: endAt,
                 set_count: setCount ? parseInt(setCount) : 1,
                 client: guestCountLocal ? parseInt(guestCountLocal, 10) : undefined,
@@ -1191,10 +1308,35 @@ export default function TableDashboard({ params }: { params: { tableId: string }
       }
     });
     
-    // 指名料金の合計
-    nominationCharges.forEach(charge => {
+    // 指名料金の合計（nominations配列から計算）
+    nominations.forEach(nomination => {
+      let charge = 0;
+      if (nomination.type_id === 'together') {
+        // 同伴指名の場合は本指名料と同伴料の両方
+        const mainCharge = addCharges['main'] || 0;
+        const togetherCharge = addCharges['together'] || 0;
+        charge = mainCharge + togetherCharge;
+      } else if (nomination.type_id === 'main') {
+        charge = addCharges['main'] || 0;
+      } else if (nomination.type_id === 'inside') {
+        charge = addCharges['inside'] || 0;
+      }
       subtotal += charge;
     });
+    
+    // セット延長回数分の指名料金
+    const extensionCount = setExtensions.length;
+    if (extensionCount > 0 && nominations.length > 0) {
+      nominations.forEach(nomination => {
+        let chargePerExtension = 0;
+        if (nomination.type_id === 'together' || nomination.type_id === 'main') {
+          chargePerExtension = addCharges['main'] || 0;
+        } else if (nomination.type_id === 'inside') {
+          chargePerExtension = addCharges['inside'] || 0;
+        }
+        subtotal += chargePerExtension * extensionCount;
+      });
+    }
     
     // 追加サービス料金の合計
     additionalServices.forEach(service => {
@@ -1245,6 +1387,17 @@ export default function TableDashboard({ params }: { params: { tableId: string }
       return;
     }
 
+    // 人数がテーブルの定員を超えていないかチェック
+    if (tableAuth && tableAuth.capacity && count > tableAuth.capacity) {
+      error('エラー', `人数はテーブルの定員（${tableAuth.capacity}名）以下で入力してください`);
+      return;
+    }
+
+    if (!session) {
+      error('エラー', 'セッション情報が見つかりません');
+      return;
+    }
+
     // 延長情報を追加
     const newExtension = { count, timestamp: Date.now() };
     const updatedExtensions = [...setExtensions, newExtension];
@@ -1253,16 +1406,16 @@ export default function TableDashboard({ params }: { params: { tableId: string }
     // ローカルストレージに保存
     localStorage.setItem('set_extensions', JSON.stringify(updatedExtensions));
     
-    // セットカウントを1増加
-    const currentSetCount = localStorage.getItem('set_count');
-    const newSetCount = currentSetCount ? parseInt(currentSetCount) + 1 : 2;
+    // セットカウントを1増加（データベースのセッション情報から取得）
+    const currentSetCount = session.set_count || 1;
+    const newSetCount = currentSetCount + 1;
     localStorage.setItem('set_count', newSetCount.toString());
     
     // DBにset_countとset_extensionsを同期
     const sessionId = localStorage.getItem('current_session_id');
     if (sessionId) {
       try {
-        await fetch(`/api/sessions/${sessionId}`, {
+        const response = await fetch(`/api/sessions/${sessionId}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ 
@@ -1270,33 +1423,26 @@ export default function TableDashboard({ params }: { params: { tableId: string }
             set_extensions: updatedExtensions
           })
         });
+        const result = await response.json();
+        if (!result.success) {
+          throw new Error(result.error || 'セット延長の更新に失敗しました');
+        }
       } catch (err) {
         console.error('セット回数のDB同期エラー:', err);
+        error('エラー', err instanceof Error ? err.message : 'セット延長の更新に失敗しました');
+        return;
       }
     }
     
-    // 合計秒数に60分を加算（継続計測）
-    const startAtStr = localStorage.getItem('set_extension_start_time');
-    const totalStr = localStorage.getItem('set_extension_total_seconds');
-    const now = Date.now();
-    let startAt = startAtStr ? parseInt(startAtStr) : NaN;
-    let total = totalStr ? parseInt(totalStr) : NaN;
-    if (isNaN(startAt) || isNaN(total)) {
-      startAt = now;
-      total = 0;
-      localStorage.setItem('set_extension_start_time', startAt.toString());
-    }
-    let elapsed = Math.floor((now - startAt) / 1000);
-    if (elapsed >= total) {
-      startAt = now;
-      total = 0;
-      elapsed = 0;
-      localStorage.setItem('set_extension_start_time', startAt.toString());
-    }
-    total += 3600;
-    localStorage.setItem('set_extension_total_seconds', total.toString());
-    // 直ちに反映
-    setSetExtensionCountdown(Math.max(0, total - elapsed));
+    // セッション情報を再取得してカウントダウンを更新（DB更新後に反映される）
+    await loadSession();
+    
+    // 成功メッセージを表示
+    success('セット延長', `${count}名でセットを延長しました（60分追加）`);
+    
+    // ダイアログを閉じる
+    setShowSetExtensionDialog(false);
+    setExtensionGuestCount('');
     
     // 現在の指名リストの料金を追加
     // addChargesが空の場合は再取得
@@ -1362,12 +1508,6 @@ export default function TableDashboard({ params }: { params: { tableId: string }
     
     // 指名リストを再読み込み
     await loadNominations();
-    
-    // ダイアログを閉じる
-    setShowSetExtensionDialog(false);
-    setExtensionGuestCount('');
-    
-    success('セット延長', `${count}名でセットを延長しました`);
   };
 
   // 1セットキャンセル処理
@@ -1419,6 +1559,10 @@ export default function TableDashboard({ params }: { params: { tableId: string }
 
   // ボトルキープ処理
   const handleBottleKeepConfirm = async () => {
+    if (isOrderingDisabled) {
+      error('エラー', isPaymentCompleted ? '決済が完了しているため、追加サービスを利用できません' : 'セット時間が終了したため、追加サービスを利用できません');
+      return;
+    }
     if (!bottleKeepData.clientName || !bottleKeepData.bottleName || !bottleKeepData.amount) {
       error('エラー', '顧客名、ボトル名、残量を入力してください');
       return;
@@ -1461,12 +1605,27 @@ export default function TableDashboard({ params }: { params: { tableId: string }
 
       // ボトルキープ料金を追加
       const bottleKeepCharge = addCharges['bottle_keep'] || 0;
-      const newService = {
-        type: 'bottle_keep' as const,
-        count: 1,
-        charge: bottleKeepCharge,
-        timestamp: Date.now()
-      };
+      
+      // APIに追加サービスを保存
+      const additionalServiceResponse = await fetch('/api/additional-services', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          sessionId: parseInt(sessionId),
+          type: 'bottle_keep',
+          count: 1,
+          charge: bottleKeepCharge
+        })
+      });
+
+      const additionalServiceResult = await additionalServiceResponse.json();
+      if (!additionalServiceResult.success) {
+        throw new Error(additionalServiceResult.error || '追加サービスの登録に失敗しました');
+      }
+
+      const newService = additionalServiceResult.data;
       
       setAdditionalServices(prev => {
         const updated = [...prev, newService];
@@ -1493,6 +1652,10 @@ export default function TableDashboard({ params }: { params: { tableId: string }
 
   // VIPルーム利用処理
   const handleVipRoomConfirm = async () => {
+    if (isOrderingDisabled) {
+      error('エラー', isPaymentCompleted ? '決済が完了しているため、追加サービスを利用できません' : 'セット時間が終了したため、追加サービスを利用できません');
+      return;
+    }
     if (!vipRoomCount || vipRoomCount.trim() === '') {
       error('エラー', '部屋数を入力してください');
       return;
@@ -1526,12 +1689,34 @@ export default function TableDashboard({ params }: { params: { tableId: string }
     const vipRoomCharge = (charges['vip_room'] || 0) * count;
     console.log('VIPルーム料金追加:', { count, vipRoomCharge, charges });
     
-    const newService = {
-      type: 'vip_room' as const,
-      count: count,
-      charge: vipRoomCharge,
-      timestamp: Date.now()
-    };
+    // セッションIDを取得
+    const sessionId = localStorage.getItem('current_session_id');
+    if (!sessionId) {
+      error('エラー', 'セッション情報が見つかりません');
+      return;
+    }
+
+    // APIに追加サービスを保存
+    const additionalServiceResponse = await fetch('/api/additional-services', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        sessionId: parseInt(sessionId),
+        type: 'vip_room',
+        count: count,
+        charge: vipRoomCharge
+      })
+    });
+
+    const additionalServiceResult = await additionalServiceResponse.json();
+    if (!additionalServiceResult.success) {
+      error('エラー', additionalServiceResult.error || '追加サービスの登録に失敗しました');
+      return;
+    }
+
+    const newService = additionalServiceResult.data;
     
     setAdditionalServices(prev => {
       const updated = [...prev, newService];
@@ -1547,6 +1732,10 @@ export default function TableDashboard({ params }: { params: { tableId: string }
 
   // カラオケ利用処理
   const handleKaraokeConfirm = async () => {
+    if (isOrderingDisabled) {
+      error('エラー', isPaymentCompleted ? '決済が完了しているため、追加サービスを利用できません' : 'セット時間が終了したため、追加サービスを利用できません');
+      return;
+    }
     if (!karaokeSongCount || karaokeSongCount.trim() === '') {
       error('エラー', '曲数を入力してください');
       return;
@@ -1580,12 +1769,34 @@ export default function TableDashboard({ params }: { params: { tableId: string }
     const karaokeCharge = (charges['song_room'] || 0) * count;
     console.log('カラオケ料金追加:', { count, karaokeCharge, charges });
     
-    const newService = {
-      type: 'karaoke' as const,
-      count: count,
-      charge: karaokeCharge,
-      timestamp: Date.now()
-    };
+    // セッションIDを取得
+    const sessionId = localStorage.getItem('current_session_id');
+    if (!sessionId) {
+      error('エラー', 'セッション情報が見つかりません');
+      return;
+    }
+
+    // APIに追加サービスを保存
+    const additionalServiceResponse = await fetch('/api/additional-services', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        sessionId: parseInt(sessionId),
+        type: 'karaoke',
+        count: count,
+        charge: karaokeCharge
+      })
+    });
+
+    const additionalServiceResult = await additionalServiceResponse.json();
+    if (!additionalServiceResult.success) {
+      error('エラー', additionalServiceResult.error || '追加サービスの登録に失敗しました');
+      return;
+    }
+
+    const newService = additionalServiceResult.data;
     
     setAdditionalServices(prev => {
       const updated = [...prev, newService];
@@ -2414,7 +2625,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                             </SelectTrigger>
                             <SelectContent>
                               <SelectItem value="all">すべて</SelectItem>
-                              {menuCategories.map((c) => (
+                              {menuCategories.filter((c) => c.id !== 4).map((c) => (
                                 <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>
                               ))}
                             </SelectContent>
@@ -2466,8 +2677,8 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                                 <Button 
                                   size="sm"
                                           onClick={() => { if (!isOrderingLocked && !isTimeExpired) addToCart(item); }}
-                                          disabled={isOrderingLocked || isTimeExpired}
-                                          className={`${(isOrderingLocked || isTimeExpired) ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                          disabled={isOrderingDisabled}
+                                          className={`${isOrderingDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
                                 >
                                         <Plus className="w-4 h-4 mr-1" /> 追加
                                 </Button>
@@ -2525,8 +2736,8 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                                       key={service.id}
                                       variant="outline"
                                       onClick={() => handleServiceOrder(service)}
-                                      disabled={isTimeExpired}
-                                      className={`h-12 flex-col space-y-0.5 ${colorClass}`}
+                                      disabled={isOrderingDisabled}
+                                      className={`h-12 flex-col space-y-0.5 ${colorClass} ${isOrderingDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
                                     >
                                       <Utensils className="w-4 h-4" />
                                       <span className="text-xs">{service.name}</span>
@@ -2555,8 +2766,8 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                                   localStorage.setItem('nomination_type', 'main');
                                   setShowNominationCastDialog(true);
                                 }}
-                                disabled={isTimeExpired}
-                                className="h-10 flex items-center justify-start px-3 text-purple-700 border-purple-300 hover:bg-purple-50 relative"
+                                disabled={isOrderingDisabled}
+                                className={`h-10 flex items-center justify-start px-3 text-purple-700 border-purple-300 hover:bg-purple-50 relative ${isOrderingDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
                               >
                                 <Users className="w-4 h-4 mr-2" />
                                 <span className="text-xs">本指名</span>
@@ -2569,26 +2780,12 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                                   localStorage.setItem('nomination_type', 'inside');
                                   setShowNominationCastDialog(true);
                                 }}
-                                disabled={isTimeExpired}
-                                className="h-10 flex items-center justify-start px-3 text-blue-700 border-blue-300 hover:bg-blue-50 relative"
+                                disabled={isOrderingDisabled}
+                                className={`h-10 flex items-center justify-start px-3 text-blue-700 border-blue-300 hover:bg-blue-50 relative ${isOrderingDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
                               >
                                 <Users className="w-4 h-4 mr-2" />
                                 <span className="text-xs">場内指名</span>
                                 {currentNominationType === 'inside' && <CheckCircle className="w-3 h-3 text-green-600 absolute top-1 right-1" />}
-                              </Button>
-                              <Button 
-                                variant="outline"
-                                onClick={() => {
-                                  setCurrentNominationType('together');
-                                  localStorage.setItem('nomination_type', 'together');
-                                  setShowNominationCastDialog(true);
-                                }}
-                                disabled={isTimeExpired}
-                                className="h-10 flex items-center justify-start px-3 text-rose-700 border-rose-300 hover:bg-rose-50 relative"
-                              >
-                                <Users className="w-4 h-4 mr-2" />
-                                <span className="text-xs">同伴指名</span>
-                                {currentNominationType === 'together' && <CheckCircle className="w-3 h-3 text-green-600 absolute top-1 right-1" />}
                               </Button>
                             </div>
                           </CardContent>
@@ -2770,7 +2967,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                                         className="text-red-600 border-red-300 hover:bg-red-50"
                                         onClick={() => deleteNominationRecord(nomination.id)}
                                       >
-                                        <Trash2 className="w-4 h-4" />
+                                        <Trash2 className="w-3 h-3" />
                               </Button>
                             </div>
                         </div>
@@ -2811,6 +3008,10 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                 </div>
 
                 <div className="w-1/2 flex flex-col space-y-2">
+                  <div className="text-sm text-gray-700">
+                    <div>セット数: {localStorage.getItem('set_count') || 1}</div>
+                    {/* <div>人数: {guestCount}名</div> */}
+                  </div>
                   <Button
                     onClick={handleSetExtension}
                     size="sm"
@@ -3147,10 +3348,35 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                       }
                     });
                     
-                    // 指名料金の合計
-                    nominationCharges.forEach(charge => {
+                    // 指名料金の合計（nominations配列から計算）
+                    nominations.forEach(nomination => {
+                      let charge = 0;
+                      if (nomination.type_id === 'together') {
+                        // 同伴指名の場合は本指名料と同伴料の両方
+                        const mainCharge = addCharges['main'] || 0;
+                        const togetherCharge = addCharges['together'] || 0;
+                        charge = mainCharge + togetherCharge;
+                      } else if (nomination.type_id === 'main') {
+                        charge = addCharges['main'] || 0;
+                      } else if (nomination.type_id === 'inside') {
+                        charge = addCharges['inside'] || 0;
+                      }
                       subtotal += charge;
                     });
+                    
+                    // セット延長回数分の指名料金
+                    const extensionCount = setExtensions.length;
+                    if (extensionCount > 0 && nominations.length > 0) {
+                      nominations.forEach(nomination => {
+                        let chargePerExtension = 0;
+                        if (nomination.type_id === 'together' || nomination.type_id === 'main') {
+                          chargePerExtension = addCharges['main'] || 0;
+                        } else if (nomination.type_id === 'inside') {
+                          chargePerExtension = addCharges['inside'] || 0;
+                        }
+                        subtotal += chargePerExtension * extensionCount;
+                      });
+                    }
                     
                     // 追加サービス料金の合計
                     additionalServices.forEach(service => {
@@ -3196,17 +3422,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                           {formatCurrency(parseInt(localStorage.getItem('paid_amount') || '0'))}
                         </div>
                       </div>
-                    ) : (
-                      <Button 
-                        onClick={handlePayment}
-                        className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
-                        size="lg"
-                        disabled={calculateTotal() <= 0 || isNaN(calculateTotal())}
-                      >
-                        <CreditCard className="w-4 h-4 mr-2" />
-                        決済
-                      </Button>
-                    )}
+                    ) : null}
                     
 
                   </div>
@@ -3318,7 +3534,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
               }}>
                 キャンセル
               </Button>
-              <Button onClick={handleServiceOrderSubmit}>
+              <Button onClick={handleServiceOrderSubmit} disabled={isOrderingDisabled}>
                 注文
               </Button>
             </div>
@@ -3481,7 +3697,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
               </Button>
               <Button 
                 onClick={handleFieldNomination}
-                disabled={!fieldNominationCast}
+                disabled={isOrderingDisabled || !fieldNominationCast}
               >
                 場内指名
               </Button>
@@ -3864,7 +4080,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
               </Button>
               <Button
                 onClick={handleServiceOrderSubmit}
-                disabled={!selectedService || serviceOrderQuantity < 1}
+                disabled={isOrderingDisabled || !selectedService || serviceOrderQuantity < 1}
                 className="bg-green-600 hover:bg-green-700"
               >
                 <CheckCircle className="w-4 h-4 mr-2" />
@@ -4411,7 +4627,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
               </Button>
               <Button
                 onClick={handleBottleKeepConfirm}
-                disabled={!bottleKeepData.clientName || !bottleKeepData.bottleName || !bottleKeepData.amount}
+                disabled={isOrderingDisabled || !bottleKeepData.clientName || !bottleKeepData.bottleName || !bottleKeepData.amount}
                 className="bg-amber-600 hover:bg-amber-700"
               >
                 <CheckCircle className="w-4 h-4 mr-2" />
@@ -4466,7 +4682,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
               </Button>
               <Button
                 onClick={handleVipRoomConfirm}
-                disabled={!vipRoomCount || parseInt(vipRoomCount) <= 0}
+                disabled={isOrderingDisabled || !vipRoomCount || parseInt(vipRoomCount) <= 0}
                 className="bg-purple-600 hover:bg-purple-700"
               >
                 <CheckCircle className="w-4 h-4 mr-2" />
@@ -4521,7 +4737,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
               </Button>
               <Button
                 onClick={handleKaraokeConfirm}
-                disabled={!karaokeSongCount || parseInt(karaokeSongCount) <= 0}
+                disabled={isOrderingDisabled || !karaokeSongCount || parseInt(karaokeSongCount) <= 0}
                 className="bg-pink-600 hover:bg-pink-700"
               >
                 <CheckCircle className="w-4 h-4 mr-2" />

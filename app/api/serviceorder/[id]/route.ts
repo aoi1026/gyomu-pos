@@ -140,3 +140,39 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
     client.release();
   }
 }
+
+export async function DELETE(_request: NextRequest, { params }: { params: { id: string } }) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // サービス注文を取得
+    const orderRes = await client.query(
+      `SELECT id, status FROM serviceorder WHERE id = $1 FOR UPDATE`,
+      [params.id]
+    );
+    if (orderRes.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return NextResponse.json({ success: false, error: 'サービス注文が見つかりません' }, { status: 404 });
+    }
+    const order = orderRes.rows[0];
+    
+    // 承認済みの注文は削除不可
+    if (order.status === 'accepted' || order.status === 'completed') {
+      await client.query('ROLLBACK');
+      return NextResponse.json({ success: false, error: '承認済みのサービス注文は削除できません' }, { status: 400 });
+    }
+
+    // サービス注文を削除
+    await client.query(`DELETE FROM serviceorder WHERE id = $1`, [params.id]);
+
+    await client.query('COMMIT');
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    try { await client.query('ROLLBACK'); } catch {}
+    console.error('サービス注文削除エラー:', error);
+    return NextResponse.json({ success: false, error: 'サービス注文の削除に失敗しました' }, { status: 500 });
+  } finally {
+    client.release();
+  }
+}

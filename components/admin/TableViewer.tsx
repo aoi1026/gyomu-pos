@@ -1,12 +1,20 @@
 'use client';
 
 import { useEffect, useState, useRef } from 'react';
-import { X, Clock, ShoppingCart, Utensils, Users, DollarSign, CheckCircle, Bell, Trash2 } from 'lucide-react';
+import { X, Clock, ShoppingCart, Utensils, Users, DollarSign, CheckCircle, Bell, Trash2, CreditCard, Wine, Plus, Minus, Edit2, Save, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from '@/components/ui/table';
 import { formatCurrency } from '@/lib/mock-data';
+import StripeProvider from '@/components/providers/StripeProvider';
+import StripePaymentForm from '@/components/payment/StripePaymentForm';
+import { useNotificationContext } from '@/lib/notification-context';
 
 interface TableViewerProps {
   tableId: number | null;
@@ -49,7 +57,9 @@ interface Nomination {
 }
 
 export default function TableViewer({ tableId, onClose }: TableViewerProps) {
+  const { success, error, confirm } = useNotificationContext();
   const [session, setSession] = useState<SessionData | null>(null);
+  const [tableData, setTableData] = useState<any>(null);
   const [cartOrders, setCartOrders] = useState<CartOrder[]>([]);
   const [serviceOrders, setServiceOrders] = useState<ServiceOrder[]>([]);
   const [nominations, setNominations] = useState<Nomination[]>([]);
@@ -66,6 +76,61 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
   const [loading, setLoading] = useState(true);
   const [orderRequestStatus, setOrderRequestStatus] = useState<{[key: string]: 'pending' | 'sent' | 'accepted' | 'rejected'}>({});
   const [serviceRequestStatus, setServiceRequestStatus] = useState<{[key: string]: 'pending' | 'sent' | 'accepted' | 'rejected'}>({});
+  
+  // セット延長関連
+  const [showSetExtensionDialog, setShowSetExtensionDialog] = useState(false);
+  const [extensionGuestCount, setExtensionGuestCount] = useState<string>('');
+  
+  // 同伴指名関連
+  const [showCastSelectionDialog, setShowCastSelectionDialog] = useState(false);
+  const [casts, setCasts] = useState<any[]>([]);
+  const [isCastsLoading, setIsCastsLoading] = useState(false);
+  
+  // 決済関連
+  const [showPaymentMethodDialog, setShowPaymentMethodDialog] = useState(false);
+  const [showPaymentDialog, setShowPaymentDialog] = useState(false);
+  const [showCashPaymentDialog, setShowCashPaymentDialog] = useState(false);
+  const [showStoreCreditCardPaymentDialog, setShowStoreCreditCardPaymentDialog] = useState(false);
+  const [paymentAmount, setPaymentAmount] = useState<number>(0);
+  const [cashPaymentAmount, setCashPaymentAmount] = useState<string>('');
+  const [storeCreditCardPaymentAmount, setStoreCreditCardPaymentAmount] = useState<string>('');
+  const [isPaymentCompleted, setIsPaymentCompleted] = useState<boolean>(false);
+  const [paidAmount, setPaidAmount] = useState<number>(0);
+  
+  // 合計値の手動編集関連（テーブルごとに管理）
+  const [isEditingTotal, setIsEditingTotal] = useState<boolean>(false);
+  const [manualTotals, setManualTotals] = useState<{[tableId: number]: number | null}>({});
+  const [editingTotalValue, setEditingTotalValue] = useState<string>('');
+  
+  // 現在のテーブルの手動合計値を取得
+  const getManualTotal = (): number | null => {
+    if (!tableId) return null;
+    return manualTotals[tableId] ?? null;
+  };
+  
+  // 現在のテーブルの手動合計値を設定
+  const setManualTotal = (value: number | null) => {
+    if (!tableId) return;
+    setManualTotals(prev => ({
+      ...prev,
+      [tableId]: value
+    }));
+  };
+  
+  // 注文無効化フラグ（isPaymentCompletedの宣言後に定義）
+  const isTimeExpired = setExtensionCountdown <= 0;
+  const isOrderingDisabled = isTimeExpired || isPaymentCompleted;
+  
+  // メニュー関連
+  const [menuCategories, setMenuCategories] = useState<any[]>([]);
+  const [menuItems, setMenuItems] = useState<any[]>([]);
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string>('all');
+  const [isMenuLoading, setIsMenuLoading] = useState(false);
+  const [showOrderDialog, setShowOrderDialog] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState<any>(null);
+  const [orderQuantity, setOrderQuantity] = useState<number>(1);
+  const [selectedCastForOrder, setSelectedCastForOrder] = useState<string>('none');
+  const [isForCast, setIsForCast] = useState<boolean>(false);
 
   const getNominationTypeLabel = (type: 'main' | 'inside' | 'together') => {
     switch (type) {
@@ -77,6 +142,25 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
         return '同伴指名';
       default:
         return '指名';
+    }
+  };
+
+  // テーブル情報を取得
+  const loadTableData = async () => {
+    if (!tableId) return;
+    
+    try {
+      const response = await fetch('/api/tables');
+      const result = await response.json();
+      
+      if (result.success && result.tables) {
+        const table = result.tables.find((t: any) => t.id === tableId);
+        if (table) {
+          setTableData(table);
+        }
+      }
+    } catch (err) {
+      console.error('テーブル情報取得エラー:', err);
     }
   };
 
@@ -95,11 +179,14 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
         );
         
         if (activeSession) {
-          // セッション情報が変更された場合のみ更新
+          // セッション情報が変更された場合のみ更新（set_count、set_extensions、clientの変更をチェック）
           setSession(prev => {
+            const prevExtensionsStr = JSON.stringify(prev?.set_extensions || []);
+            const newExtensionsStr = JSON.stringify(activeSession.set_extensions || []);
             if (prev?.id !== activeSession.id || 
                 prev?.set_count !== activeSession.set_count ||
-                prev?.client !== activeSession.client) {
+                prev?.client !== activeSession.client ||
+                prevExtensionsStr !== newExtensionsStr) {
               return activeSession;
             }
             return prev;
@@ -126,6 +213,15 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
               loadNominations(activeSession.id),
               loadAddCharges()
             ]);
+          }
+          
+          // 決済完了状態を確認（セッションのcostが0より大きい場合）
+          if (activeSession.cost && parseFloat(activeSession.cost) > 0) {
+            setIsPaymentCompleted(true);
+            setPaidAmount(parseFloat(activeSession.cost));
+          } else {
+            setIsPaymentCompleted(false);
+            setPaidAmount(0);
           }
         } else {
           // セッションが終了した場合
@@ -255,6 +351,28 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
     }
   };
 
+  // 追加サービスをAPIから取得
+  const loadAdditionalServices = async (sessionId: number) => {
+    try {
+      const response = await fetch(`/api/additional-services?session_id=${sessionId}`);
+      const result = await response.json();
+      if (result.success) {
+        const newServices = result.data || [];
+        // データが変更された場合のみ状態を更新（ちらつき防止）
+        setAdditionalServices(prev => {
+          const prevStr = JSON.stringify(prev.map((s: any) => ({ id: s.id, type: s.type, count: s.count, charge: s.charge, timestamp: s.timestamp })));
+          const newStr = JSON.stringify(newServices.map((s: any) => ({ id: s.id, type: s.type, count: s.count, charge: s.charge, timestamp: s.timestamp })));
+          if (prevStr !== newStr) {
+            return newServices;
+          }
+          return prev;
+        });
+      }
+    } catch (error) {
+      console.error('追加サービス取得エラー:', error);
+    }
+  };
+
   // 追加料金を取得
   const loadAddCharges = async () => {
     try {
@@ -270,6 +388,203 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
       }
     } catch (error) {
       console.error('追加料金取得エラー:', error);
+    }
+  };
+
+  // メニューデータを取得
+  const loadMenuData = async () => {
+    try {
+      setIsMenuLoading(true);
+      const [categoriesResponse, productsResponse] = await Promise.all([
+        fetch('/api/categories'),
+        fetch('/api/products')
+      ]);
+      
+      const categoriesResult = await categoriesResponse.json();
+      const productsResult = await productsResponse.json();
+      
+      if (categoriesResult.success && productsResult.success) {
+        setMenuCategories(categoriesResult.categories || []);
+        setMenuItems(productsResult.products?.filter((p: any) => Number(p.amount) > 0) || []);
+      }
+    } catch (error) {
+      console.error('メニューデータ取得エラー:', error);
+    } finally {
+      setIsMenuLoading(false);
+    }
+  };
+
+  // 注文カートから削除
+  const removeFromCart = async (orderId: string, currentStatus?: string) => {
+    try {
+      // 承認待ち（pending/sent）のみ削除可能
+      if (currentStatus && !['pending', 'sent'].includes(currentStatus)) {
+        error('エラー', '承認済みの注文は削除できません');
+        return;
+      }
+
+      const res = await fetch(`/api/salesorder/${orderId}`, { method: 'DELETE' });
+      const result = await res.json().catch(() => ({}));
+      if (!res.ok || !result.success) {
+        throw new Error(result?.error || '削除に失敗しました');
+      }
+
+      // クライアント状態を更新
+      setCartOrders(prev => prev.filter(order => order.id.toString() !== orderId));
+      setOrderRequestStatus(prev => {
+        const newStatus = { ...prev };
+        delete newStatus[orderId];
+        return newStatus;
+      });
+      success('削除完了', '承認待ちの注文を削除しました');
+    } catch (err) {
+      console.error('注文削除エラー:', err);
+      error('エラー', err instanceof Error ? err.message : '注文の削除に失敗しました');
+    }
+  };
+
+  // 指名リストから削除
+  const deleteNominationRecord = async (nominationId: string) => {
+    if (!session) return;
+    
+    confirm(
+      '指名削除',
+      'この指名を削除しますか？',
+      async () => {
+        try {
+          const response = await fetch(`/api/nominations?id=${nominationId}`, {
+            method: 'DELETE'
+          });
+          const result = await response.json();
+          if (!result.success) {
+            throw new Error(result.error || '指名の削除に失敗しました');
+          }
+          
+          success('削除完了', '指名を削除しました');
+          await loadNominations(session.id);
+        } catch (err) {
+          console.error('指名削除エラー:', err);
+          error('エラー', err instanceof Error ? err.message : '指名の削除に失敗しました');
+        }
+      }
+    );
+  };
+
+  // サービス注文カートから削除
+  const removeFromServiceOrders = async (orderId: string) => {
+    if (!session) return;
+    
+    confirm(
+      'サービス注文削除',
+      'このサービス注文を削除しますか？',
+      async () => {
+        try {
+          const res = await fetch(`/api/serviceorder/${orderId}`, { method: 'DELETE' });
+          const result = await res.json().catch(() => ({}));
+          if (!res.ok || !result.success) {
+            throw new Error(result?.error || '削除に失敗しました');
+          }
+
+          // クライアント状態を更新
+          setServiceOrders(prev => prev.filter(order => order.id.toString() !== orderId));
+          setServiceRequestStatus(prev => {
+            const newStatus = { ...prev };
+            delete newStatus[orderId];
+            return newStatus;
+          });
+          success('削除完了', 'サービス注文を削除しました');
+        } catch (err) {
+          console.error('サービス注文削除エラー:', err);
+          error('エラー', err instanceof Error ? err.message : 'サービス注文の削除に失敗しました');
+        }
+      }
+    );
+  };
+
+  // 商品をカートに追加
+  const addToCart = async (product: any) => {
+    if (!session) return;
+    if (isOrderingDisabled) {
+      error('エラー', isPaymentCompleted ? '決済が完了しているため、商品の追加はできません' : 'セット時間が終了したため、商品の追加はできません');
+      return;
+    }
+    
+    setSelectedProduct(product);
+    setOrderQuantity(1);
+    setSelectedCastForOrder('none');
+    setIsForCast(false);
+    setShowOrderDialog(true);
+    if (casts.length === 0) {
+      loadCasts();
+    }
+  };
+
+  // 注文を送信
+  const handleOrderSubmit = async () => {
+    if (!session || !selectedProduct || !tableId) return;
+    if (isOrderingDisabled) {
+      error('エラー', isPaymentCompleted ? '決済が完了しているため、商品の追加はできません' : 'セット時間が終了したため、商品の追加はできません');
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/salesorder', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          cast_id: selectedCastForOrder && selectedCastForOrder !== 'none' ? parseInt(selectedCastForOrder) : null,
+          product_id: selectedProduct.id,
+          amount: orderQuantity,
+          table_id: tableId,
+          session_id: session.id,
+          for_cast: isForCast ? 1 : 0
+        }),
+      });
+
+      const result = await response.json();
+      
+      if (result.success) {
+        success('注文完了', '注文が確定されました');
+        setShowOrderDialog(false);
+        setSelectedProduct(null);
+        setOrderQuantity(1);
+        setSelectedCastForOrder('none');
+        setIsForCast(false);
+        await loadCartOrders(session.id);
+        
+        // 即座に送信済みステータスに設定
+        if (result.data && result.data.id) {
+          setOrderRequestStatus(prev => ({ ...prev, [result.data.id]: 'sent' }));
+        }
+
+        // 管理者に通知を送信
+        try {
+          await fetch('/api/notifications', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              type: 'sales_order',
+              table_id: tableId,
+              table_label: tableData?.name || `テーブル${tableId}`,
+              cast_name: selectedCastForOrder && selectedCastForOrder !== 'none' ? 
+                casts.find(c => c.id.toString() === selectedCastForOrder)?.name || '未選択' : '未選択',
+              message: `${selectedProduct.name} x${orderQuantity} の注文が入りました`,
+              priority: 'high'
+            }),
+          });
+        } catch (notificationError) {
+          console.error('通知送信エラー:', notificationError);
+        }
+      } else {
+        error('エラー', result.error || '注文の確定に失敗しました');
+      }
+    } catch (err) {
+      console.error('注文エラー:', err);
+      error('エラー', '注文の確定に失敗しました');
     }
   };
 
@@ -303,7 +618,11 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
   // データを読み込む
   useEffect(() => {
     if (tableId) {
+      loadTableData();
       loadSession();
+      // テーブルが変更されたときに編集モードをリセット
+      setIsEditingTotal(false);
+      setEditingTotalValue('');
     }
   }, [tableId]);
 
@@ -316,6 +635,7 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
     loadCartOrders(session.id);
     loadServiceOrders(session.id);
     loadNominations(session.id);
+    loadMenuData();
     
     // 1秒ごとに更新
     const interval = setInterval(() => {
@@ -323,6 +643,7 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
       loadCartOrders(session.id);
       loadServiceOrders(session.id);
       loadNominations(session.id);
+      loadAdditionalServices(session.id);
     }, 1000); // 1秒ごとに更新
     
     return () => clearInterval(interval);
@@ -365,8 +686,385 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
     return total;
   };
 
+  // キャストリストを取得
+  const loadCasts = async () => {
+    setIsCastsLoading(true);
+    try {
+      const response = await fetch('/api/casts');
+      const result = await response.json();
+      if (result.success) {
+        setCasts(result.data || []);
+      }
+    } catch (error) {
+      console.error('キャスト取得エラー:', error);
+    } finally {
+      setIsCastsLoading(false);
+    }
+  };
+
+  // セット延長処理
+  const handleSetExtension = () => {
+    setShowSetExtensionDialog(true);
+  };
+
+  const confirmSetExtension = async () => {
+    if (!extensionGuestCount || extensionGuestCount.trim() === '' || !session) {
+      return;
+    }
+
+    const count = parseInt(extensionGuestCount);
+    if (isNaN(count) || count <= 0) {
+      return;
+    }
+
+    // 延長情報を追加
+    const newExtension = { count, timestamp: Date.now() };
+    const updatedExtensions = [...setExtensions, newExtension];
+    
+    // セットカウントを1増加
+    const newSetCount = (session.set_count || 1) + 1;
+    
+    // DBにset_countとset_extensionsを同期
+    try {
+      await fetch(`/api/sessions/${session.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          set_count: newSetCount,
+          set_extensions: updatedExtensions
+        })
+      });
+      
+      setSetExtensions(updatedExtensions);
+      setShowSetExtensionDialog(false);
+      setExtensionGuestCount('');
+      await loadSession();
+    } catch (err) {
+      console.error('セット延長エラー:', err);
+    }
+  };
+
+  // 同伴指名処理
+  const handleTogetherNomination = () => {
+    if (isOrderingDisabled) {
+      error('エラー', isPaymentCompleted ? '決済が完了しているため、指名を追加できません' : 'セット時間が終了したため、指名を追加できません');
+      return;
+    }
+    loadCasts();
+    setShowCastSelectionDialog(true);
+  };
+
+  const submitTogetherNomination = async (castId: string, castName: string) => {
+    if (!session || !tableId) return;
+    if (isOrderingDisabled) {
+      error('エラー', isPaymentCompleted ? '決済が完了しているため、指名を追加できません' : 'セット時間が終了したため、指名を追加できません');
+      return;
+    }
+
+    try {
+      // 指名料金を計算
+      let charges = addCharges;
+      if (Object.keys(charges).length === 0) {
+        const chargesResponse = await fetch('/api/add-charges');
+        const chargesResult = await chargesResponse.json();
+        if (chargesResult.success && chargesResult.charges) {
+          const chargesMap: {[key: string]: number} = {};
+          chargesResult.charges.forEach((charge: any) => {
+            chargesMap[charge.charge_name] = parseFloat(charge.value) || 0;
+          });
+          charges = chargesMap;
+          setAddCharges(chargesMap);
+        }
+      }
+
+      const mainCharge = charges['main'] || 0;
+      const togetherCharge = charges['together'] || 0;
+      const nominationCharge = mainCharge + togetherCharge;
+
+      // 指名を登録
+      const response = await fetch('/api/nominations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          castId: parseInt(castId, 10),
+          tableId: tableId,
+          sessionId: session.id,
+          typeId: 'together',
+          cost: nominationCharge
+        })
+      });
+
+      const result = await response.json();
+      if (result.success) {
+        setShowCastSelectionDialog(false);
+        await loadNominations(session.id);
+        // サービスページの総額明細に反映されるように、即座に再取得
+        await loadAdditionalServices(session.id);
+      }
+    } catch (err) {
+      console.error('同伴指名登録エラー:', err);
+    }
+  };
+
+  // 決済処理
+  const handlePayment = () => {
+    setShowPaymentMethodDialog(true);
+  };
+
+  const handleCashPayment = () => {
+    setShowPaymentMethodDialog(false);
+    setShowCashPaymentDialog(true);
+    setCashPaymentAmount('');
+  };
+
+  const handleCreditCardPayment = () => {
+    const paymentAmount = calculatePaymentAmount();
+    setPaymentAmount(paymentAmount);
+    setShowPaymentMethodDialog(false);
+    setShowPaymentDialog(true);
+  };
+
+  const handleStoreCreditCardPayment = () => {
+    setShowPaymentMethodDialog(false);
+    setShowStoreCreditCardPaymentDialog(true);
+    setStoreCreditCardPaymentAmount('');
+  };
+
+  const handlePaymentSuccess = async (paymentIntentId: string) => {
+    if (!session) return;
+    
+    try {
+      // セッションの現在のcostを取得
+      const sessionResponse = await fetch(`/api/sessions?id=${session.id}`);
+      const sessionResult = await sessionResponse.json();
+      const currentCost = sessionResult.success && sessionResult.data?.[0]?.cost ? parseFloat(sessionResult.data[0].cost) : 0;
+      const newCost = currentCost + paymentAmount;
+      
+      await fetch(`/api/sessions/${session.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cost: newCost })
+      });
+      
+      // 承認待ちの注文を拒否
+      const ordersToReject = cartOrders.filter((order: any) => {
+        const st = orderRequestStatus[order.id] || order.status;
+        return st === 'pending' || st === 'sent';
+      });
+      await Promise.all(
+        ordersToReject.map((order: any) =>
+          fetch(`/api/salesorder/${order.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: 'rejected' })
+          }).catch(err => console.error('注文拒否更新エラー:', err))
+        )
+      );
+      
+      setIsPaymentCompleted(true);
+      setPaidAmount(paymentAmount);
+      setShowPaymentDialog(false);
+      setPaymentAmount(0);
+      await loadCartOrders(session.id);
+      await loadSession();
+    } catch (err) {
+      console.error('クレジットカード決済エラー:', err);
+    }
+  };
+
+  const handlePaymentError = (errorMessage: string) => {
+    console.error('支払いエラー:', errorMessage);
+  };
+
+  const handlePaymentCancel = () => {
+    setShowPaymentDialog(false);
+    setPaymentAmount(0);
+  };
+
+  const handleCashPaymentConfirm = async () => {
+    const amount = parseFloat(cashPaymentAmount);
+    if (isNaN(amount) || amount <= 0 || !session) return;
+
+    const totalAmount = calculateTotal();
+    if (amount < totalAmount) return;
+    
+    try {
+      // セッションの現在のcostを取得
+      const sessionResponse = await fetch(`/api/sessions?id=${session.id}`);
+      const sessionResult = await sessionResponse.json();
+      const currentCost = sessionResult.success && sessionResult.data?.[0]?.cost ? parseFloat(sessionResult.data[0].cost) : 0;
+      const newCost = currentCost + amount;
+      
+      await fetch(`/api/sessions/${session.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cost: newCost })
+      });
+      
+      // 承認待ちの注文を拒否
+      const ordersToReject = cartOrders.filter((order: any) => {
+        const st = orderRequestStatus[order.id] || order.status;
+        return st === 'pending' || st === 'sent';
+      });
+      await Promise.all(
+        ordersToReject.map((order: any) =>
+          fetch(`/api/salesorder/${order.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: 'rejected' })
+          }).catch(err => console.error('注文拒否更新エラー:', err))
+        )
+      );
+      
+      setIsPaymentCompleted(true);
+      setPaidAmount(amount);
+      setShowCashPaymentDialog(false);
+      setCashPaymentAmount('');
+      await loadCartOrders(session.id);
+      await loadSession();
+    } catch (err) {
+      console.error('現金決済エラー:', err);
+    }
+  };
+
+  const handleStoreCreditCardPaymentConfirm = async () => {
+    const amount = parseFloat(storeCreditCardPaymentAmount);
+    if (isNaN(amount) || amount <= 0 || !session) return;
+
+    const totalAmount = calculateTotal();
+    if (amount < totalAmount) return;
+    
+    try {
+      // セッションの現在のcostを取得
+      const sessionResponse = await fetch(`/api/sessions?id=${session.id}`);
+      const sessionResult = await sessionResponse.json();
+      const currentCost = sessionResult.success && sessionResult.data?.[0]?.cost ? parseFloat(sessionResult.data[0].cost) : 0;
+      const newCost = currentCost + amount;
+      
+      await fetch(`/api/sessions/${session.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cost: newCost })
+      });
+      
+      // 承認待ちの注文を拒否
+      const ordersToReject = cartOrders.filter((order: any) => {
+        const st = orderRequestStatus[order.id] || order.status;
+        return st === 'pending' || st === 'sent';
+      });
+      await Promise.all(
+        ordersToReject.map((order: any) =>
+          fetch(`/api/salesorder/${order.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: 'rejected' })
+          }).catch(err => console.error('注文拒否更新エラー:', err))
+        )
+      );
+      
+      setIsPaymentCompleted(true);
+      setPaidAmount(amount);
+      setShowStoreCreditCardPaymentDialog(false);
+      setStoreCreditCardPaymentAmount('');
+      await loadCartOrders(session.id);
+      await loadSession();
+    } catch (err) {
+      console.error('店舗用クレジットカード決済エラー:', err);
+    }
+  };
+
+  const calculatePaymentAmount = () => {
+    const total = calculateTotal();
+    return Math.round(total * 1.1);
+  };
+
   // 注文合計を計算（テーブルページと同じロジック）
   const calculateTotal = () => {
+    // 手動で設定された合計値がある場合はそれを使用
+    const currentManualTotal = getManualTotal();
+    if (currentManualTotal !== null) {
+      return currentManualTotal;
+    }
+    
+    let subtotal = 0;
+    
+    // 商品の合計（承認済みのみ）
+    if (cartOrders && cartOrders.length > 0) {
+      const productTotal = cartOrders.reduce((sum, order) => {
+        const status = orderRequestStatus[order.id] || order.status;
+        if (status === 'accepted') {
+          const price = Number(order.total_price);
+          const validPrice = isNaN(price) ? 0 : price;
+          return sum + validPrice;
+        }
+        return sum;
+      }, 0);
+      subtotal += productTotal;
+    }
+    
+    // セッション開始時の料金
+    if (guestCount && guestCount.trim() !== '') {
+      const initialGuestCount = parseInt(guestCount);
+      if (!isNaN(initialGuestCount) && initialGuestCount > 0) {
+        subtotal += 5000 * initialGuestCount;
+      }
+    }
+    
+    // セット延長料金
+    setExtensions.forEach(extension => {
+      if (extension.count > 0) {
+        subtotal += 5000 * extension.count;
+      }
+    });
+    
+    // 指名料金の合計
+    subtotal += calculateNominationCharges();
+    
+    // 追加サービス料金の合計
+    additionalServices.forEach(service => {
+      subtotal += service.charge;
+    });
+    
+    // サービス手数料（10%）
+    const serviceFee = Math.round(subtotal * 0.1);
+    
+    // 合計 = 小計 + サービス手数料
+    return subtotal + serviceFee;
+  };
+
+  // 合計値の編集を開始
+  const handleStartEditTotal = () => {
+    const currentTotal = calculateTotal();
+    setEditingTotalValue(currentTotal.toString());
+    setIsEditingTotal(true);
+  };
+
+  // 合計値の編集を保存
+  const handleSaveTotal = () => {
+    const value = parseFloat(editingTotalValue);
+    if (isNaN(value) || value < 0) {
+      error('エラー', '有効な金額を入力してください');
+      return;
+    }
+    setManualTotal(value);
+    setIsEditingTotal(false);
+    success('合計値更新', `合計値を${formatCurrency(value)}に設定しました`);
+  };
+
+  // 合計値の編集をキャンセル
+  const handleCancelEditTotal = () => {
+    setIsEditingTotal(false);
+    setEditingTotalValue('');
+  };
+
+  // 合計値を自動計算に戻す
+  const handleResetTotal = () => {
+    setManualTotal(null);
+    success('合計値リセット', '合計値を自動計算に戻しました');
+  };
+
+  // 自動計算された合計値を取得（手動設定値の表示用）
+  const getAutoCalculatedTotal = () => {
     let subtotal = 0;
     
     // 商品の合計（承認済みのみ）
@@ -451,7 +1149,7 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
           ) : (
             <div className="max-w-5xl mx-auto">
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-              {/* 左側: セット延長、注文カート、サービス注文カート */}
+              {/* 左側: セット延長、メニュー、注文カート、サービス注文カート */}
               <div className="space-y-6">
                 {/* セット延長 */}
                 <Card className="bg-gradient-to-r from-purple-50 to-pink-50 border-purple-200">
@@ -471,12 +1169,108 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
                         {Math.floor(setExtensionCountdown / 60)}分 {setExtensionCountdown % 60}秒
                       </div>
                     </div>
-                    <div className="w-1/2 flex flex-col justify-center">
+                    <div className="w-1/2 flex flex-col space-y-2">
                       <div className="text-sm text-gray-700">
                         <div>セット数: {session.set_count}</div>
                         <div>人数: {session.client}名</div>
                       </div>
                     </div>
+                  </CardContent>
+                </Card>
+
+                {/* メニュー */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center">
+                      <Wine className="w-5 h-5 mr-2" />
+                      メニュー
+                    </CardTitle>
+                    <CardDescription>
+                      カテゴリを選択して製品一覧を表示
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex items-center gap-3 mb-3">
+                      <Label className="text-sm text-gray-600">カテゴリ</Label>
+                      <Select value={selectedCategoryId} onValueChange={setSelectedCategoryId}>
+                        <SelectTrigger className="w-56">
+                          <SelectValue placeholder="カテゴリを選択" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {menuCategories.filter((c) => c.id === 4).length > 0 ? (
+                            menuCategories.filter((c) => c.id === 4).map((c) => (
+                              <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>
+                            ))
+                          ) : (
+                            <SelectItem value="4">セット</SelectItem>
+                          )}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <ScrollArea className="h-[30vh] pr-1">
+                      {isMenuLoading ? (
+                        <div className="flex items-center justify-center py-8">
+                          <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
+                        </div>
+                      ) : (
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead className="w-[40%]">商品名</TableHead>
+                              <TableHead className="w-[20%]">価格</TableHead>
+                              <TableHead className="w-[20%]">SKU</TableHead>
+                              <TableHead className="w-[20%] text-right">アクション</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {(() => {
+                              const items = selectedCategoryId === 'all' 
+                                ? menuItems.filter((it: any) => Number(it.category_id) === 4)
+                                : menuItems.filter((it: any) => Number(it.category_id) === Number(selectedCategoryId));
+                              if (!items || items.length === 0) {
+                                return (
+                                  <TableRow>
+                                    <TableCell colSpan={4} className="text-center text-sm text-gray-500">
+                                      該当する商品がありません
+                                    </TableCell>
+                                  </TableRow>
+                                );
+                              }
+                              return items.map((item: any) => (
+                                <TableRow key={item.id}>
+                                  <TableCell>
+                                    <div className="flex flex-col">
+                                      <span className="font-medium">{item.name}</span>
+                                      {item.other && (
+                                        <span className="text-xs text-gray-500 truncate">{item.other}</span>
+                                      )}
+                                    </div>
+                                  </TableCell>
+                                  <TableCell className="whitespace-nowrap">{formatCurrency(item.sale_price)}</TableCell>
+                                  <TableCell>
+                                    {item.sku ? (
+                                      <Badge variant="outline" className="text-[10px] py-0 px-1">{item.sku}</Badge>
+                                    ) : (
+                                      <span className="text-gray-300 text-xs">-</span>
+                                    )}
+                                  </TableCell>
+                                  <TableCell className="text-right">
+                                    <Button 
+                                      size="sm"
+                                      onClick={() => addToCart(item)}
+                                      disabled={isOrderingDisabled}
+                                      className={isOrderingDisabled ? 'opacity-50 cursor-not-allowed' : ''}
+                                    >
+                                      <Plus className="w-4 h-4 mr-1" /> 追加
+                                    </Button>
+                                  </TableCell>
+                                </TableRow>
+                              ));
+                            })()}
+                          </TableBody>
+                        </Table>
+                      )}
+                    </ScrollArea>
                   </CardContent>
                 </Card>
 
@@ -550,6 +1344,80 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
                                 {(orderRequestStatus[order.id] as string) === 'rejected' && (
                                   <X className="w-4 h-4 text-red-500" />
                                 )}
+                                {/* 削除ボタン（承認待ちのみ表示） */}
+                                {(() => {
+                                  const st = orderRequestStatus[order.id] || order.status;
+                                  const canDelete = st === 'pending' || st === 'sent';
+                                  return canDelete ? (
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => removeFromCart(order.id.toString(), st)}
+                                      className="text-red-600 hover:text-red-700"
+                                    >
+                                      <Trash2 className="w-3 h-3" />
+                                    </Button>
+                                  ) : null;
+                                })()}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </ScrollArea>
+                    )}
+                  </CardContent>
+                </Card>
+
+              </div>
+
+              {/* 右側: 指名リスト、サービス注文カート、注文合計 */}
+              <div className="space-y-6">
+                {/* 指名リスト */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center">
+                      <Users className="w-5 h-5 mr-2" />
+                      指名リスト
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="mb-3">
+                      <Button
+                        onClick={handleTogetherNomination}
+                        size="sm"
+                        variant="outline"
+                        disabled={isOrderingDisabled}
+                        className={`w-full text-rose-700 border-rose-300 hover:bg-rose-50 ${isOrderingDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      >
+                        <Users className="w-4 h-4 mr-2" />
+                        <span className="text-xs">同伴指名</span>
+                      </Button>
+                    </div>
+                    {nominations.length === 0 ? (
+                      <div className="text-sm text-gray-500">指名はありません</div>
+                    ) : (
+                      <ScrollArea className="h-[30vh] pr-1">
+                        <div className="space-y-3">
+                          {nominations.map((nomination) => (
+                            <div key={nomination.id} className="flex items-center justify-between border border-gray-200 bg-white px-3 py-2 rounded-lg">
+                              <div>
+                                <div className="font-medium text-gray-900">{nomination.cast_name}</div>
+                                <div className="text-xs text-gray-500">
+                                  {new Date(nomination.created_at).toLocaleString('ja-JP')}
+                                </div>
+                              </div>
+                              <div className="flex items-center space-x-2">
+                                <Badge className={nominationBadgeStyle[nomination.type_id] || 'bg-gray-100 text-gray-700'}>
+                                  {getNominationTypeLabel(nomination.type_id)}
+                                </Badge>
+                                <Button 
+                                  size="sm"
+                                  variant="outline"
+                                  className="text-red-600 border-red-300 hover:bg-red-50"
+                                  onClick={() => deleteNominationRecord(nomination.id.toString())}
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                </Button>
                               </div>
                             </div>
                           ))}
@@ -622,44 +1490,15 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
                                 {(serviceRequestStatus[order.id] as string) === 'rejected' && (
                                   <X className="w-4 h-4 text-red-500" />
                                 )}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </ScrollArea>
-                    )}
-                  </CardContent>
-                </Card>
-              </div>
-
-              {/* 右側: 指名リスト、注文合計 */}
-              <div className="space-y-6">
-                {/* 指名リスト */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center">
-                      <Users className="w-5 h-5 mr-2" />
-                      指名リスト
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    {nominations.length === 0 ? (
-                      <div className="text-sm text-gray-500">指名はありません</div>
-                    ) : (
-                      <ScrollArea className="h-[30vh] pr-1">
-                        <div className="space-y-3">
-                          {nominations.map((nomination) => (
-                            <div key={nomination.id} className="flex items-center justify-between border border-gray-200 bg-white px-3 py-2 rounded-lg">
-                              <div>
-                                <div className="font-medium text-gray-900">{nomination.cast_name}</div>
-                                <div className="text-xs text-gray-500">
-                                  {new Date(nomination.created_at).toLocaleString('ja-JP')}
-                                </div>
-                              </div>
-                              <div className="flex items-center space-x-2">
-                                <Badge className={nominationBadgeStyle[nomination.type_id] || 'bg-gray-100 text-gray-700'}>
-                                  {getNominationTypeLabel(nomination.type_id)}
-                                </Badge>
+                                {/* 削除ボタン */}
+                                <Button 
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => removeFromServiceOrders(order.id.toString())}
+                                  className="text-red-600 hover:text-red-700"
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                </Button>
                               </div>
                             </div>
                           ))}
@@ -883,10 +1722,100 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
                       })()}
                       
                       {/* 合計 */}
-                      <div className="border-t pt-2 flex justify-between font-bold text-lg">
-                        <span>合計</span>
-                        <span className="text-blue-600">{formatCurrency(calculateTotal())}</span>
+                      <div className="border-t pt-2">
+                        <div className="flex justify-between items-center font-bold text-lg mb-2">
+                          <span>合計</span>
+                          <div className="flex items-center space-x-2">
+                            {isEditingTotal ? (
+                              <div className="flex items-center space-x-2">
+                                <Input
+                                  type="number"
+                                  value={editingTotalValue}
+                                  onChange={(e) => setEditingTotalValue(e.target.value)}
+                                  className="w-32 text-right font-bold"
+                                  min="0"
+                                  step="1"
+                                  autoFocus
+                                />
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={handleSaveTotal}
+                                  className="h-8 w-8 p-0"
+                                >
+                                  <Save className="w-4 h-4" />
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={handleCancelEditTotal}
+                                  className="h-8 w-8 p-0"
+                                >
+                                  <XCircle className="w-4 h-4" />
+                                </Button>
+                              </div>
+                            ) : (
+                              <div className="flex items-center space-x-2">
+                                <span className={`text-blue-600 ${getManualTotal() !== null ? 'underline decoration-dotted' : ''}`}>
+                                  {formatCurrency(calculateTotal())}
+                                </span>
+                                {getManualTotal() !== null && (
+                                  <span className="text-xs text-gray-500 font-normal">
+                                    (手動設定)
+                                  </span>
+                                )}
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={handleStartEditTotal}
+                                  className="h-8 w-8 p-0"
+                                  title="合計値を編集"
+                                >
+                                  <Edit2 className="w-4 h-4" />
+                                </Button>
+                                {getManualTotal() !== null && (
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={handleResetTotal}
+                                    className="h-8 w-8 p-0 text-xs"
+                                    title="自動計算に戻す"
+                                  >
+                                    リセット
+                                  </Button>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        {getManualTotal() !== null && (
+                          <div className="text-xs text-gray-500 mt-1">
+                            自動計算値: {formatCurrency(getAutoCalculatedTotal())}
+                          </div>
+                        )}
                       </div>
+                      
+                      {/* 決済ボタンまたは決済成功表示 */}
+                      {isPaymentCompleted ? (
+                        <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg text-center">
+                          <CheckCircle className="w-8 h-8 text-green-600 mx-auto mb-2" />
+                          <div className="font-bold text-lg text-green-700 mb-1">決済成功</div>
+                          <div className="text-sm text-green-600 mb-2">支払いが完了しました</div>
+                          <div className="text-lg font-bold text-green-700">
+                            {formatCurrency(paidAmount)}
+                          </div>
+                        </div>
+                      ) : (
+                        <Button 
+                          onClick={handlePayment}
+                          className="w-full mt-4 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
+                          size="lg"
+                          disabled={calculateTotal() <= 0 || isNaN(calculateTotal())}
+                        >
+                          <CreditCard className="w-4 h-4 mr-2" />
+                          決済
+                        </Button>
+                      )}
                     </div>
                   </CardContent>
                 </Card>
@@ -911,6 +1840,435 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
           </Button>
         </div>
       </div>
+
+      {/* セット延長ダイアログ */}
+      <Dialog open={showSetExtensionDialog} onOpenChange={setShowSetExtensionDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center">
+              <Clock className="w-5 h-5 mr-2" />
+              セット延長
+            </DialogTitle>
+            <DialogDescription>
+              延長する人数を入力してください。延長後、60分のカウントダウンが再開されます。
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="extension-guest-count">延長時の人数</Label>
+              <Input
+                id="extension-guest-count"
+                type="number"
+                min="1"
+                placeholder="人数を入力してください"
+                value={extensionGuestCount}
+                onChange={(e) => setExtensionGuestCount(e.target.value)}
+                className="w-full"
+              />
+              <p className="text-sm text-gray-500">
+                延長料金: {extensionGuestCount && !isNaN(parseInt(extensionGuestCount)) && parseInt(extensionGuestCount) > 0 
+                  ? formatCurrency(5000 * parseInt(extensionGuestCount))
+                  : formatCurrency(0)}
+              </p>
+            </div>
+          </div>
+          
+          <div className="flex justify-end space-x-3">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowSetExtensionDialog(false);
+                setExtensionGuestCount('');
+              }}
+            >
+              キャンセル
+            </Button>
+            <Button
+              onClick={confirmSetExtension}
+              disabled={!extensionGuestCount || extensionGuestCount.trim() === '' || isNaN(parseInt(extensionGuestCount)) || parseInt(extensionGuestCount) <= 0}
+              className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
+            >
+              <CheckCircle className="w-4 h-4 mr-2" />
+              延長確定
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* キャスト選択ダイアログ（同伴指名用） */}
+      <Dialog open={showCastSelectionDialog} onOpenChange={setShowCastSelectionDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center">
+              <Users className="w-5 h-5 mr-2" />
+              同伴指名 - キャスト選択
+            </DialogTitle>
+            <DialogDescription>
+              同伴指名するキャストを選択してください
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            {isCastsLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
+              </div>
+            ) : casts.length === 0 ? (
+              <div className="text-center py-8 text-gray-500">
+                キャストがありません
+              </div>
+            ) : (
+              <ScrollArea className="h-[40vh]">
+                <div className="space-y-2">
+                  {casts.map((cast) => (
+                    <Button
+                      key={cast.id}
+                      variant="outline"
+                      className="w-full justify-start"
+                      onClick={() => submitTogetherNomination(cast.id.toString(), cast.name)}
+                    >
+                      <Users className="w-4 h-4 mr-2" />
+                      {cast.name}
+                    </Button>
+                  ))}
+                </div>
+              </ScrollArea>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* 決済方法選択ダイアログ */}
+      <Dialog open={showPaymentMethodDialog} onOpenChange={setShowPaymentMethodDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center">
+              <CreditCard className="w-5 h-5 mr-2" />
+              決済方法を選択
+            </DialogTitle>
+            <DialogDescription>
+              支払い方法を選択してください
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            <Button
+              onClick={handleCreditCardPayment}
+              className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
+              size="lg"
+            >
+              <CreditCard className="w-5 h-5 mr-2" />
+              クレジットカードで決済 ({formatCurrency(calculatePaymentAmount())})
+            </Button>
+            
+            <Button
+              onClick={handleCashPayment}
+              className="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700"
+              size="lg"
+            >
+              <DollarSign className="w-5 h-5 mr-2" />
+              現金で決済 ({formatCurrency(calculateTotal())})
+            </Button>
+            
+            <Button
+              onClick={handleStoreCreditCardPayment}
+              className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
+              size="lg"
+            >
+              <CreditCard className="w-5 h-5 mr-2" />
+              店舗用クレジットカード決済 
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* 現金決済ダイアログ */}
+      <Dialog open={showCashPaymentDialog} onOpenChange={setShowCashPaymentDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center">
+              <DollarSign className="w-5 h-5 mr-2" />
+              現金決済
+            </DialogTitle>
+            <DialogDescription>
+              決済金額を入力してください
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="cash-amount">決済金額</Label>
+              <Input
+                id="cash-amount"
+                type="number"
+                min={calculateTotal()}
+                placeholder="金額を入力"
+                value={cashPaymentAmount}
+                onChange={(e) => setCashPaymentAmount(e.target.value)}
+                className="w-full"
+              />
+              <p className="text-sm text-gray-500">
+                合計金額: {formatCurrency(calculateTotal())}
+              </p>
+            </div>
+            
+            <div className="flex justify-end space-x-3">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowCashPaymentDialog(false);
+                  setCashPaymentAmount('');
+                }}
+              >
+                キャンセル
+              </Button>
+              <Button
+                onClick={handleCashPaymentConfirm}
+                disabled={!cashPaymentAmount || parseFloat(cashPaymentAmount) < calculateTotal()}
+                className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700"
+              >
+                <CheckCircle className="w-4 h-4 mr-2" />
+                確認
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* 店舗用クレジットカード決済ダイアログ */}
+      <Dialog open={showStoreCreditCardPaymentDialog} onOpenChange={setShowStoreCreditCardPaymentDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center">
+              <CreditCard className="w-5 h-5 mr-2" />
+              店舗用クレジットカード決済
+            </DialogTitle>
+            <DialogDescription>
+              決済金額を入力してください
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="store-credit-card-amount">決済金額</Label>
+              <Input
+                id="store-credit-card-amount"
+                type="number"
+                min={calculateTotal()}
+                placeholder="金額を入力"
+                value={storeCreditCardPaymentAmount}
+                onChange={(e) => setStoreCreditCardPaymentAmount(e.target.value)}
+                className="w-full"
+              />
+              <p className="text-sm text-gray-500">
+                合計金額: {formatCurrency(calculateTotal())}
+              </p>
+            </div>
+            
+            <div className="flex justify-end space-x-3">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowStoreCreditCardPaymentDialog(false);
+                  setStoreCreditCardPaymentAmount('');
+                }}
+              >
+                キャンセル
+              </Button>
+              <Button
+                onClick={handleStoreCreditCardPaymentConfirm}
+                disabled={!storeCreditCardPaymentAmount || parseFloat(storeCreditCardPaymentAmount) < calculateTotal()}
+                className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
+              >
+                <CheckCircle className="w-4 h-4 mr-2" />
+                確認
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* クレジットカード決済ダイアログ */}
+      <Dialog open={showPaymentDialog} onOpenChange={setShowPaymentDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center">
+              <CreditCard className="w-5 h-5 mr-2" />
+              クレジットカード決済
+            </DialogTitle>
+            <DialogDescription>
+              支払い金額: {formatCurrency(paymentAmount)}
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="mt-4">
+            <StripeProvider>
+              <StripePaymentForm
+                amount={paymentAmount}
+                onSuccess={handlePaymentSuccess}
+                onError={handlePaymentError}
+                onCancel={handlePaymentCancel}
+              />
+            </StripeProvider>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* 注文ダイアログ */}
+      <Dialog open={showOrderDialog} onOpenChange={setShowOrderDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center">
+              <ShoppingCart className="w-5 h-5 mr-2" />
+              商品注文
+            </DialogTitle>
+            <DialogDescription>
+              {selectedProduct?.name}の注文詳細を入力してください
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            {/* 商品情報 */}
+            <div className="p-4 bg-gray-50 rounded-lg">
+              <div className="flex justify-between items-center">
+                <div>
+                  <h3 className="font-medium text-gray-900">{selectedProduct?.name}</h3>
+                  <p className="text-sm text-gray-500">SKU: {selectedProduct?.sku || '-'}</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-lg font-bold text-blue-600">
+                    ¥{selectedProduct?.sale_price?.toLocaleString() || '0'}
+                  </p>
+                  <p className="text-sm text-gray-500">在庫: {selectedProduct?.amount || 0}個</p>
+                </div>
+              </div>
+            </div>
+
+            {/* キャスト用として注文 */}
+            <div className="flex items-center space-x-2">
+              <input
+                type="checkbox"
+                id="for-cast"
+                checked={isForCast}
+                onChange={(e) => {
+                  setIsForCast(e.target.checked);
+                  if (!e.target.checked) {
+                    setSelectedCastForOrder('none');
+                  }
+                }}
+                className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500"
+              />
+              <Label htmlFor="for-cast" className="cursor-pointer">
+                キャスト用として注文
+              </Label>
+            </div>
+
+            {/* キャスト選択 */}
+            <div className="space-y-2">
+              <Label htmlFor="cast-select" className={!isForCast ? 'text-gray-400' : ''}>
+                担当キャスト（任意）
+              </Label>
+              <Select 
+                value={selectedCastForOrder} 
+                onValueChange={setSelectedCastForOrder}
+                disabled={!isForCast}
+              >
+                <SelectTrigger className={!isForCast ? 'opacity-50 cursor-not-allowed' : ''}>
+                  <SelectValue placeholder="キャストを選択してください" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">キャストなし</SelectItem>
+                  {isCastsLoading ? (
+                    <SelectItem value="loading" disabled>
+                      読み込み中...
+                    </SelectItem>
+                  ) : (
+                    casts.map((cast) => (
+                      <SelectItem key={cast.id} value={cast.id.toString()}>
+                        {cast.name}
+                      </SelectItem>
+                    ))
+                  )}
+                </SelectContent>
+              </Select>
+              {!isForCast && (
+                <p className="text-xs text-gray-500">
+                  「キャスト用として注文」をチェックすると選択可能になります
+                </p>
+              )}
+            </div>
+
+            {/* 注文数量 */}
+            <div className="space-y-2">
+              <Label htmlFor="quantity">注文数量</Label>
+              <div className="flex items-center space-x-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setOrderQuantity(Math.max(1, orderQuantity - 1))}
+                  disabled={orderQuantity <= 1}
+                >
+                  <Minus className="w-4 h-4" />
+                </Button>
+                <Input
+                  id="quantity"
+                  type="number"
+                  min="1"
+                  max={selectedProduct?.amount || 999}
+                  value={orderQuantity}
+                  onChange={(e) => setOrderQuantity(Math.max(1, parseInt(e.target.value) || 1))}
+                  className="text-center w-20"
+                />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setOrderQuantity(Math.min(selectedProduct?.amount || 999, orderQuantity + 1))}
+                  disabled={orderQuantity >= (selectedProduct?.amount || 999)}
+                >
+                  <Plus className="w-4 h-4" />
+                </Button>
+              </div>
+              <p className="text-sm text-gray-500">
+                最大: {selectedProduct?.amount || 0}個
+              </p>
+            </div>
+
+            {/* 合計金額 */}
+            <div className="p-3 bg-blue-50 rounded-lg">
+              <div className="flex justify-between items-center">
+                <span className="font-medium">合計金額:</span>
+                <span className="text-xl font-bold text-blue-600">
+                  ¥{((selectedProduct?.sale_price || 0) * orderQuantity).toLocaleString()}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex justify-end space-x-2 pt-4">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowOrderDialog(false);
+                setSelectedProduct(null);
+                setOrderQuantity(1);
+                setSelectedCastForOrder('none');
+                setIsForCast(false);
+              }}
+            >
+              キャンセル
+            </Button>
+            <Button
+              onClick={handleOrderSubmit}
+              disabled={isOrderingDisabled || !selectedProduct || orderQuantity < 1}
+              className="bg-blue-600 hover:bg-blue-700"
+            >
+              <CheckCircle className="w-4 h-4 mr-2" />
+              注文確定
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
