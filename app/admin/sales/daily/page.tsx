@@ -125,11 +125,11 @@ export default function DailySalesPage() {
       
       lines.push('【売上サマリー】');
       lines.push('項目,値');
-      lines.push(`合計（セッション）,${salesData.sessions_total_cost || 0}`);
-      lines.push(`総売上,${salesData.total_yen || 0}`);
+      lines.push(`合計（セッション）,${Number(salesData.sessions_total_cost || 0).toFixed(2)}`);
+      lines.push(`総売上,${Number(salesData.total_yen || 0).toFixed(2)}`);
       lines.push(`来客数,${salesData.customer_count || 0}`);
       lines.push(`注文件数,${salesData.order_count || 0}`);
-      lines.push(`平均客単価,${avgValue}`);
+      lines.push(`平均客単価,${avgValue.toFixed(2)}`);
       lines.push('');
       
       // 製品別売上
@@ -138,7 +138,7 @@ export default function DailySalesPage() {
       productSales.forEach((row: any) => {
         const quantity = Math.round(Number(row.quantity) || 0);
         const sales = Number(row.total_sales) || 0;
-        lines.push(`"${row.product_name || ''}",${quantity},${sales}`);
+        lines.push(`"${row.product_name || ''}",${quantity},${sales.toFixed(2)}`);
       });
       lines.push('');
       
@@ -147,7 +147,7 @@ export default function DailySalesPage() {
       lines.push('キャスト名,売上');
       castSales.forEach((cast: any) => {
         const sales = Number(cast.total_sales) || 0;
-        lines.push(`"${cast.cast_name || ''}",${sales}`);
+        lines.push(`"${cast.cast_name || ''}",${sales.toFixed(2)}`);
       });
       lines.push('');
       
@@ -156,7 +156,7 @@ export default function DailySalesPage() {
       lines.push('テーブル名,売上');
       tableSales.forEach((row: any) => {
         const sales = Number(row.total_sales) || 0;
-        lines.push(`"${row.table_name || ''}",${sales}`);
+        lines.push(`"${row.table_name || ''}",${sales.toFixed(2)}`);
       });
       lines.push('');
       
@@ -166,7 +166,7 @@ export default function DailySalesPage() {
       hourlySales.forEach((row: any) => {
         const sales = Number(row.total_sales) || 0;
         const count = Number(row.order_count) || 0;
-        lines.push(`${row.hour || 0}時,${sales},${count}`);
+        lines.push(`${row.hour || 0}時,${sales.toFixed(2)},${count}`);
       });
       lines.push('');
       
@@ -179,8 +179,8 @@ export default function DailySalesPage() {
       
       lines.push('【分析インサイト】');
       lines.push('項目,値');
-      lines.push(`最高売上時間,${hourlySales[maxHourlyIndex]?.hour || 0}時 (${maxHourlySales})`);
-      lines.push(`最低売上時間,${hourlySales[minHourlyIndex]?.hour || 0}時 (${minHourlySales})`);
+      lines.push(`最高売上時間,${hourlySales[maxHourlyIndex]?.hour || 0}時 (${maxHourlySales.toFixed(2)})`);
+      lines.push(`最低売上時間,${hourlySales[minHourlyIndex]?.hour || 0}時 (${minHourlySales.toFixed(2)})`);
       
       const content = '\uFEFF' + lines.join('\r\n');
       const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
@@ -216,14 +216,14 @@ export default function DailySalesPage() {
         [''],
         ['【売上サマリー】'],
         ['項目', '値'],
-        ['合計（セッション）', salesData.sessions_total_cost || 0],
-        ['総売上', salesData.total_yen || 0],
+        ['合計（セッション）', Number(salesData.sessions_total_cost || 0).toFixed(2)],
+        ['総売上', Number(salesData.total_yen || 0).toFixed(2)],
         ['来客数', `${salesData.customer_count || 0}組`],
         ['注文件数', `${salesData.order_count || 0}件`],
         ['平均客単価', (() => {
           const totalCost = Number(salesData?.sessions_total_cost || 0);
           const customerCount = Number(salesData?.customer_count || 0);
-          return customerCount > 0 ? totalCost / customerCount : 0;
+          return customerCount > 0 ? (totalCost / customerCount).toFixed(2) : '0.00';
         })()],
       ];
       const summarySheet = XLSX.utils.aoa_to_sheet(summaryData);
@@ -237,7 +237,7 @@ export default function DailySalesPage() {
         productData.push([
           row.product_name || '',
           Math.round(Number(row.quantity) || 0),
-          Number(row.total_sales) || 0
+          Number(Number(row.total_sales) || 0).toFixed(2)
         ]);
       });
       const productSheet = XLSX.utils.aoa_to_sheet(productData);
@@ -250,7 +250,7 @@ export default function DailySalesPage() {
       castSales.forEach((cast: any) => {
         castData.push([
           cast.cast_name || '',
-          Number(cast.total_sales) || 0
+          Number(Number(cast.total_sales) || 0).toFixed(2)
         ]);
       });
       const castSheet = XLSX.utils.aoa_to_sheet(castData);
@@ -263,7 +263,7 @@ export default function DailySalesPage() {
       tableSales.forEach((row: any) => {
         tableData.push([
           row.table_name || '',
-          Number(row.total_sales) || 0
+          Number(Number(row.total_sales) || 0).toFixed(2)
         ]);
       });
       const tableSheet = XLSX.utils.aoa_to_sheet(tableData);
@@ -276,7 +276,7 @@ export default function DailySalesPage() {
       hourlySales.forEach((row: any) => {
         hourlyData.push([
           `${row.hour || 0}時`,
-          Number(row.total_sales) || 0,
+          Number(Number(row.total_sales) || 0).toFixed(2),
           Number(row.order_count) || 0
         ] as any);
       });
@@ -295,9 +295,9 @@ export default function DailySalesPage() {
         [''],
         ['項目', '値'],
         ['最高売上時間', `${hourlySales[maxHourlyIndex]?.hour || 0}時`],
-        ['最高売上金額', maxHourlySales],
+        ['最高売上金額', maxHourlySales.toFixed(2)],
         ['最低売上時間', `${hourlySales[minHourlyIndex]?.hour || 0}時`],
-        ['最低売上金額', minHourlySales]
+        ['最低売上金額', minHourlySales.toFixed(2)]
       ];
       const insightsSheet = XLSX.utils.aoa_to_sheet(insightsData);
       XLSX.utils.book_append_sheet(workbook, insightsSheet, '分析インサイト');

@@ -112,18 +112,18 @@ export default function MonthlySalesPage() {
       // KPI情報
       lines.push('【売上サマリー】');
       lines.push('項目,値');
-      lines.push(`合計（セッション）,${salesData.sessions_total_cost || 0}`);
-      lines.push(`月間売上,${salesData.total_yen || 0}`);
+      lines.push(`合計（セッション）,${Number(salesData.sessions_total_cost || 0).toFixed(2)}`);
+      lines.push(`月間売上,${Number(salesData.total_yen || 0).toFixed(2)}`);
       lines.push(`来客数,${salesData.customer_count || 0}`);
       lines.push(`注文件数,${salesData.order_count || 0}`);
-      lines.push(`平均客単価,${salesData.avg_customer_spend || 0}`);
+      lines.push(`平均客単価,${Number(salesData.avg_customer_spend || 0).toFixed(2)}`);
       lines.push('');
       
       // 日別売上
       lines.push('【日別売上】');
       lines.push('日付,売上');
       dailySales.forEach((d: any) => {
-        lines.push(`"${d.date}",${d.value}`);
+        lines.push(`"${d.date}",${Number(d.value).toFixed(2)}`);
       });
       lines.push('');
       
@@ -137,9 +137,9 @@ export default function MonthlySalesPage() {
       lines.push('【日別売上分析インサイト】');
       lines.push('項目,値');
       lines.push(`最高売上日,"${dailySales[maxDailyIndex]?.date || '-'}"`);
-      lines.push(`最高売上金額,${maxDailySales}`);
+      lines.push(`最高売上金額,${maxDailySales.toFixed(2)}`);
       lines.push(`最低売上日,"${dailySales[minDailyIndex]?.date || '-'}"`);
-      lines.push(`最低売上金額,${minDailySales}`);
+      lines.push(`最低売上金額,${minDailySales.toFixed(2)}`);
       lines.push('');
       
       // カテゴリ別売上
@@ -148,7 +148,7 @@ export default function MonthlySalesPage() {
       categorySales.forEach((category: any) => {
         const quantity = Math.round(Number(category.quantity) || 0);
         const sales = Number(category.total_sales) || 0;
-        lines.push(`"${category.category_name || ''}",${quantity},${sales}`);
+        lines.push(`"${category.category_name || ''}",${quantity},${sales.toFixed(2)}`);
       });
       lines.push('');
       
@@ -158,7 +158,7 @@ export default function MonthlySalesPage() {
       productSales.forEach((product: any) => {
         const quantity = Math.round(Number(product.quantity) || 0);
         const sales = Number(product.total_sales) || 0;
-        lines.push(`"${product.product_name || ''}",${quantity},${sales}`);
+        lines.push(`"${product.product_name || ''}",${quantity},${sales.toFixed(2)}`);
       });
       lines.push('');
       
@@ -167,7 +167,7 @@ export default function MonthlySalesPage() {
       lines.push('キャスト名,売上');
       castSales.forEach((cast: any) => {
         const sales = Number(cast.total_sales) || 0;
-        lines.push(`"${cast.cast_name || ''}",${sales}`);
+        lines.push(`"${cast.cast_name || ''}",${sales.toFixed(2)}`);
       });
       
       const content = '\uFEFF' + lines.join('\r\n');
@@ -204,11 +204,11 @@ export default function MonthlySalesPage() {
         [''],
         ['【売上サマリー】'],
         ['項目', '値'],
-        ['合計（セッション）', salesData.sessions_total_cost || 0],
-        ['月間売上', salesData.total_yen || 0],
+        ['合計（セッション）', Number(salesData.sessions_total_cost || 0).toFixed(2)],
+        ['月間売上', Number(salesData.total_yen || 0).toFixed(2)],
         ['来客数', `${salesData.customer_count || 0}組`],
         ['注文件数', `${salesData.order_count || 0}件`],
-        ['平均客単価', salesData.avg_customer_spend || 0],
+        ['平均客単価', Number(salesData.avg_customer_spend || 0).toFixed(2)],
       ];
       const summarySheet = XLSX.utils.aoa_to_sheet(summaryData);
       XLSX.utils.book_append_sheet(workbook, summarySheet, 'サマリー');
@@ -218,7 +218,7 @@ export default function MonthlySalesPage() {
         ['日付', '売上']
       ];
       dailySales.forEach((d: any) => {
-        dailyData.push([d.date, d.value]);
+        dailyData.push([d.date, Number(d.value).toFixed(2)]);
       });
       
       // 日別売上分析インサイトを追加
@@ -232,9 +232,9 @@ export default function MonthlySalesPage() {
       dailyData.push(['【日別売上分析インサイト】']);
       dailyData.push(['項目', '値']);
       dailyData.push(['最高売上日', dailySales[maxDailyIndex]?.date || '-']);
-      dailyData.push(['最高売上金額', maxDailySales] as any);
+      dailyData.push(['最高売上金額', maxDailySales.toFixed(2)]);
       dailyData.push(['最低売上日', dailySales[minDailyIndex]?.date || '-']);
-      dailyData.push(['最低売上金額', minDailySales] as any);
+      dailyData.push(['最低売上金額', minDailySales.toFixed(2)]);
       
       const dailySheet = XLSX.utils.aoa_to_sheet(dailyData);
       XLSX.utils.book_append_sheet(workbook, dailySheet, '日別売上');
@@ -247,7 +247,7 @@ export default function MonthlySalesPage() {
         categoryData.push([
           category.category_name || '',
           Math.round(Number(category.quantity) || 0),
-          Number(category.total_sales) || 0
+          Number(Number(category.total_sales) || 0).toFixed(2)
         ]);
       });
       const categorySheet = XLSX.utils.aoa_to_sheet(categoryData);
@@ -261,7 +261,7 @@ export default function MonthlySalesPage() {
         productData.push([
           product.product_name || '',
           Math.round(Number(product.quantity) || 0),
-          Number(product.total_sales) || 0
+          Number(Number(product.total_sales) || 0).toFixed(2)
         ]);
       });
       const productSheet = XLSX.utils.aoa_to_sheet(productData);
@@ -274,7 +274,7 @@ export default function MonthlySalesPage() {
       castSales.forEach((cast: any) => {
         castData.push([
           cast.cast_name || '',
-          Number(cast.total_sales) || 0
+          Number(Number(cast.total_sales) || 0).toFixed(2)
         ]);
       });
       const castSheet = XLSX.utils.aoa_to_sheet(castData);
