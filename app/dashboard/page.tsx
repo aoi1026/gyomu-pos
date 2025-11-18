@@ -139,12 +139,14 @@ export default function Dashboard() {
         setIsLoading(false);
         loadPendingOrderCount(); // 注文リクエスト数を取得
         loadPendingServiceOrderCount(); // サービス注文リクエスト数を取得
+        loadPendingManagerCallCount(); // スタッフ呼び出し数を取得
         
-        // 30秒ごとに注文リクエスト数を更新
+        // 5秒ごとに注文リクエスト数とスタッフ呼び出し数を更新（即時反映のため）
         const interval = setInterval(() => {
           loadPendingOrderCount();
           loadPendingServiceOrderCount();
-        }, 30000);
+          loadPendingManagerCallCount();
+        }, 5000);
         return () => clearInterval(interval);
       } catch (error) {
         console.error('管理者認証情報の解析に失敗しました:', error);

@@ -316,7 +316,7 @@ CREATE TRIGGER update_serviceorder_updated_at
 -- スタッフ呼び出し管理テーブル
 CREATE TABLE IF NOT EXISTS callmanager (
     id SERIAL PRIMARY KEY,
-    cast_id INTEGER NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+    cast_id INTEGER REFERENCES "user"(id) ON DELETE CASCADE,
     table_id INTEGER NOT NULL REFERENCES "table"(id) ON DELETE CASCADE,
     session_id INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
     calltype VARCHAR(50) NOT NULL DEFAULT 'manager',
@@ -339,6 +339,10 @@ CREATE INDEX IF NOT EXISTS idx_callmanager_created_at ON callmanager(created_at)
 CREATE TRIGGER update_callmanager_updated_at 
     BEFORE UPDATE ON callmanager 
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- 既存のcallmanagerテーブルのcast_idをNULL許可に変更（マイグレーション用）
+-- 注意: 既存のデータベースに対して実行する場合は、このALTER文を実行してください
+-- ALTER TABLE callmanager ALTER COLUMN cast_id DROP NOT NULL;
 
 -- 通知管理テーブル
 CREATE TABLE IF NOT EXISTS notifications (

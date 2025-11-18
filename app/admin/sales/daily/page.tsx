@@ -12,7 +12,7 @@ import { Label } from '@/components/ui/label';
 import {
   ArrowLeft, BarChart3, TrendingUp, TrendingDown,
   Users, ShoppingCart, DollarSign, Calendar,
-  Download, RefreshCw, Filter
+  Download, RefreshCw, Filter, FileSpreadsheet, FileText
 } from 'lucide-react';
 import {
   formatCurrency, formatDate,
@@ -20,6 +20,13 @@ import {
 } from '@/lib/mock-data';
 import { useNotificationContext } from '@/lib/notification-context';
 import { SalesChart } from '@/components/admin/SalesChart';
+import * as XLSX from 'xlsx';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 
 export default function DailySalesPage() {
   const [selectedDate, setSelectedDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
@@ -27,10 +34,11 @@ export default function DailySalesPage() {
   const [tableSales, setTableSales] = useState<any[]>([]);
   const [castSales, setCastSales] = useState<any[]>([]);
 	const [productSales, setProductSales] = useState<any[]>([]);
+  const [hourlySales, setHourlySales] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   const router = useRouter();
-  const { info } = useNotificationContext();
+  const { info, error } = useNotificationContext();
 
   useEffect(() => {
     loadSalesData(selectedDate);
@@ -42,7 +50,7 @@ export default function DailySalesPage() {
       const res = await fetch(`/api/admin/sales/daily?date=${date}`);
       const result = await res.json();
       if (result.success) {
-				const { total_sales, order_count, visitor_count, avg_cost, sessions_total_cost, table_sales, cast_sales, product_sales } = result.data;
+				const { total_sales, order_count, visitor_count, avg_cost, sessions_total_cost, table_sales, cast_sales, product_sales, hourly_sales } = result.data;
         setSalesData({
           subtotal_yen: 0,
           service_charge_yen: 0,
@@ -57,6 +65,7 @@ export default function DailySalesPage() {
         setTableSales(table_sales || []);
         setCastSales(cast_sales || []);
 				setProductSales(product_sales || []);
+        setHourlySales(hourly_sales || []);
       } else {
         setSalesData({
           subtotal_yen: 0,
@@ -72,6 +81,7 @@ export default function DailySalesPage() {
         setTableSales([]);
         setCastSales([]);
 				setProductSales([]);
+        setHourlySales([]);
       }
     } catch (e) {
       setSalesData({
@@ -88,14 +98,218 @@ export default function DailySalesPage() {
       setTableSales([]);
       setCastSales([]);
 			setProductSales([]);
+      setHourlySales([]);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const exportData = () => {
-    // CSV出力の処理（モック）
-    info('売上データをCSVで出力します', 'データをダウンロードしています。', 3000);
+  const exportToCSV = () => {
+    try {
+      if (!salesData) {
+        error('エラー', 'データが読み込まれていません');
+        return;
+      }
+
+      const lines: string[] = [];
+      
+      // ヘッダー
+      lines.push('日次売上レポート');
+      lines.push(`対象日: ${selectedDate}`);
+      lines.push('');
+      
+      // KPI情報
+      const totalCost = Number(salesData?.sessions_total_cost || 0);
+      const customerCount = Number(salesData?.customer_count || 0);
+      const avgValue = customerCount > 0 ? totalCost / customerCount : 0;
+      
+      lines.push('【売上サマリー】');
+      lines.push('項目,値');
+      lines.push(`合計（セッション）,${salesData.sessions_total_cost || 0}`);
+      lines.push(`総売上,${salesData.total_yen || 0}`);
+      lines.push(`来客数,${salesData.customer_count || 0}`);
+      lines.push(`注文件数,${salesData.order_count || 0}`);
+      lines.push(`平均客単価,${avgValue}`);
+      lines.push('');
+      
+      // 製品別売上
+      lines.push('【製品別売上】');
+      lines.push('製品名,数量,売上');
+      productSales.forEach((row: any) => {
+        const quantity = Math.round(Number(row.quantity) || 0);
+        const sales = Number(row.total_sales) || 0;
+        lines.push(`"${row.product_name || ''}",${quantity},${sales}`);
+      });
+      lines.push('');
+      
+      // キャスト別売上
+      lines.push('【キャスト別売上】');
+      lines.push('キャスト名,売上');
+      castSales.forEach((cast: any) => {
+        const sales = Number(cast.total_sales) || 0;
+        lines.push(`"${cast.cast_name || ''}",${sales}`);
+      });
+      lines.push('');
+      
+      // テーブル別売上
+      lines.push('【テーブル別売上】');
+      lines.push('テーブル名,売上');
+      tableSales.forEach((row: any) => {
+        const sales = Number(row.total_sales) || 0;
+        lines.push(`"${row.table_name || ''}",${sales}`);
+      });
+      lines.push('');
+      
+      // 時間別売上
+      lines.push('【時間別売上】');
+      lines.push('時間,売上,注文件数');
+      hourlySales.forEach((row: any) => {
+        const sales = Number(row.total_sales) || 0;
+        const count = Number(row.order_count) || 0;
+        lines.push(`${row.hour || 0}時,${sales},${count}`);
+      });
+      lines.push('');
+      
+      // 分析インサイト
+      const hourlySalesValues = hourlySales.map((h: any) => Number(h.total_sales) || 0);
+      const maxHourlySales = hourlySalesValues.length > 0 ? Math.max(...hourlySalesValues) : 0;
+      const minHourlySales = hourlySalesValues.length > 0 ? Math.min(...hourlySalesValues.filter((v: number) => v > 0)) : 0;
+      const maxHourlyIndex = hourlySalesValues.indexOf(maxHourlySales);
+      const minHourlyIndex = hourlySalesValues.indexOf(minHourlySales);
+      
+      lines.push('【分析インサイト】');
+      lines.push('項目,値');
+      lines.push(`最高売上時間,${hourlySales[maxHourlyIndex]?.hour || 0}時 (${maxHourlySales})`);
+      lines.push(`最低売上時間,${hourlySales[minHourlyIndex]?.hour || 0}時 (${minHourlySales})`);
+      
+      const content = '\uFEFF' + lines.join('\r\n');
+      const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `日次売上_${selectedDate.replace(/-/g, '')}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      
+      info('CSV出力完了', '日次売上データをCSVでダウンロードしました', 3000);
+    } catch (e) {
+      console.error('CSV出力エラー:', e);
+      error('CSV出力エラー', 'CSVの生成に失敗しました');
+    }
+  };
+
+  const exportToExcel = () => {
+    try {
+      if (!salesData) {
+        error('エラー', 'データが読み込まれていません');
+        return;
+      }
+
+      const workbook = XLSX.utils.book_new();
+      
+      // サマリーシート
+      const summaryData = [
+        ['日次売上レポート'],
+        [`対象日: ${selectedDate}`],
+        [''],
+        ['【売上サマリー】'],
+        ['項目', '値'],
+        ['合計（セッション）', salesData.sessions_total_cost || 0],
+        ['総売上', salesData.total_yen || 0],
+        ['来客数', `${salesData.customer_count || 0}組`],
+        ['注文件数', `${salesData.order_count || 0}件`],
+        ['平均客単価', (() => {
+          const totalCost = Number(salesData?.sessions_total_cost || 0);
+          const customerCount = Number(salesData?.customer_count || 0);
+          return customerCount > 0 ? totalCost / customerCount : 0;
+        })()],
+      ];
+      const summarySheet = XLSX.utils.aoa_to_sheet(summaryData);
+      XLSX.utils.book_append_sheet(workbook, summarySheet, 'サマリー');
+      
+      // 製品別売上シート
+      const productData = [
+        ['製品名', '数量', '売上']
+      ];
+      productSales.forEach((row: any) => {
+        productData.push([
+          row.product_name || '',
+          Math.round(Number(row.quantity) || 0),
+          Number(row.total_sales) || 0
+        ]);
+      });
+      const productSheet = XLSX.utils.aoa_to_sheet(productData);
+      XLSX.utils.book_append_sheet(workbook, productSheet, '製品別売上');
+      
+      // キャスト別売上シート
+      const castData = [
+        ['キャスト名', '売上']
+      ];
+      castSales.forEach((cast: any) => {
+        castData.push([
+          cast.cast_name || '',
+          Number(cast.total_sales) || 0
+        ]);
+      });
+      const castSheet = XLSX.utils.aoa_to_sheet(castData);
+      XLSX.utils.book_append_sheet(workbook, castSheet, 'キャスト別売上');
+      
+      // テーブル別売上シート
+      const tableData = [
+        ['テーブル名', '売上']
+      ];
+      tableSales.forEach((row: any) => {
+        tableData.push([
+          row.table_name || '',
+          Number(row.total_sales) || 0
+        ]);
+      });
+      const tableSheet = XLSX.utils.aoa_to_sheet(tableData);
+      XLSX.utils.book_append_sheet(workbook, tableSheet, 'テーブル別売上');
+      
+      // 時間別売上シート
+      const hourlyData = [
+        ['時間', '売上', '注文件数']
+      ];
+      hourlySales.forEach((row: any) => {
+        hourlyData.push([
+          `${row.hour || 0}時`,
+          Number(row.total_sales) || 0,
+          Number(row.order_count) || 0
+        ] as any);
+      });
+      const hourlySheet = XLSX.utils.aoa_to_sheet(hourlyData);
+      XLSX.utils.book_append_sheet(workbook, hourlySheet, '時間別売上');
+      
+      // 分析インサイトシート
+      const hourlySalesValues = hourlySales.map((h: any) => Number(h.total_sales) || 0);
+      const maxHourlySales = hourlySalesValues.length > 0 ? Math.max(...hourlySalesValues) : 0;
+      const minHourlySales = hourlySalesValues.length > 0 ? Math.min(...hourlySalesValues.filter((v: number) => v > 0)) : 0;
+      const maxHourlyIndex = hourlySalesValues.indexOf(maxHourlySales);
+      const minHourlyIndex = hourlySalesValues.indexOf(minHourlySales);
+      
+      const insightsData = [
+        ['分析インサイト'],
+        [''],
+        ['項目', '値'],
+        ['最高売上時間', `${hourlySales[maxHourlyIndex]?.hour || 0}時`],
+        ['最高売上金額', maxHourlySales],
+        ['最低売上時間', `${hourlySales[minHourlyIndex]?.hour || 0}時`],
+        ['最低売上金額', minHourlySales]
+      ];
+      const insightsSheet = XLSX.utils.aoa_to_sheet(insightsData);
+      XLSX.utils.book_append_sheet(workbook, insightsSheet, '分析インサイト');
+      
+      // ファイル出力
+      XLSX.writeFile(workbook, `日次売上_${selectedDate.replace(/-/g, '')}.xlsx`);
+      
+      info('Excel出力完了', '日次売上データをExcelでダウンロードしました', 3000);
+    } catch (e) {
+      console.error('Excel出力エラー:', e);
+      error('Excel出力エラー', 'Excelの生成に失敗しました');
+    }
   };
 
   if (isLoading) {
@@ -144,15 +358,28 @@ export default function DailySalesPage() {
                   <RefreshCw className="w-4 h-4 mr-2" />
                   <span className="hidden sm:inline">更新</span>
                 </Button>
-                {/* <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={exportData}
-                  className="flex-1 sm:flex-none"
-                >
-                  <Download className="w-4 h-4 mr-2" />
-                  <span className="hidden sm:inline">CSV出力</span>
-                </Button> */}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="flex-1 sm:flex-none"
+                    >
+                      <Download className="w-4 h-4 mr-2" />
+                      <span className="hidden sm:inline">ダウンロード</span>
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={exportToCSV}>
+                      <FileText className="w-4 h-4 mr-2" />
+                      CSV形式でダウンロード
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={exportToExcel}>
+                      <FileSpreadsheet className="w-4 h-4 mr-2" />
+                      Excel形式でダウンロード
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
             </div>
           </div>
@@ -316,6 +543,60 @@ export default function DailySalesPage() {
               </CardContent>
             </Card>
           </div>
+
+          {/* 時間別売上分析 */}
+          <Card className="mb-8">
+            <CardHeader>
+              <CardTitle>時間別売上分析</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {hourlySales.length === 0 ? (
+                  <div className="text-sm text-gray-500">データがありません</div>
+                ) : (
+                  <>
+                    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+                      {hourlySales.map((row: any) => {
+                        const sales = Number(row.total_sales) || 0;
+                        const count = Number(row.order_count) || 0;
+                        return (
+                          <div key={row.hour} className="bg-gray-50 rounded-lg p-3">
+                            <div className="text-sm font-medium text-gray-700">{row.hour || 0}時</div>
+                            <div className="text-lg font-bold text-purple-600 mt-1">{formatCurrency(sales)}</div>
+                            <div className="text-xs text-gray-500 mt-1">{count}件</div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    
+                    {/* 分析インサイト */}
+                    {(() => {
+                      const hourlySalesValues = hourlySales.map((h: any) => Number(h.total_sales) || 0);
+                      const maxHourlySales = hourlySalesValues.length > 0 ? Math.max(...hourlySalesValues) : 0;
+                      const minHourlySales = hourlySalesValues.length > 0 ? Math.min(...hourlySalesValues.filter((v: number) => v > 0)) : 0;
+                      const maxHourlyIndex = hourlySalesValues.indexOf(maxHourlySales);
+                      const minHourlyIndex = hourlySalesValues.indexOf(minHourlySales);
+                      
+                      return (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
+                          <div className="bg-green-50 border border-green-200 rounded-md p-4">
+                            <div className="text-xs text-green-700 mb-1">最高売上時間</div>
+                            <div className="text-lg font-bold text-green-900">{hourlySales[maxHourlyIndex]?.hour || 0}時</div>
+                            <div className="text-sm text-green-700 mt-1">{formatCurrency(maxHourlySales)}</div>
+                          </div>
+                          <div className="bg-red-50 border border-red-200 rounded-md p-4">
+                            <div className="text-xs text-red-700 mb-1">最低売上時間</div>
+                            <div className="text-lg font-bold text-red-900">{hourlySales[minHourlyIndex]?.hour || 0}時</div>
+                            <div className="text-sm text-red-700 mt-1">{formatCurrency(minHourlySales)}</div>
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </>
+                )}
+              </div>
+            </CardContent>
+          </Card>
 
 		  {/* Sales Chart */}
           <div className="mt-8">

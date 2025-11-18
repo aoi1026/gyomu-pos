@@ -99,6 +99,22 @@ export async function GET(request: NextRequest) {
 			[date]
 		);
 
+		// 時間別売上集計（1時間ごと）
+		const hourlySalesResult = await client.query(
+			`
+			SELECT 
+				EXTRACT(HOUR FROM so.accepted_at)::int AS hour,
+				COALESCE(SUM(so.total_price), 0) AS total_sales,
+				COUNT(*)::int AS order_count
+			FROM salesorder so
+			WHERE so.accepted_at >= $1::date
+			  AND so.accepted_at < ($1::date + INTERVAL '1 day')
+			GROUP BY EXTRACT(HOUR FROM so.accepted_at)
+			ORDER BY hour
+			`,
+			[date]
+		);
+
 		return NextResponse.json({
 			success: true,
 			data: {
@@ -110,7 +126,8 @@ export async function GET(request: NextRequest) {
 				sessions_total_cost,
 				table_sales: tableSalesResult.rows,
 				cast_sales: castSalesResult.rows,
-				product_sales: productSalesResult.rows
+				product_sales: productSalesResult.rows,
+				hourly_sales: hourlySalesResult.rows
 			}
 		});
 	} catch (error) {

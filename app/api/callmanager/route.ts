@@ -5,7 +5,7 @@ export async function POST(request: NextRequest) {
   try {
     const { cast_id, table_id, session_id, calltype } = await request.json();
 
-    if (!cast_id || !table_id || !session_id) {
+    if (!table_id || !session_id) {
       return NextResponse.json(
         { success: false, error: '必要なパラメータが不足しています' },
         { status: 400 }
@@ -66,7 +66,7 @@ export async function GET(request: NextRequest) {
           u.name as cast_name,
           t.name as table_name
         FROM callmanager cm
-        JOIN "user" u ON cm.cast_id = u.id
+        LEFT JOIN "user" u ON cm.cast_id = u.id
         JOIN "table" t ON cm.table_id = t.id
       `;
       

@@ -2214,8 +2214,8 @@ export default function TableDashboard({ params }: { params: { tableId: string }
   };
 
   const handleStaffCallConfirm = async () => {
-    if (!tableAuth || !selectedCastForStaffCall) {
-      error('エラー', 'キャストを選択してください');
+    if (!tableAuth) {
+      error('エラー', 'テーブル情報が見つかりません');
       return;
     }
 
@@ -2238,7 +2238,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          cast_id: parseInt(selectedCastForStaffCall),
+          cast_id: selectedCastForStaffCall ? parseInt(selectedCastForStaffCall) : null,
           table_id: parseInt(tableAuth.table_id),
           session_id: parseInt(sessionId),
           calltype: 'service'
@@ -2256,12 +2256,12 @@ export default function TableDashboard({ params }: { params: { tableId: string }
 
         // スタッフ呼び出し通知を作成
         try {
-          const selectedCast = casts.find(c => c.id.toString() === selectedCastForStaffCall);
+          const selectedCast = selectedCastForStaffCall ? casts.find(c => c.id.toString() === selectedCastForStaffCall) : null;
           await createOrderNotification(
             tableAuth.table_id,
             tableAuth.table_label,
             'staff_call',
-            `スタッフ呼び出し (${selectedCast?.name || 'キャスト'})`,
+            selectedCast ? `スタッフ呼び出し (${selectedCast.name})` : 'スタッフ呼び出し',
             'high',
             1
           );
@@ -4522,7 +4522,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
               </Button>
               <Button
                 onClick={handleStaffCallConfirm}
-                disabled={!selectedCastForStaffCall || isCastsLoading}
+                disabled={isCastsLoading}
                 className="bg-blue-600 hover:bg-blue-700"
               >
                 <CheckCircle className="w-4 h-4 mr-2" />

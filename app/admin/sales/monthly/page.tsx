@@ -11,13 +11,20 @@ import { Badge } from '@/components/ui/badge';
 import { 
   ArrowLeft, BarChart3, TrendingUp, TrendingDown, 
   Users, ShoppingCart, DollarSign, Calendar,
-  Download, RefreshCw, Wine, Utensils, Package
+  Download, RefreshCw, Wine, Utensils, Package, FileSpreadsheet, FileText
 } from 'lucide-react';
 import { 
   mockMonthlySales, mockMenuItems,
   formatCurrency, formatNumber, formatPercentage
 } from '@/lib/mock-data';
 import { useNotificationContext } from '@/lib/notification-context';
+import * as XLSX from 'xlsx';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 
 export default function MonthlySalesPage() {
   const now = new Date();
@@ -31,7 +38,7 @@ export default function MonthlySalesPage() {
   const [isLoading, setIsLoading] = useState(true);
   
   const router = useRouter();
-  const { info } = useNotificationContext();
+  const { info, error } = useNotificationContext();
 
   useEffect(() => {
     loadMonthlySalesData(selectedYear, selectedMonth);
@@ -88,8 +95,199 @@ export default function MonthlySalesPage() {
     }
   };
 
-  const exportData = () => {
-    info('月次売上データをCSVで出力します', 'データをダウンロードしています。', 3000);
+  const exportToCSV = () => {
+    try {
+      if (!salesData) {
+        error('エラー', 'データが読み込まれていません');
+        return;
+      }
+
+      const lines: string[] = [];
+      
+      // ヘッダー
+      lines.push('月次売上レポート');
+      lines.push(`対象期間: ${selectedYear}年${selectedMonth}月`);
+      lines.push('');
+      
+      // KPI情報
+      lines.push('【売上サマリー】');
+      lines.push('項目,値');
+      lines.push(`合計（セッション）,${salesData.sessions_total_cost || 0}`);
+      lines.push(`月間売上,${salesData.total_yen || 0}`);
+      lines.push(`来客数,${salesData.customer_count || 0}`);
+      lines.push(`注文件数,${salesData.order_count || 0}`);
+      lines.push(`平均客単価,${salesData.avg_customer_spend || 0}`);
+      lines.push('');
+      
+      // 日別売上
+      lines.push('【日別売上】');
+      lines.push('日付,売上');
+      dailySales.forEach((d: any) => {
+        lines.push(`"${d.date}",${d.value}`);
+      });
+      lines.push('');
+      
+      // 日別売上分析インサイト
+      const dailySalesValues = dailySales.map((d: any) => d.value);
+      const maxDailySales = dailySalesValues.length > 0 ? Math.max(...dailySalesValues) : 0;
+      const minDailySales = dailySalesValues.length > 0 ? Math.min(...dailySalesValues.filter((v: number) => v > 0)) : 0;
+      const maxDailyIndex = dailySalesValues.indexOf(maxDailySales);
+      const minDailyIndex = dailySalesValues.indexOf(minDailySales);
+      
+      lines.push('【日別売上分析インサイト】');
+      lines.push('項目,値');
+      lines.push(`最高売上日,"${dailySales[maxDailyIndex]?.date || '-'}"`);
+      lines.push(`最高売上金額,${maxDailySales}`);
+      lines.push(`最低売上日,"${dailySales[minDailyIndex]?.date || '-'}"`);
+      lines.push(`最低売上金額,${minDailySales}`);
+      lines.push('');
+      
+      // カテゴリ別売上
+      lines.push('【カテゴリ別売上】');
+      lines.push('カテゴリ名,数量,売上');
+      categorySales.forEach((category: any) => {
+        const quantity = Math.round(Number(category.quantity) || 0);
+        const sales = Number(category.total_sales) || 0;
+        lines.push(`"${category.category_name || ''}",${quantity},${sales}`);
+      });
+      lines.push('');
+      
+      // 製品別売上
+      lines.push('【製品別売上】');
+      lines.push('製品名,数量,売上');
+      productSales.forEach((product: any) => {
+        const quantity = Math.round(Number(product.quantity) || 0);
+        const sales = Number(product.total_sales) || 0;
+        lines.push(`"${product.product_name || ''}",${quantity},${sales}`);
+      });
+      lines.push('');
+      
+      // キャスト別売上
+      lines.push('【キャスト別売上】');
+      lines.push('キャスト名,売上');
+      castSales.forEach((cast: any) => {
+        const sales = Number(cast.total_sales) || 0;
+        lines.push(`"${cast.cast_name || ''}",${sales}`);
+      });
+      
+      const content = '\uFEFF' + lines.join('\r\n');
+      const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `月次売上_${selectedYear}${String(selectedMonth).padStart(2, '0')}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      
+      info('CSV出力完了', '月次売上データをCSVでダウンロードしました', 3000);
+    } catch (e) {
+      console.error('CSV出力エラー:', e);
+      error('CSV出力エラー', 'CSVの生成に失敗しました');
+    }
+  };
+
+  const exportToExcel = () => {
+    try {
+      if (!salesData) {
+        error('エラー', 'データが読み込まれていません');
+        return;
+      }
+
+      const workbook = XLSX.utils.book_new();
+      
+      // サマリーシート
+      const summaryData = [
+        ['月次売上レポート'],
+        [`対象期間: ${selectedYear}年${selectedMonth}月`],
+        [''],
+        ['【売上サマリー】'],
+        ['項目', '値'],
+        ['合計（セッション）', salesData.sessions_total_cost || 0],
+        ['月間売上', salesData.total_yen || 0],
+        ['来客数', `${salesData.customer_count || 0}組`],
+        ['注文件数', `${salesData.order_count || 0}件`],
+        ['平均客単価', salesData.avg_customer_spend || 0],
+      ];
+      const summarySheet = XLSX.utils.aoa_to_sheet(summaryData);
+      XLSX.utils.book_append_sheet(workbook, summarySheet, 'サマリー');
+      
+      // 日別売上シート
+      const dailyData = [
+        ['日付', '売上']
+      ];
+      dailySales.forEach((d: any) => {
+        dailyData.push([d.date, d.value]);
+      });
+      
+      // 日別売上分析インサイトを追加
+      const dailySalesValues = dailySales.map((d: any) => d.value);
+      const maxDailySales = dailySalesValues.length > 0 ? Math.max(...dailySalesValues) : 0;
+      const minDailySales = dailySalesValues.length > 0 ? Math.min(...dailySalesValues.filter((v: number) => v > 0)) : 0;
+      const maxDailyIndex = dailySalesValues.indexOf(maxDailySales);
+      const minDailyIndex = dailySalesValues.indexOf(minDailySales);
+      
+      dailyData.push(['']); // 空行
+      dailyData.push(['【日別売上分析インサイト】']);
+      dailyData.push(['項目', '値']);
+      dailyData.push(['最高売上日', dailySales[maxDailyIndex]?.date || '-']);
+      dailyData.push(['最高売上金額', maxDailySales] as any);
+      dailyData.push(['最低売上日', dailySales[minDailyIndex]?.date || '-']);
+      dailyData.push(['最低売上金額', minDailySales] as any);
+      
+      const dailySheet = XLSX.utils.aoa_to_sheet(dailyData);
+      XLSX.utils.book_append_sheet(workbook, dailySheet, '日別売上');
+      
+      // カテゴリ別売上シート
+      const categoryData = [
+        ['カテゴリ名', '数量', '売上']
+      ];
+      categorySales.forEach((category: any) => {
+        categoryData.push([
+          category.category_name || '',
+          Math.round(Number(category.quantity) || 0),
+          Number(category.total_sales) || 0
+        ]);
+      });
+      const categorySheet = XLSX.utils.aoa_to_sheet(categoryData);
+      XLSX.utils.book_append_sheet(workbook, categorySheet, 'カテゴリ別売上');
+      
+      // 製品別売上シート
+      const productData = [
+        ['製品名', '数量', '売上']
+      ];
+      productSales.forEach((product: any) => {
+        productData.push([
+          product.product_name || '',
+          Math.round(Number(product.quantity) || 0),
+          Number(product.total_sales) || 0
+        ]);
+      });
+      const productSheet = XLSX.utils.aoa_to_sheet(productData);
+      XLSX.utils.book_append_sheet(workbook, productSheet, '製品別売上');
+      
+      // キャスト別売上シート
+      const castData = [
+        ['キャスト名', '売上']
+      ];
+      castSales.forEach((cast: any) => {
+        castData.push([
+          cast.cast_name || '',
+          Number(cast.total_sales) || 0
+        ]);
+      });
+      const castSheet = XLSX.utils.aoa_to_sheet(castData);
+      XLSX.utils.book_append_sheet(workbook, castSheet, 'キャスト別売上');
+      
+      // ファイル出力
+      XLSX.writeFile(workbook, `月次売上_${selectedYear}${String(selectedMonth).padStart(2, '0')}.xlsx`);
+      
+      info('Excel出力完了', '月次売上データをExcelでダウンロードしました', 3000);
+    } catch (e) {
+      console.error('Excel出力エラー:', e);
+      error('Excel出力エラー', 'Excelの生成に失敗しました');
+    }
   };
 
   if (isLoading) {
@@ -144,15 +342,28 @@ export default function MonthlySalesPage() {
                   <RefreshCw className="w-4 h-4 mr-2" />
                   <span className="hidden sm:inline">更新</span>
                 </Button>
-                {/* <Button 
-                  variant="outline" 
-                  size="sm"
-                  onClick={exportData}
-                  className="flex-1 sm:flex-none"
-                >
-                  <Download className="w-4 h-4 mr-2" />
-                  <span className="hidden sm:inline">CSV出力</span>
-                </Button> */}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="flex-1 sm:flex-none"
+                    >
+                      <Download className="w-4 h-4 mr-2" />
+                      <span className="hidden sm:inline">ダウンロード</span>
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={exportToCSV}>
+                      <FileText className="w-4 h-4 mr-2" />
+                      CSV形式でダウンロード
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={exportToExcel}>
+                      <FileSpreadsheet className="w-4 h-4 mr-2" />
+                      Excel形式でダウンロード
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
             </div>
           </div>

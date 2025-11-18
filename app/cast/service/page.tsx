@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import RoleGate from '@/components/auth/RoleGate';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -15,14 +15,29 @@ import {
 } from 'lucide-react';
 import { useNotificationContext } from '@/lib/notification-context';
 
+interface Table {
+  id: number;
+  name: string;
+  status: string;
+}
+
+interface Session {
+  id: number;
+  table_id: number;
+  status: number;
+}
+
 export default function ServicePage() {
   const [selectedTable, setSelectedTable] = useState<string>('');
   const [serviceType, setServiceType] = useState<string>('');
   const [note, setNote] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [tables, setTables] = useState<Table[]>([]);
+  const [sessions, setSessions] = useState<Session[]>([]);
+  const [isLoadingTables, setIsLoadingTables] = useState(true);
   
   const router = useRouter();
-  const { success, info } = useNotificationContext();
+  const { success, info, error } = useNotificationContext();
 
   const serviceTypes = [
     { id: 'staff_call', name: 'スタッフ呼び出し', icon: Bell, color: 'blue' },
@@ -33,13 +48,41 @@ export default function ServicePage() {
     { id: 'other', name: 'その他', icon: MessageCircle, color: 'gray' }
   ];
 
-  const mockTables = [
-    { id: 'table-1', name: 'テーブル1', status: 'occupied' },
-    { id: 'table-2', name: 'テーブル2', status: 'occupied' },
-    { id: 'table-3', name: 'テーブル3', status: 'available' },
-    { id: 'table-4', name: 'VIPルーム1', status: 'occupied' },
-    { id: 'table-5', name: 'カウンター席', status: 'occupied' }
-  ];
+  // テーブル一覧を取得
+  useEffect(() => {
+    const loadTables = async () => {
+      try {
+        const response = await fetch('/api/tables');
+        const result = await response.json();
+        
+        if (result.success && result.tables) {
+          setTables(result.tables);
+        }
+      } catch (err) {
+        console.error('テーブル一覧取得エラー:', err);
+      } finally {
+        setIsLoadingTables(false);
+      }
+    };
+
+    const loadSessions = async () => {
+      try {
+        const response = await fetch('/api/sessions');
+        const result = await response.json();
+        
+        if (result.success && result.data) {
+          // アクティブなセッション（status=1）のみを取得
+          const activeSessions = result.data.filter((s: Session) => s.status === 1);
+          setSessions(activeSessions);
+        }
+      } catch (err) {
+        console.error('セッション一覧取得エラー:', err);
+      }
+    };
+
+    loadTables();
+    loadSessions();
+  }, []);
 
   const getServiceIcon = (type: string) => {
     const service = serviceTypes.find(s => s.id === type);
@@ -60,23 +103,77 @@ export default function ServicePage() {
     setIsSubmitting(true);
     
     try {
-      // サービスリクエスト処理のモック
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
       const service = serviceTypes.find(s => s.id === serviceType);
-      const table = mockTables.find(t => t.id === selectedTable);
+      const tableId = parseInt(selectedTable);
+      const table = tables.find(t => t.id === tableId);
       
-      console.log('サービスリクエスト:', {
-        table: table?.name,
-        service: service?.name,
-        note: note,
-        timestamp: new Date().toISOString()
-      });
+      // 選択されたテーブルのアクティブなセッションを取得
+      const activeSession = sessions.find(s => s.table_id === tableId);
       
-      success(
-        'サービスリクエストを送信しました',
-        `${table?.name}で${service?.name}のリクエストを受け付けました。スタッフが対応いたします。`
-      );
+      if (!activeSession) {
+        error('エラー', '選択されたテーブルにアクティブなセッションがありません。');
+        setIsSubmitting(false);
+        return;
+      }
+
+      // スタッフ呼び出しの場合
+      if (serviceType === 'staff_call') {
+        // callmanagerテーブルにスタッフ呼び出しを保存
+        const response = await fetch('/api/callmanager', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            cast_id: null, // キャスト選択なし
+            table_id: tableId,
+            session_id: activeSession.id,
+            calltype: 'service'
+          }),
+        });
+
+        const result = await response.json();
+        
+        if (result.success) {
+          // 通知を作成
+          try {
+            await fetch('/api/notifications', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                type: 'staff_call',
+                table_id: tableId,
+                table_label: table?.name || `テーブル${tableId}`,
+                cast_name: null,
+                message: `スタッフ呼び出し${note ? `: ${note}` : ''}`,
+                priority: 'high'
+              }),
+            });
+          } catch (notificationError) {
+            console.error('通知送信エラー:', notificationError);
+          }
+
+          success(
+            'スタッフ呼び出しを送信しました',
+            `${table?.name}でスタッフ呼び出しのリクエストを受け付けました。管理者に通知されました。`
+          );
+        } else {
+          error('エラー', result.error || 'スタッフ呼び出しの送信に失敗しました。');
+          setIsSubmitting(false);
+          return;
+        }
+      } else {
+        // その他のサービス注文の場合（将来の実装用）
+        // 現在はモック処理
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        success(
+          'サービスリクエストを送信しました',
+          `${table?.name}で${service?.name}のリクエストを受け付けました。スタッフが対応いたします。`
+        );
+      }
       
       // フォームリセット
       setSelectedTable('');
@@ -85,6 +182,7 @@ export default function ServicePage() {
       
     } catch (err) {
       console.error('サービスリクエストエラー:', err);
+      error('エラー', 'サービスリクエストの送信に失敗しました。');
     } finally {
       setIsSubmitting(false);
     }
@@ -133,14 +231,23 @@ export default function ServicePage() {
                   value={selectedTable}
                   onChange={(e) => setSelectedTable(e.target.value)}
                   className="w-full mt-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  disabled={isLoadingTables}
                 >
                   <option value="">テーブルを選択してください</option>
-                  {mockTables.filter(table => table.status === 'occupied').map(table => (
-                    <option key={table.id} value={table.id}>
-                      {table.name}
-                    </option>
-                  ))}
+                  {tables
+                    .filter(table => {
+                      // アクティブなセッションがあるテーブルのみ表示
+                      return sessions.some(s => s.table_id === table.id);
+                    })
+                    .map(table => (
+                      <option key={table.id} value={table.id.toString()}>
+                        {table.name}
+                      </option>
+                    ))}
                 </select>
+                {isLoadingTables && (
+                  <p className="text-sm text-gray-500 mt-1">テーブル一覧を読み込み中...</p>
+                )}
               </div>
 
               {/* サービス種別選択 */}
