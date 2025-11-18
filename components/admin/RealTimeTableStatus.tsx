@@ -1,13 +1,16 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent } from '@/components/ui/card';
-import { Users, Clock, ExternalLink, Circle } from 'lucide-react';
+import { Users, Clock, ExternalLink, Circle, Play } from 'lucide-react';
 import TableViewer from './TableViewer';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { useNotificationContext } from '@/lib/notification-context';
 
 interface TableData {
   id: number;
@@ -35,6 +38,11 @@ export default function RealTimeTableStatus({ open, onClose }: RealTimeTableStat
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('all');
   const [viewingTableId, setViewingTableId] = useState<number | null>(null);
+  const [showStartSessionDialog, setShowStartSessionDialog] = useState(false);
+  const [selectedTableForSession, setSelectedTableForSession] = useState<TableData | null>(null);
+  const [guestCount, setGuestCount] = useState<string>('');
+  const [isStartingSession, setIsStartingSession] = useState(false);
+  const { success, error } = useNotificationContext();
 
   useEffect(() => {
     if (open) {
@@ -78,6 +86,88 @@ export default function RealTimeTableStatus({ open, onClose }: RealTimeTableStat
     setViewingTableId(null);
     // Refresh data when returning from viewer
     fetchData();
+  };
+
+  const handleStartSessionClick = (table: TableData) => {
+    setSelectedTableForSession(table);
+    setGuestCount('');
+    setShowStartSessionDialog(true);
+  };
+
+  const handleStartSession = async () => {
+    if (!selectedTableForSession || !guestCount || guestCount.trim() === '') {
+      error('エラー', '人数を入力してください');
+      return;
+    }
+    
+    // 人数がテーブルの定員を超えていないかチェック
+    const numGuestCount = parseInt(guestCount);
+    if (isNaN(numGuestCount) || numGuestCount <= 0) {
+      error('エラー', '有効な人数を入力してください');
+      return;
+    }
+    
+    if (selectedTableForSession.capacity && numGuestCount > selectedTableForSession.capacity) {
+      error('エラー', `人数はテーブルの定員（${selectedTableForSession.capacity}名）以下で入力してください`);
+      return;
+    }
+    
+    setIsStartingSession(true);
+    
+    try {
+      // データベースにセッションを作成 (status=1, client=人数)
+      const response = await fetch('/api/sessions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          table_id: selectedTableForSession.id,
+          cost: 0,
+          client: numGuestCount,
+          status: 1
+        }),
+      });
+
+      const result = await response.json();
+      
+      if (!result.success) {
+        throw new Error(result.error || 'セッション作成に失敗しました');
+      }
+
+      // DBにset_extensionsを初期化（空配列）
+      try {
+        await fetch(`/api/sessions/${result.data.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ set_extensions: [] })
+        });
+      } catch (err) {
+        console.error('set_extensions初期化エラー:', err);
+      }
+
+      success('セッション開始', 'セッションを開始しました');
+      
+      // モーダルを閉じる
+      setShowStartSessionDialog(false);
+      const tableId = selectedTableForSession.id;
+      setSelectedTableForSession(null);
+      setGuestCount('');
+      
+      // データを更新
+      await fetchData();
+      
+      // TableViewerを開く（テーブル [id] - 管理者ビュー）
+      setViewingTableId(tableId);
+      
+      // メインダイアログを閉じる
+      onClose();
+    } catch (err) {
+      console.error('セッション開始エラー:', err);
+      error('エラー', `セッション開始に失敗しました: ${err instanceof Error ? err.message : '不明なエラー'}`);
+    } finally {
+      setIsStartingSession(false);
+    }
   };
 
   const filteredTables = tables.filter(table => {
@@ -135,8 +225,18 @@ export default function RealTimeTableStatus({ open, onClose }: RealTimeTableStat
               </Button>
             </div>
           ) : (
-            <div className="flex items-center justify-center py-4 text-gray-400 text-sm">
-              利用可能
+            <div className="space-y-2 mt-3">
+              <div className="flex items-center justify-center py-2 text-gray-400 text-sm">
+                利用可能
+              </div>
+              <Button
+                size="sm"
+                className="w-full mt-2 bg-green-600 hover:bg-green-700"
+                onClick={() => handleStartSessionClick(table)}
+              >
+                <Play className="w-4 h-4 mr-2" />
+                セッション開始
+              </Button>
             </div>
           )}
         </CardContent>
@@ -210,6 +310,68 @@ export default function RealTimeTableStatus({ open, onClose }: RealTimeTableStat
 
       {/* Embedded Table Viewer */}
       <TableViewer tableId={viewingTableId} onClose={handleCloseViewer} />
+
+      {/* セッション開始モーダル */}
+      <Dialog open={showStartSessionDialog} onOpenChange={setShowStartSessionDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>セッション開始</DialogTitle>
+            <DialogDescription>
+              {selectedTableForSession?.name}でセッションを開始します。人数を入力してください。
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="guest-count">人数</Label>
+              <Input
+                id="guest-count"
+                type="number"
+                min="1"
+                max={selectedTableForSession?.capacity || 999}
+                value={guestCount}
+                onChange={(e) => setGuestCount(e.target.value)}
+                placeholder="人数を入力"
+                disabled={isStartingSession}
+              />
+              {selectedTableForSession?.capacity && (
+                <p className="text-sm text-gray-500">
+                  定員: {selectedTableForSession.capacity}名
+                </p>
+              )}
+            </div>
+            <div className="flex justify-end space-x-2">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowStartSessionDialog(false);
+                  setSelectedTableForSession(null);
+                  setGuestCount('');
+                }}
+                disabled={isStartingSession}
+              >
+                キャンセル
+              </Button>
+              <Button
+                onClick={handleStartSession}
+                disabled={isStartingSession || !guestCount || guestCount.trim() === ''}
+                className="bg-green-600 hover:bg-green-700"
+              >
+                {isStartingSession ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                    開始中...
+                  </>
+                ) : (
+                  <>
+                    <Play className="w-4 h-4 mr-2" />
+                    セッション開始
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

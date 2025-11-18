@@ -369,21 +369,96 @@ export default function TableDashboard({ params }: { params: { tableId: string }
   const [session, setSession] = useState<{id: number; created_at: string; set_count: number; set_extensions?: Array<{ count: number; timestamp: number }>} | null>(null);
   
   const loadSession = async () => {
-    if (!tableAuth || !isSessionActive) return;
-    const sessionId = localStorage.getItem('current_session_id');
-    if (!sessionId) return;
+    if (!tableAuth) return;
     
     try {
       const response = await fetch(`/api/sessions`);
       const result = await response.json();
       if (result.success) {
-        const activeSession = result.data.find((s: any) => s.id.toString() === sessionId && s.status === 1);
-        if (activeSession) {
-          setSession(activeSession);
+        // 該当テーブルのアクティブなセッション（status=1）を検索
+        const tableActiveSession = result.data.find((s: any) => 
+          s.table_id === parseInt(tableAuth.table_id) && s.status === 1
+        );
+        
+        const sessionId = localStorage.getItem('current_session_id');
+        
+        // 管理者ページからセッションが開始された場合（isSessionActiveがfalseだが、アクティブなセッションが存在する）
+        if (!isSessionActive && tableActiveSession) {
+          // セッションを開始
+          localStorage.setItem('current_session_id', tableActiveSession.id.toString());
+          localStorage.setItem('set_count', (tableActiveSession.set_count || 1).toString());
+          if (tableActiveSession.client) {
+            localStorage.setItem('guest_count', tableActiveSession.client.toString());
+            setGuestCount(tableActiveSession.client.toString());
+          }
+          setIsSessionActive(true);
+          setSession(tableActiveSession);
+          
           // セット延長情報を同期
-          if (activeSession.set_extensions) {
-            setSetExtensions(activeSession.set_extensions);
-            localStorage.setItem('set_extensions', JSON.stringify(activeSession.set_extensions));
+          if (tableActiveSession.set_extensions) {
+            setSetExtensions(tableActiveSession.set_extensions);
+            localStorage.setItem('set_extensions', JSON.stringify(tableActiveSession.set_extensions));
+          }
+          
+          // テーブルセッションを開始
+          try {
+            const updatedTable = await startTableSession(tableAuth.table_id);
+            setTableAuth(updatedTable);
+          } catch (err) {
+            console.error('テーブルセッション開始エラー:', err);
+          }
+          
+          success('セッション開始', 'セッションが開始されました');
+          return;
+        }
+        
+        // 既存のセッションIDがある場合
+        if (sessionId) {
+          const sessionData = result.data.find((s: any) => s.id.toString() === sessionId);
+          
+          // セッションが終了した場合（status=0）を検出
+          if (sessionData && sessionData.status === 0) {
+            // セッションから退出
+            setIsSessionActive(false);
+            localStorage.removeItem('current_session_id');
+            localStorage.removeItem('set_count');
+            localStorage.removeItem('guest_count');
+            localStorage.removeItem('set_extensions');
+            localStorage.removeItem('set_extension_start_time');
+            localStorage.removeItem('set_extension_total_seconds');
+            setSetExtensions([]);
+            setSetExtensionCountdown(0);
+            setSession(null);
+            
+            // テーブルセッションを終了
+            try {
+              const updatedTable = await endTableSession(tableAuth.table_id);
+              setTableAuth(updatedTable);
+            } catch (err) {
+              console.error('テーブルセッション終了エラー:', err);
+            }
+            
+            // 状態をリセット
+            setCartOrders([]);
+            setServiceOrders([]);
+            setNominations([]);
+            setNominationCharges([]);
+            setAdditionalServices([]);
+            setIsPaymentCompleted(false);
+            setCurrentNominationType(null);
+            
+            success('セッション終了', 'セッションが終了されました');
+            return;
+          }
+          
+          const activeSession = result.data.find((s: any) => s.id.toString() === sessionId && s.status === 1);
+          if (activeSession) {
+            setSession(activeSession);
+            // セット延長情報を同期
+            if (activeSession.set_extensions) {
+              setSetExtensions(activeSession.set_extensions);
+              localStorage.setItem('set_extensions', JSON.stringify(activeSession.set_extensions));
+            }
           }
         }
       }
@@ -419,20 +494,20 @@ export default function TableDashboard({ params }: { params: { tableId: string }
     return () => clearInterval(interval);
   }, [isSessionActive, session]);
   
-  // セッション情報を定期的に取得（セット延長情報の同期のため）
+  // セッション情報を定期的に取得（セット延長情報の同期のため、および管理者ページからセッション開始を検出）
   useEffect(() => {
-    if (!isSessionActive) return;
+    if (!tableAuth) return;
     
     // 初回読み込み
     loadSession();
     
-    // 3秒ごとに更新（セット延長情報の同期）
+    // 3秒ごとに更新（セット延長情報の同期、および管理者ページからセッション開始を検出）
     const interval = setInterval(() => {
       loadSession();
     }, 3000);
     
     return () => clearInterval(interval);
-  }, [isSessionActive, tableAuth]);
+  }, [tableAuth]);
 
   const loadCasts = async () => {
     try {

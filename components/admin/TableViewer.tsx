@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useRef } from 'react';
-import { X, Clock, ShoppingCart, Utensils, Users, DollarSign, CheckCircle, Bell, Trash2, CreditCard, Wine, Plus, Minus, Edit2, Save, XCircle } from 'lucide-react';
+import { X, Clock, ShoppingCart, Utensils, Users, DollarSign, CheckCircle, Bell, Trash2, CreditCard, Wine, Plus, Minus, Edit2, Save, XCircle, LogOut } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -588,6 +588,57 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
     }
   };
 
+  // セッション終了機能
+  const endSession = async () => {
+    if (!session || !tableId) return;
+    
+    confirm(
+      'セッション終了',
+      'セッションを終了しますか？',
+      async () => {
+        try {
+          const endAt = new Date().toISOString();
+          
+          // データベースにセッション終了情報を保存
+          const response = await fetch(`/api/sessions/${session.id}`, {
+            method: 'PATCH',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              end_at: endAt,
+              set_count: session.set_count || 1,
+              client: session.client || undefined,
+              status: 0,
+              set_extensions: []
+            }),
+          });
+
+          const result = await response.json();
+          if (!result.success) {
+            throw new Error(result.error || 'セッション終了情報の保存に失敗しました');
+          }
+
+          // セッションをクリア
+          setSession(null);
+          
+          success('セッション終了', 'セッションを終了しました');
+          
+          // 親コンポーネントに通知してデータを更新
+          if (onClose) {
+            // 少し待ってから閉じる（成功メッセージを表示するため）
+            setTimeout(() => {
+              onClose();
+            }, 1000);
+          }
+        } catch (err) {
+          console.error('セッション終了エラー:', err);
+          error('エラー', `セッション終了に失敗しました: ${err instanceof Error ? err.message : '不明なエラー'}`);
+        }
+      }
+    );
+  };
+
   // セット延長カウントダウンタイマー（リアルタイム更新）
   useEffect(() => {
     if (!session) return;
@@ -623,30 +674,45 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
       // テーブルが変更されたときに編集モードをリセット
       setIsEditingTotal(false);
       setEditingTotalValue('');
+      // セッションが新しく作成された場合に備えて、少し待ってから再読み込み
+      const timeout = setTimeout(() => {
+        loadSession();
+      }, 500);
+      return () => clearTimeout(timeout);
     }
   }, [tableId]);
 
   // 定期的にデータを更新（リアルタイム更新）
   useEffect(() => {
-    if (!session) return;
+    if (!tableId) return;
     
-    // 初回読み込み
-    loadSession();
-    loadCartOrders(session.id);
-    loadServiceOrders(session.id);
-    loadNominations(session.id);
-    loadMenuData();
-    
-    // 1秒ごとに更新
-    const interval = setInterval(() => {
+    // セッションがない場合でも、新しく作成されたセッションを検出するために定期的にチェック
+    const checkSessionInterval = setInterval(() => {
       loadSession();
+    }, 1000); // 1秒ごとにセッションをチェック
+    
+    if (session) {
+      // セッションがある場合、注文データも更新
       loadCartOrders(session.id);
       loadServiceOrders(session.id);
       loadNominations(session.id);
-      loadAdditionalServices(session.id);
-    }, 1000); // 1秒ごとに更新
+      loadMenuData();
+      
+      // 注文データを1秒ごとに更新
+      const dataUpdateInterval = setInterval(() => {
+        loadCartOrders(session.id);
+        loadServiceOrders(session.id);
+        loadNominations(session.id);
+        loadAdditionalServices(session.id);
+      }, 1000);
+      
+      return () => {
+        clearInterval(checkSessionInterval);
+        clearInterval(dataUpdateInterval);
+      };
+    }
     
-    return () => clearInterval(interval);
+    return () => clearInterval(checkSessionInterval);
   }, [session?.id, tableId]);
 
   if (!tableId) return null;
@@ -1126,14 +1192,27 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
             <h2 className="text-xl font-bold">テーブル {tableId} - 管理者ビュー</h2>
             <p className="text-sm text-blue-100">セッション情報と注文状況を表示</p>
           </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={onClose}
-            className="text-white hover:bg-white/20 rounded-full"
-          >
-            <X className="w-6 h-6" />
-          </Button>
+          <div className="flex items-center space-x-2">
+            {session && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={endSession}
+                className="bg-white/10 hover:bg-white/20 text-white border-white/30"
+              >
+                <LogOut className="w-4 h-4 mr-2" />
+                セッション終了
+              </Button>
+            )}
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={onClose}
+              className="text-white hover:bg-white/20 rounded-full"
+            >
+              <X className="w-6 h-6" />
+            </Button>
+          </div>
         </div>
 
         {/* Content */}
