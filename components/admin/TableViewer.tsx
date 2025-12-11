@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useRef } from 'react';
-import { X, Clock, ShoppingCart, Utensils, Users, DollarSign, CheckCircle, Bell, Trash2, CreditCard, Wine, Plus, Minus, Edit2, Save, XCircle, LogOut } from 'lucide-react';
+import { X, Clock, ShoppingCart, Utensils, Users, DollarSign, CheckCircle, Bell, Trash2, CreditCard, Wine, Plus, Minus, Edit2, Save, XCircle, LogOut, Pause, Play } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -29,6 +29,9 @@ interface SessionData {
   status: number;
   created_at: string;
   set_extensions?: Array<{ count: number; timestamp: number }>;
+  is_paused?: boolean;
+  paused_at?: string;
+  paused_elapsed?: number;
 }
 
 interface CartOrder {
@@ -179,13 +182,16 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
         );
         
         if (activeSession) {
-          // セッション情報が変更された場合のみ更新（set_count、set_extensions、clientの変更をチェック）
+          // セッション情報が変更された場合のみ更新（set_count、set_extensions、client、停止/再開状態の変更をチェック）
           setSession(prev => {
             const prevExtensionsStr = JSON.stringify(prev?.set_extensions || []);
             const newExtensionsStr = JSON.stringify(activeSession.set_extensions || []);
             if (prev?.id !== activeSession.id || 
                 prev?.set_count !== activeSession.set_count ||
                 prev?.client !== activeSession.client ||
+                prev?.is_paused !== activeSession.is_paused ||
+                prev?.paused_at !== activeSession.paused_at ||
+                prev?.paused_elapsed !== activeSession.paused_elapsed ||
                 prevExtensionsStr !== newExtensionsStr) {
               return activeSession;
             }
@@ -651,7 +657,21 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
       // セッション開始時刻から経過時間を計算
       const sessionStart = new Date(session.created_at).getTime();
       const now = Date.now();
-      const elapsed = Math.floor((now - sessionStart) / 1000);
+      let elapsed = Math.floor((now - sessionStart) / 1000);
+      
+      // 停止時間を考慮
+      const pausedElapsed = session.paused_elapsed || 0;
+      if (session.is_paused && session.paused_at) {
+        // 現在停止中の場合、停止開始時刻からの経過時間を累積停止時間に追加
+        const pausedAt = new Date(session.paused_at).getTime();
+        const currentPauseTime = Math.floor((now - pausedAt) / 1000);
+        // 停止中は経過時間から累積停止時間と現在の停止時間を減算（タイマーは進まない）
+        elapsed -= (pausedElapsed + currentPauseTime);
+      } else {
+        // 停止していない場合、累積停止時間のみを減算
+        elapsed -= pausedElapsed;
+      }
+      
       const remaining = Math.max(0, totalSeconds - elapsed);
       
       setSetExtensionCountdown(remaining);
@@ -660,7 +680,7 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
     // 初回更新
     updateCountdown();
     
-    // 1秒ごとに更新
+    // 停止中の場合でも表示を更新するため、1秒ごとに更新
     const interval = setInterval(updateCountdown, 1000);
     
     return () => clearInterval(interval);
@@ -775,11 +795,19 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
 
   const confirmSetExtension = async () => {
     if (!extensionGuestCount || extensionGuestCount.trim() === '' || !session) {
+      error('エラー', '人数を入力してください');
       return;
     }
 
     const count = parseInt(extensionGuestCount);
     if (isNaN(count) || count <= 0) {
+      error('エラー', '有効な人数を入力してください');
+      return;
+    }
+
+    // 人数がテーブルの定員を超えていないかチェック
+    if (tableData && tableData.capacity && count > tableData.capacity) {
+      error('エラー', `人数はテーブルの定員（${tableData.capacity}名）以下で入力してください`);
       return;
     }
 
@@ -792,7 +820,7 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
     
     // DBにset_countとset_extensionsを同期
     try {
-      await fetch(`/api/sessions/${session.id}`, {
+      const response = await fetch(`/api/sessions/${session.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
@@ -800,13 +828,148 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
           set_extensions: updatedExtensions
         })
       });
+
+      const result = await response.json();
+      if (!result.success) {
+        throw new Error(result.error || 'セット延長に失敗しました');
+      }
       
       setSetExtensions(updatedExtensions);
       setShowSetExtensionDialog(false);
       setExtensionGuestCount('');
       await loadSession();
+      success('セット延長', `${count}名でセットを延長しました（60分追加）`);
     } catch (err) {
       console.error('セット延長エラー:', err);
+      error('エラー', err instanceof Error ? err.message : 'セット延長に失敗しました');
+    }
+  };
+
+  // 1セットキャンセル処理
+  const handleCancelSet = async () => {
+    if (!session) {
+      error('エラー', 'セッション情報が見つかりません');
+      return;
+    }
+
+    if (setExtensions.length === 0) {
+      error('エラー', 'キャンセルできるセットがありません');
+      return;
+    }
+
+    if (setExtensionCountdown < 3600) {
+      error('エラー', '現在の時間が60分未満のため、セットをキャンセルできません');
+      return;
+    }
+
+    confirm(
+      'セットキャンセル',
+      '最後のセット延長をキャンセルしますか？60分が減算され、料金も差し引かれます。',
+      async () => {
+        // 最後の延長情報を取得
+        const lastExtension = setExtensions[setExtensions.length - 1];
+        
+        // 延長情報から最後の項目を削除
+        const updatedExtensions = setExtensions.slice(0, -1);
+        
+        // セットカウントを1減少
+        const newSetCount = Math.max(1, (session.set_count || 1) - 1);
+        
+        // DBにset_countとset_extensionsを同期
+        try {
+          await fetch(`/api/sessions/${session.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              set_count: newSetCount,
+              set_extensions: updatedExtensions
+            })
+          });
+          
+          setSetExtensions(updatedExtensions);
+          await loadSession();
+          success('セットキャンセル', `${lastExtension.count}名分のセットをキャンセルしました`);
+        } catch (err) {
+          console.error('セットキャンセルエラー:', err);
+          error('エラー', 'セットキャンセルに失敗しました');
+        }
+      }
+    );
+  };
+
+  // 停止/再開処理
+  const handlePauseResume = async () => {
+    if (!session) {
+      error('エラー', 'セッション情報が見つかりません');
+      return;
+    }
+    
+    const isCurrentlyPaused = session.is_paused || false;
+    const pausedElapsed = session.paused_elapsed || 0;
+    const now = new Date().toISOString();
+    
+    if (isCurrentlyPaused) {
+      // 再開: 停止時間を累積に追加
+      const pausedAt = session.paused_at ? new Date(session.paused_at).getTime() : Date.now();
+      const currentPauseDuration = Math.floor((Date.now() - pausedAt) / 1000);
+      const newPausedElapsed = pausedElapsed + currentPauseDuration;
+      
+      try {
+        const response = await fetch(`/api/sessions/${session.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            is_paused: false,
+            paused_at: null,
+            paused_elapsed: newPausedElapsed
+          })
+        });
+        
+        const result = await response.json();
+        if (!result.success) {
+          throw new Error(result.error || '再開に失敗しました');
+        }
+        
+        // 即座にセッション情報を更新して状態を反映
+        await loadSession();
+        // 状態が確実に反映されるように少し待ってから再度更新
+        setTimeout(() => {
+          loadSession();
+        }, 500);
+        success('再開', 'セット延長タイマーを再開しました');
+      } catch (err) {
+        console.error('再開エラー:', err);
+        error('エラー', err instanceof Error ? err.message : 'タイマーの再開に失敗しました');
+      }
+    } else {
+      // 停止: 停止時刻を記録
+      try {
+        const response = await fetch(`/api/sessions/${session.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            is_paused: true,
+            paused_at: now,
+            paused_elapsed: pausedElapsed
+          })
+        });
+        
+        const result = await response.json();
+        if (!result.success) {
+          throw new Error(result.error || '停止に失敗しました');
+        }
+        
+        // 即座にセッション情報を更新して状態を反映
+        await loadSession();
+        // 状態が確実に反映されるように少し待ってから再度更新
+        setTimeout(() => {
+          loadSession();
+        }, 500);
+        success('停止', 'セット延長タイマーを停止しました');
+      } catch (err) {
+        console.error('停止エラー:', err);
+        error('エラー', err instanceof Error ? err.message : 'タイマーの停止に失敗しました');
+      }
     }
   };
 
@@ -1241,18 +1404,57 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
                   <CardContent className="space-x-2 flex">
                     <div className="w-1/2 bg-white rounded-md p-3 border border-purple-200 text-center">
                       <div className="text-[11px] text-gray-500 mb-1">残り時間</div>
-                      <div className="text-2xl font-bold text-purple-600 leading-none">
+                      <div className={`text-2xl font-bold leading-none ${session?.is_paused ? 'text-gray-400' : 'text-purple-600'}`}>
                         {Math.floor(setExtensionCountdown / 60)}:{(setExtensionCountdown % 60).toString().padStart(2, '0')}
                       </div>
                       <div className="text-[11px] text-gray-500 mt-1">
                         {Math.floor(setExtensionCountdown / 60)}分 {setExtensionCountdown % 60}秒
                       </div>
+                      {session?.is_paused && (
+                        <div className="text-xs text-orange-600 mt-1 font-semibold">停止中</div>
+                      )}
                     </div>
                     <div className="w-1/2 flex flex-col space-y-2">
                       <div className="text-sm text-gray-700">
                         <div>セット数: {session.set_count}</div>
                         <div>人数: {session.client}名</div>
                       </div>
+                      <Button
+                        onClick={handleSetExtension}
+                        size="sm"
+                        className="flex-1 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
+                      >
+                        <Clock className="w-4 h-4 mr-1" />
+                        <span className="text-xs font-semibold">セット延長</span>
+                      </Button>
+                      <Button
+                        onClick={handleCancelSet}
+                        size="sm"
+                        disabled={setExtensionCountdown < 3600 || setExtensions.length === 0}
+                        variant="outline"
+                        className="flex-1 border-red-300 text-red-600 hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <X className="w-4 h-4 mr-1" />
+                        <span className="text-xs font-semibold">1セットキャンセル</span>
+                      </Button>
+                      <Button
+                        onClick={handlePauseResume}
+                        size="sm"
+                        variant={session?.is_paused ? "default" : "outline"}
+                        className={session?.is_paused ? "flex-1 bg-green-600 hover:bg-green-700 text-white" : "flex-1 border-purple-300 text-purple-700 hover:bg-purple-50"}
+                      >
+                        {session?.is_paused ? (
+                          <>
+                            <Play className="w-4 h-4 mr-1" />
+                            <span className="text-xs font-semibold">再開</span>
+                          </>
+                        ) : (
+                          <>
+                            <Pause className="w-4 h-4 mr-1" />
+                            <span className="text-xs font-semibold">停止</span>
+                          </>
+                        )}
+                      </Button>
                     </div>
                   </CardContent>
                 </Card>

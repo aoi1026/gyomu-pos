@@ -7,9 +7,9 @@ export async function PATCH(
 ) {
   const client = await pool.connect();
   try {
-    const { cost, end_at, set_count, client: clientCount, status, set_extensions } = await request.json();
+    const { cost, end_at, set_count, client: clientCount, status, set_extensions, is_paused, paused_at, paused_elapsed } = await request.json();
     
-    if (cost === undefined && !end_at && set_count === undefined && clientCount === undefined && status === undefined && set_extensions === undefined) {
+    if (cost === undefined && !end_at && set_count === undefined && clientCount === undefined && status === undefined && set_extensions === undefined && is_paused === undefined && !paused_at && paused_elapsed === undefined) {
       return NextResponse.json(
         { success: false, error: '更新するデータが必要です' },
         { status: 400 }
@@ -53,6 +53,24 @@ export async function PATCH(
     if (set_extensions !== undefined) {
       updateFields.push(`set_extensions = $${paramIndex}::jsonb`);
       values.push(JSON.stringify(set_extensions));
+      paramIndex++;
+    }
+
+    if (is_paused !== undefined) {
+      updateFields.push(`is_paused = $${paramIndex}`);
+      values.push(is_paused);
+      paramIndex++;
+    }
+
+    if (paused_at !== undefined) {
+      updateFields.push(`paused_at = $${paramIndex}`);
+      values.push(paused_at);
+      paramIndex++;
+    }
+
+    if (paused_elapsed !== undefined) {
+      updateFields.push(`paused_elapsed = $${paramIndex}`);
+      values.push(paused_elapsed);
       paramIndex++;
     }
 

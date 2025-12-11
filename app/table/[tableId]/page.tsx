@@ -12,7 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { 
   Wine, Users, ShoppingCart, DollarSign, Clock, 
   ArrowLeft, Plus, Minus, Trash2, CheckCircle,
-  AlertCircle, User, CreditCard, X, Bell, Utensils, Coffee, XCircle, AlertTriangle
+  AlertCircle, User, CreditCard, X, Bell, Utensils, Coffee, XCircle, AlertTriangle, Pause, Play
 } from 'lucide-react';
 import { getCurrentTable, TableAuth, startTableSession, endTableSession } from '@/lib/table-auth';
 import { mockCustomers, formatCurrency } from '@/lib/mock-data';
@@ -366,7 +366,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
   }, [tableAuth, isSessionActive]);
 
   // セッション情報を取得
-  const [session, setSession] = useState<{id: number; created_at: string; set_count: number; set_extensions?: Array<{ count: number; timestamp: number }>} | null>(null);
+  const [session, setSession] = useState<{id: number; created_at: string; set_count: number; set_extensions?: Array<{ count: number; timestamp: number }>; is_paused?: boolean; paused_at?: string; paused_elapsed?: number} | null>(null);
   
   const loadSession = async () => {
     if (!tableAuth) return;
@@ -479,7 +479,20 @@ export default function TableDashboard({ params }: { params: { tableId: string }
       // セッション開始時刻から経過時間を計算
       const sessionStart = new Date(session.created_at).getTime();
       const now = Date.now();
-      const elapsed = Math.floor((now - sessionStart) / 1000);
+      let elapsed = Math.floor((now - sessionStart) / 1000);
+      
+      // 停止時間を考慮
+      const pausedElapsed = session.paused_elapsed || 0;
+      if (session.is_paused && session.paused_at) {
+        // 現在停止中の場合、停止開始時刻からの経過時間を追加
+        const pausedAt = new Date(session.paused_at).getTime();
+        const currentPauseTime = Math.floor((now - pausedAt) / 1000);
+        elapsed -= (pausedElapsed + currentPauseTime);
+      } else {
+        // 停止していない場合、累積停止時間を減算
+        elapsed -= pausedElapsed;
+      }
+      
       const remaining = Math.max(0, totalSeconds - elapsed);
       
       setSetExtensionCountdown(remaining);
@@ -488,7 +501,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
     // 初回更新
     updateCountdown();
     
-    // 1秒ごとに更新
+    // 1秒ごとに更新（停止中でも更新して表示を維持）
     const interval = setInterval(updateCountdown, 1000);
     
     return () => clearInterval(interval);
@@ -1231,16 +1244,8 @@ export default function TableDashboard({ params }: { params: { tableId: string }
       // セッション情報を取得してカウントダウンを更新
       await loadSession();
       
-      // DBにset_extensionsを初期化（空配列）
-      try {
-        await fetch(`/api/sessions/${result.data.id}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ set_extensions: [] })
-        });
-      } catch (err) {
-        console.error('set_extensions初期化エラー:', err);
-      }
+      // セッション作成時に既に停止状態で初期化されているため、追加の初期化は不要
+      // （API側でis_paused: true, paused_at: 現在時刻, paused_elapsed: 0, set_extensions: []が設定済み）
       // 指名料金をクリア
       setNominationCharges([]);
       localStorage.removeItem('nomination_charges');
@@ -1583,6 +1588,72 @@ export default function TableDashboard({ params }: { params: { tableId: string }
     
     // 指名リストを再読み込み
     await loadNominations();
+  };
+
+  // 停止/再開処理
+  const handlePauseResume = async () => {
+    if (!session) {
+      error('エラー', 'セッション情報が見つかりません');
+      return;
+    }
+    
+    const isCurrentlyPaused = session.is_paused || false;
+    const pausedElapsed = session.paused_elapsed || 0;
+    const now = new Date().toISOString();
+    
+    if (isCurrentlyPaused) {
+      // 再開: 停止時間を累積に追加
+      const pausedAt = session.paused_at ? new Date(session.paused_at).getTime() : Date.now();
+      const currentPauseDuration = Math.floor((Date.now() - pausedAt) / 1000);
+      const newPausedElapsed = pausedElapsed + currentPauseDuration;
+      
+      try {
+        const response = await fetch(`/api/sessions/${session.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            is_paused: false,
+            paused_at: null,
+            paused_elapsed: newPausedElapsed
+          })
+        });
+        
+        const result = await response.json();
+        if (!result.success) {
+          throw new Error(result.error || '再開に失敗しました');
+        }
+        
+        await loadSession();
+        success('再開', 'セット延長タイマーを再開しました');
+      } catch (err) {
+        console.error('再開エラー:', err);
+        error('エラー', err instanceof Error ? err.message : 'タイマーの再開に失敗しました');
+      }
+    } else {
+      // 停止: 停止時刻を記録
+      try {
+        const response = await fetch(`/api/sessions/${session.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            is_paused: true,
+            paused_at: now,
+            paused_elapsed: pausedElapsed
+          })
+        });
+        
+        const result = await response.json();
+        if (!result.success) {
+          throw new Error(result.error || '停止に失敗しました');
+        }
+        
+        await loadSession();
+        success('停止', 'セット延長タイマーを停止しました');
+      } catch (err) {
+        console.error('停止エラー:', err);
+        error('エラー', err instanceof Error ? err.message : 'タイマーの停止に失敗しました');
+      }
+    }
   };
 
   // 1セットキャンセル処理
@@ -3074,12 +3145,15 @@ export default function TableDashboard({ params }: { params: { tableId: string }
               <CardContent className="space-x-2 flex">
                 <div className="w-1/2 bg-white rounded-md p-3 border border-purple-200 text-center">
                   <div className="text-[11px] text-gray-500 mb-1">残り時間</div>
-                  <div className="text-2xl font-bold text-purple-600 leading-none">
+                  <div className={`text-2xl font-bold leading-none ${session?.is_paused ? 'text-gray-400' : 'text-purple-600'}`}>
                     {Math.floor(setExtensionCountdown / 60)}:{(setExtensionCountdown % 60).toString().padStart(2, '0')}
                   </div>
                   <div className="text-[11px] text-gray-500 mt-1">
                     {Math.floor(setExtensionCountdown / 60)}分 {setExtensionCountdown % 60}秒
                   </div>
+                  {session?.is_paused && (
+                    <div className="text-xs text-orange-600 mt-1 font-semibold">停止中</div>
+                  )}
                 </div>
 
                 <div className="w-1/2 flex flex-col space-y-2">
@@ -3104,6 +3178,24 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                   >
                     <X className="w-4 h-4 mr-1" />
                     <span className="text-xs font-semibold">1セットキャンセル</span>
+                  </Button>
+                  <Button
+                    onClick={handlePauseResume}
+                    size="sm"
+                    variant={session?.is_paused ? "default" : "outline"}
+                    className={session?.is_paused ? "flex-1 bg-green-600 hover:bg-green-700 text-white" : "flex-1 border-purple-300 text-purple-700 hover:bg-purple-50"}
+                  >
+                    {session?.is_paused ? (
+                      <>
+                        <Play className="w-4 h-4 mr-1" />
+                        <span className="text-xs font-semibold">再開</span>
+                      </>
+                    ) : (
+                      <>
+                        <Pause className="w-4 h-4 mr-1" />
+                        <span className="text-xs font-semibold">停止</span>
+                      </>
+                    )}
                   </Button>
                 </div>
               </CardContent>

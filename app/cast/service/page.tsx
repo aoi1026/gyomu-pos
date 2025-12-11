@@ -11,8 +11,9 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { 
   ArrowLeft, Bell, Users, Utensils, Wine, 
-  Coffee, Phone, MessageCircle, Clock, CheckCircle
+  Coffee, Phone, MessageCircle, Clock, CheckCircle, X
 } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { useNotificationContext } from '@/lib/notification-context';
 
 interface Table {
@@ -25,6 +26,12 @@ interface Session {
   id: number;
   table_id: number;
   status: number;
+  set_count?: number;
+  set_extensions?: Array<{ count: number; timestamp: number }>;
+  created_at?: string;
+  is_paused?: boolean;
+  paused_at?: string;
+  paused_elapsed?: number;
 }
 
 export default function ServicePage() {
@@ -35,9 +42,13 @@ export default function ServicePage() {
   const [tables, setTables] = useState<Table[]>([]);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [isLoadingTables, setIsLoadingTables] = useState(true);
+  const [selectedSessionForExtension, setSelectedSessionForExtension] = useState<Session | null>(null);
+  const [showSetExtensionDialog, setShowSetExtensionDialog] = useState(false);
+  const [extensionGuestCount, setExtensionGuestCount] = useState<string>('');
+  const [showCancelSetDialog, setShowCancelSetDialog] = useState(false);
   
   const router = useRouter();
-  const { success, info, error } = useNotificationContext();
+  const { success, info, error, confirm } = useNotificationContext();
 
   const serviceTypes = [
     { id: 'staff_call', name: 'スタッフ呼び出し', icon: Bell, color: 'blue' },
@@ -82,6 +93,13 @@ export default function ServicePage() {
 
     loadTables();
     loadSessions();
+    
+    // 定期的にセッション情報を更新（リアルタイム同期）
+    const interval = setInterval(() => {
+      loadSessions();
+    }, 3000);
+    
+    return () => clearInterval(interval);
   }, []);
 
   const getServiceIcon = (type: string) => {
@@ -185,6 +203,106 @@ export default function ServicePage() {
       error('エラー', 'サービスリクエストの送信に失敗しました。');
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  // セット延長処理
+  const handleSetExtension = (session: Session) => {
+    setSelectedSessionForExtension(session);
+    setExtensionGuestCount('');
+    setShowSetExtensionDialog(true);
+  };
+
+  const confirmSetExtension = async () => {
+    if (!selectedSessionForExtension || !extensionGuestCount || extensionGuestCount.trim() === '') {
+      error('エラー', '人数を入力してください');
+      return;
+    }
+
+    const count = parseInt(extensionGuestCount);
+    if (isNaN(count) || count <= 0) {
+      error('エラー', '有効な人数を入力してください');
+      return;
+    }
+
+    try {
+      const currentExtensions = selectedSessionForExtension.set_extensions || [];
+      const newExtension = { count, timestamp: Date.now() };
+      const updatedExtensions = [...currentExtensions, newExtension];
+      const newSetCount = (selectedSessionForExtension.set_count || 1) + 1;
+
+      const response = await fetch(`/api/sessions/${selectedSessionForExtension.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          set_count: newSetCount,
+          set_extensions: updatedExtensions
+        })
+      });
+
+      const result = await response.json();
+      if (!result.success) {
+        throw new Error(result.error || 'セット延長に失敗しました');
+      }
+
+      await loadSessions();
+      setShowSetExtensionDialog(false);
+      setExtensionGuestCount('');
+      setSelectedSessionForExtension(null);
+      success('セット延長', `${count}名でセットを延長しました（60分追加）`);
+    } catch (err) {
+      console.error('セット延長エラー:', err);
+      error('エラー', err instanceof Error ? err.message : 'セット延長に失敗しました');
+    }
+  };
+
+  // 1セットキャンセル処理
+  const handleCancelSet = (session: Session) => {
+    const extensions = session.set_extensions || [];
+    if (extensions.length === 0) {
+      error('エラー', 'キャンセルできるセットがありません');
+      return;
+    }
+
+    setSelectedSessionForExtension(session);
+    setShowCancelSetDialog(true);
+  };
+
+  const confirmCancelSet = async () => {
+    if (!selectedSessionForExtension) return;
+
+    const extensions = selectedSessionForExtension.set_extensions || [];
+    if (extensions.length === 0) {
+      error('エラー', 'キャンセルできるセットがありません');
+      return;
+    }
+
+    try {
+      const lastExtension = extensions[extensions.length - 1];
+      const updatedExtensions = extensions.slice(0, -1);
+      const newSetCount = Math.max(1, (selectedSessionForExtension.set_count || 1) - 1);
+
+      const response = await fetch(`/api/sessions/${selectedSessionForExtension.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          set_count: newSetCount,
+          set_extensions: updatedExtensions
+        })
+      });
+
+      const result = await response.json();
+      if (!result.success) {
+        throw new Error(result.error || 'セットキャンセルに失敗しました');
+      }
+
+      await loadSessions();
+      setShowCancelSetDialog(false);
+      setSelectedSessionForExtension(null);
+      success('セットキャンセル', `${lastExtension.count}名分のセットをキャンセルしました`);
+    } catch (err) {
+      console.error('セットキャンセルエラー:', err);
+      error('エラー', err instanceof Error ? err.message : 'セットキャンセルに失敗しました');
     }
   };
 
@@ -312,6 +430,62 @@ export default function ServicePage() {
             </CardContent>
           </Card>
 
+          {/* セット延長管理 */}
+          <Card className="mb-8">
+            <CardHeader>
+              <CardTitle className="flex items-center">
+                <Clock className="w-5 h-5 mr-2" />
+                セット延長管理
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {sessions.length === 0 ? (
+                  <div className="text-sm text-gray-500 text-center py-4">
+                    アクティブなセッションがありません
+                  </div>
+                ) : (
+                  sessions.map((session) => {
+                    const table = tables.find(t => t.id === session.table_id);
+                    const extensions = session.set_extensions || [];
+                    return (
+                      <div key={session.id} className="border border-gray-200 rounded-lg p-4 bg-white">
+                        <div className="flex items-center justify-between mb-3">
+                          <div>
+                            <h3 className="font-semibold text-gray-900">{table?.name || `テーブル${session.table_id}`}</h3>
+                            <p className="text-sm text-gray-500">
+                              セット数: {session.set_count || 1} | 延長回数: {extensions.length}
+                            </p>
+                          </div>
+                          <div className="flex space-x-2">
+                            <Button
+                              onClick={() => handleSetExtension(session)}
+                              size="sm"
+                              className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
+                            >
+                              <Clock className="w-4 h-4 mr-1" />
+                              セット延長
+                            </Button>
+                            <Button
+                              onClick={() => handleCancelSet(session)}
+                              size="sm"
+                              variant="outline"
+                              disabled={extensions.length === 0}
+                              className="border-red-300 text-red-600 hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              <X className="w-4 h-4 mr-1" />
+                              1セットキャンセル
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
           {/* 最近のリクエスト履歴（モック） */}
           <Card>
             <CardHeader>
@@ -350,6 +524,82 @@ export default function ServicePage() {
             </CardContent>
           </Card>
         </div>
+
+        {/* セット延長ダイアログ */}
+        <Dialog open={showSetExtensionDialog} onOpenChange={setShowSetExtensionDialog}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>セット延長</DialogTitle>
+              <DialogDescription>
+                {selectedSessionForExtension && (() => {
+                  const table = tables.find(t => t.id === selectedSessionForExtension.table_id);
+                  return `${table?.name || `テーブル${selectedSessionForExtension.table_id}`}のセットを延長します`;
+                })()}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="extension-guest-count">人数</Label>
+                <Input
+                  id="extension-guest-count"
+                  type="number"
+                  min="1"
+                  value={extensionGuestCount}
+                  onChange={(e) => setExtensionGuestCount(e.target.value)}
+                  placeholder="人数を入力"
+                />
+              </div>
+              <div className="flex justify-end space-x-2">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setShowSetExtensionDialog(false);
+                    setExtensionGuestCount('');
+                    setSelectedSessionForExtension(null);
+                  }}
+                >
+                  キャンセル
+                </Button>
+                <Button
+                  onClick={confirmSetExtension}
+                  disabled={!extensionGuestCount || extensionGuestCount.trim() === ''}
+                  className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
+                >
+                  延長
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* 1セットキャンセル確認ダイアログ */}
+        <Dialog open={showCancelSetDialog} onOpenChange={setShowCancelSetDialog}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>セットキャンセル</DialogTitle>
+              <DialogDescription>
+                最後のセット延長をキャンセルしますか？60分が減算され、料金も差し引かれます。
+              </DialogDescription>
+            </DialogHeader>
+            <div className="flex justify-end space-x-2 py-4">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowCancelSetDialog(false);
+                  setSelectedSessionForExtension(null);
+                }}
+              >
+                キャンセル
+              </Button>
+              <Button
+                onClick={confirmCancelSet}
+                variant="destructive"
+              >
+                キャンセル実行
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
     </RoleGate>
   );

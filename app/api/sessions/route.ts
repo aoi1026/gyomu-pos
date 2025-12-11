@@ -57,9 +57,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // セッション開始時は初期状態で停止状態にする（is_paused: true, paused_at: 現在時刻）
+    const now = new Date().toISOString();
     const result = await client.query(
-      'INSERT INTO sessions (table_id, cost, set_count, client, status) VALUES ($1, $2, $3, $4, $5) RETURNING *',
-      [table_id, cost || 0, 1, clientCount || 0, status !== undefined ? status : 1]
+      'INSERT INTO sessions (table_id, cost, set_count, client, status, is_paused, paused_at, paused_elapsed, set_extensions) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb) RETURNING *',
+      [table_id, cost || 0, 1, clientCount || 0, status !== undefined ? status : 1, true, now, 0, JSON.stringify([])]
     );
 
     return NextResponse.json({

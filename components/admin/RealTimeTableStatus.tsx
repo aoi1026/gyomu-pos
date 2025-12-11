@@ -135,16 +135,8 @@ export default function RealTimeTableStatus({ open, onClose }: RealTimeTableStat
         throw new Error(result.error || 'セッション作成に失敗しました');
       }
 
-      // DBにset_extensionsを初期化（空配列）
-      try {
-        await fetch(`/api/sessions/${result.data.id}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ set_extensions: [] })
-        });
-      } catch (err) {
-        console.error('set_extensions初期化エラー:', err);
-      }
+      // セッション作成時に既に停止状態で初期化されているため、追加の初期化は不要
+      // （API側でis_paused: true, paused_at: 現在時刻, paused_elapsed: 0, set_extensions: []が設定済み）
 
       success('セッション開始', 'セッションを開始しました');
       
