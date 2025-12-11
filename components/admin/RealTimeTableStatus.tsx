@@ -25,6 +25,9 @@ interface SessionData {
   set_count: number;
   status: number;
   created_at: string;
+  is_paused?: boolean;
+  paused_at?: string;
+  paused_elapsed?: number;
 }
 
 interface RealTimeTableStatusProps {
@@ -172,9 +175,55 @@ export default function RealTimeTableStatus({ open, onClose }: RealTimeTableStat
     return true; // 'all'
   });
 
+  // 残り時間を計算する関数
+  const calculateRemainingTime = (session: SessionData): number => {
+    const setCount = session.set_count || 1;
+    const setDuration = 3600; // 1セット = 3600秒
+    const totalSeconds = setCount * setDuration;
+    
+    // セッション開始時刻から経過時間を計算
+    const sessionStart = new Date(session.created_at).getTime();
+    const now = Date.now();
+    let elapsed = Math.floor((now - sessionStart) / 1000);
+    
+    // 停止時間を考慮
+    const pausedElapsed = session.paused_elapsed || 0;
+    if (session.is_paused && session.paused_at) {
+      // 現在停止中の場合、停止開始時刻からの経過時間を累積停止時間に追加
+      const pausedAt = new Date(session.paused_at).getTime();
+      const currentPauseTime = Math.floor((now - pausedAt) / 1000);
+      elapsed -= (pausedElapsed + currentPauseTime);
+    } else {
+      // 停止していない場合、累積停止時間のみを減算
+      elapsed -= pausedElapsed;
+    }
+    
+    return Math.max(0, totalSeconds - elapsed);
+  };
+
+  // 終了時間を計算する関数
+  const calculateEndTime = (session: SessionData): Date => {
+    const setCount = session.set_count || 1;
+    const setDuration = 3600; // 1セット = 3600秒
+    const totalSeconds = setCount * setDuration;
+    
+    const sessionStart = new Date(session.created_at).getTime();
+    const pausedElapsed = session.paused_elapsed || 0;
+    
+    // 終了時間 = 開始時間 + 総時間 + 累積停止時間
+    const endTime = new Date(sessionStart + (totalSeconds + pausedElapsed) * 1000);
+    
+    return endTime;
+  };
+
   const renderTableCard = (table: TableData) => {
     const session = getTableSession(table.id);
     const isEmpty = !session;
+    
+    // 残り時間と終了時間を計算
+    const remainingSeconds = session ? calculateRemainingTime(session) : 0;
+    const endTime = session ? calculateEndTime(session) : null;
+    const startTime = session ? new Date(session.created_at) : null;
 
     return (
       <Card 
@@ -203,9 +252,22 @@ export default function RealTimeTableStatus({ open, onClose }: RealTimeTableStat
                 <Users className="w-4 h-4 mr-2" />
                 <span>顧客数: {session.client || 0}名</span>
               </div>
+              {startTime && (
+                <div className="text-xs text-gray-600">
+                  <div>開始: {startTime.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}</div>
+                </div>
+              )}
+              {endTime && (
+                <div className="text-xs text-gray-600">
+                  <div>終了予定: {endTime.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}</div>
+                </div>
+              )}
               <div className="flex items-center text-sm text-gray-700">
                 <Clock className="w-4 h-4 mr-2" />
-                <span>セット延長: {session.set_count}回</span>
+                <span>
+                  残り時間: {Math.floor(remainingSeconds / 60)}:{(remainingSeconds % 60).toString().padStart(2, '0')}
+                  {session.is_paused && <span className="ml-1 text-orange-600 text-xs">(停止中)</span>}
+                </span>
               </div>
               <Button
                 size="sm"
