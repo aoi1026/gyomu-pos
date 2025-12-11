@@ -59,6 +59,22 @@ export default function ServicePage() {
     { id: 'other', name: 'その他', icon: MessageCircle, color: 'gray' }
   ];
 
+  // セッション一覧を取得
+  const loadSessions = async () => {
+    try {
+      const response = await fetch('/api/sessions');
+      const result = await response.json();
+      
+      if (result.success && result.data) {
+        // アクティブなセッション（status=1）のみを取得
+        const activeSessions = result.data.filter((s: Session) => s.status === 1);
+        setSessions(activeSessions);
+      }
+    } catch (err) {
+      console.error('セッション一覧取得エラー:', err);
+    }
+  };
+
   // テーブル一覧を取得
   useEffect(() => {
     const loadTables = async () => {
@@ -73,21 +89,6 @@ export default function ServicePage() {
         console.error('テーブル一覧取得エラー:', err);
       } finally {
         setIsLoadingTables(false);
-      }
-    };
-
-    const loadSessions = async () => {
-      try {
-        const response = await fetch('/api/sessions');
-        const result = await response.json();
-        
-        if (result.success && result.data) {
-          // アクティブなセッション（status=1）のみを取得
-          const activeSessions = result.data.filter((s: Session) => s.status === 1);
-          setSessions(activeSessions);
-        }
-      } catch (err) {
-        console.error('セッション一覧取得エラー:', err);
       }
     };
 
