@@ -776,7 +776,8 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
   const loadCasts = async () => {
     setIsCastsLoading(true);
     try {
-      const response = await fetch('/api/casts');
+      // 出勤中のキャストのみを取得
+      const response = await fetch('/api/casts?only_active=true');
       const result = await response.json();
       if (result.success) {
         setCasts(result.data || []);

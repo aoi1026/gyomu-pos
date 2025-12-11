@@ -525,7 +525,8 @@ export default function TableDashboard({ params }: { params: { tableId: string }
   const loadCasts = async () => {
     try {
       setIsCastsLoading(true);
-      const response = await fetch('/api/casts');
+      // 出勤中のキャストのみを取得
+      const response = await fetch('/api/casts?only_active=true');
       const result = await response.json();
       
       if (result.success) {
@@ -2429,8 +2430,8 @@ export default function TableDashboard({ params }: { params: { tableId: string }
       return;
     }
     try {
-      // キャスト一覧を取得
-      const response = await fetch('/api/casts');
+      // 出勤中のキャスト一覧を取得
+      const response = await fetch('/api/casts?only_active=true');
       const result = await response.json();
       
       if (result.success) {
@@ -4280,7 +4281,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                   <SelectContent>
                     {availableCasts.map((cast) => (
                       <SelectItem key={cast.id} value={cast.id.toString()}>
-                        {cast.name} ({cast.mail})
+                        {cast.name} 
                       </SelectItem>
                     ))}
                   </SelectContent>

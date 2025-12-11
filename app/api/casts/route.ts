@@ -4,15 +4,26 @@ export const dynamic = 'force-dynamic';
 import { pool } from '@/lib/database';
 import { hashPassword } from '@/lib/hash';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   const client = await pool.connect();
   try {
-    const result = await client.query(`
-      SELECT id, name, mail, other, created_at
+    // クエリパラメータで出勤中のキャストのみをフィルタリングするかどうかを確認
+    const { searchParams } = new URL(request.url);
+    const onlyActive = searchParams.get('only_active') === 'true';
+    
+    let query = `
+      SELECT id, name, mail, other, created_at, attendance_status
       FROM "user"
       WHERE role = 'cast'
-      ORDER BY id ASC
-    `);
+    `;
+    
+    if (onlyActive) {
+      query += ` AND attendance_status = 1`;
+    }
+    
+    query += ` ORDER BY id ASC`;
+    
+    const result = await client.query(query);
     
     return NextResponse.json({
       success: true,

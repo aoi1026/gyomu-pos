@@ -277,7 +277,13 @@ export default function CastAttendancePage() {
     setShowNewSessionOption(true);
   };
 
-  const startTimer = () => {
+  const startTimer = async () => {
+    const userId = getCurrentUserId();
+    if (!userId) {
+      console.error('ユーザーIDが取得できません');
+      return;
+    }
+
     const now = new Date().toISOString();
     const newRecord: TimeRecord = {
       id: `timer_${Date.now()}`,
@@ -305,6 +311,21 @@ export default function CastAttendancePage() {
       timestamp: Date.now()
     }));
 
+    // 出勤状態を1に更新
+    try {
+      const response = await fetch(`/api/casts/${userId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ attendance_status: 1 })
+      });
+      const result = await response.json();
+      if (!result.success) {
+        console.error('出勤状態の更新に失敗:', result.error);
+      }
+    } catch (err) {
+      console.error('出勤状態更新エラー:', err);
+    }
+
     console.log('タイマー開始:', now);
   };
 
@@ -314,9 +335,10 @@ export default function CastAttendancePage() {
     console.log('新しい勤務セッションを開始します');
   };
 
-  const stopTimer = () => {
+  const stopTimer = async () => {
     if (!currentTimerStart) return;
 
+    const userId = getCurrentUserId();
     const now = new Date().toISOString();
     const startTime = new Date(currentTimerStart);
     const endTime = new Date(now);
@@ -339,6 +361,23 @@ export default function CastAttendancePage() {
 
     const newTotal = updatedRecords.reduce((sum, record) => sum + record.duration, 0);
     setTotalWorkTime(newTotal);
+
+    // 出勤状態を0に更新
+    if (userId) {
+      try {
+        const response = await fetch(`/api/casts/${userId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ attendance_status: 0 })
+        });
+        const result = await response.json();
+        if (!result.success) {
+          console.error('出勤状態の更新に失敗:', result.error);
+        }
+      } catch (err) {
+        console.error('出勤状態更新エラー:', err);
+      }
+    }
 
     console.log('タイマー停止:', now, '継続時間:', duration, '秒');
   };
