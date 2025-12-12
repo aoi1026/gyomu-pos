@@ -28,7 +28,7 @@ export default function SalarySettingsPage() {
   // 製品設定関連
   const [showProductSettings, setShowProductSettings] = useState(false);
   const [categories, setCategories] = useState<Array<{ id: number; name: string }>>([]);
-  const [attendayData, setAttendayData] = useState<Array<{ category_id: number; category_name: string; [key: number]: number }>>([]);
+  const [attendayData, setAttendayData] = useState<Array<{ category_id: number; category_name: string; [key: number]: number | string }>>([]);
   const [isLoadingAttenday, setIsLoadingAttenday] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<number | null>(null);
@@ -175,7 +175,7 @@ export default function SalarySettingsPage() {
       const result = await response.json();
       if (result.success) {
         // カテゴリーごとにデータを整理
-        const categoryMap: { [key: number]: { category_name: string; [key: number]: number } } = {};
+        const categoryMap: { [key: number]: { category_id: number; category_name: string; [key: number]: number } } = {};
         result.data.forEach((item: any) => {
           const catId = item.category_id;
           if (!categoryMap[catId]) {
