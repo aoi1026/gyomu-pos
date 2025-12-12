@@ -847,11 +847,29 @@ export default function Dashboard() {
                 
                 <Button 
                   variant="outline" 
+                  className="h-24 flex-col space-y-2 hover:bg-cyan-50 hover:border-cyan-300"
+                  onClick={() => router.push('/admin/shifts')}
+                >
+                  <Calendar className="w-6 h-6 text-cyan-600" />
+                  <span className="text-sm font-medium">シフト管理</span>
+                </Button>
+                
+                <Button 
+                  variant="outline" 
                   className="h-24 flex-col space-y-2 hover:bg-slate-50 hover:border-slate-300"
                   onClick={() => router.push('/admin/add-charges')}
                 >
                   <span className="w-6 h-5 text-slate-600 text-2xl"><MdOutlinePriceChange /></span>
                   <span className="text-sm font-medium">追加料金設定</span>
+                </Button>
+                
+                <Button 
+                  variant="outline" 
+                  className="h-24 flex-col space-y-2 hover:bg-emerald-50 hover:border-emerald-300"
+                  onClick={() => router.push('/admin/salary-settings')}
+                >
+                  <DollarSign className="w-6 h-6 text-emerald-600" />
+                  <span className="text-sm font-medium">給与項目管理</span>
                 </Button>
                 
                 <Button 
