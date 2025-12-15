@@ -12,7 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { 
   Wine, Users, ShoppingCart, DollarSign, Clock, 
   ArrowLeft, Plus, Minus, Trash2, CheckCircle,
-  AlertCircle, User, CreditCard, X, Bell, Utensils, Coffee, XCircle, AlertTriangle, Pause, Play
+  AlertCircle, User, CreditCard, X, Bell, Utensils, Coffee, XCircle, AlertTriangle, Pause, Play, Edit2, Save
 } from 'lucide-react';
 import { getCurrentTable, TableAuth, startTableSession, endTableSession } from '@/lib/table-auth';
 import { mockCustomers, formatCurrency } from '@/lib/mock-data';
@@ -90,6 +90,9 @@ export default function TableDashboard({ params }: { params: { tableId: string }
   const [setExtensions, setSetExtensions] = useState<Array<{ count: number; timestamp: number }>>([]); // 延長履歴
   const [showSetExtensionDialog, setShowSetExtensionDialog] = useState(false);
   const [extensionGuestCount, setExtensionGuestCount] = useState<string>('');
+  const [isEditingRemainingTime, setIsEditingRemainingTime] = useState(false);
+  const [editingRemainingMinutes, setEditingRemainingMinutes] = useState<string>('');
+  const [editingRemainingSeconds, setEditingRemainingSeconds] = useState<string>('');
   const [nominations, setNominations] = useState<any[]>([]);
   const [isNominationsLoading, setIsNominationsLoading] = useState<boolean>(false);
   const [addCharges, setAddCharges] = useState<{[key: string]: number}>({});
@@ -514,10 +517,10 @@ export default function TableDashboard({ params }: { params: { tableId: string }
     // 初回読み込み
     loadSession();
     
-    // 3秒ごとに更新（セット延長情報の同期、および管理者ページからセッション開始を検出）
+    // 1秒ごとに更新（セット延長情報の同期、および管理者ページからセッション開始を検出、残り時間変更の即時反映のため）
     const interval = setInterval(() => {
       loadSession();
-    }, 3000);
+    }, 1000);
     
     return () => clearInterval(interval);
   }, [tableAuth]);
@@ -1591,6 +1594,69 @@ export default function TableDashboard({ params }: { params: { tableId: string }
     await loadNominations();
   };
 
+  // 残り時間変更処理（停止中のみ）
+  const handleChangeRemainingTime = async () => {
+    if (!session || !session.is_paused) {
+      error('エラー', '停止中のみ残り時間を変更できます');
+      return;
+    }
+
+    const minutes = parseInt(editingRemainingMinutes) || 0;
+    const seconds = parseInt(editingRemainingSeconds) || 0;
+    const newRemainingSeconds = minutes * 60 + seconds;
+
+    if (newRemainingSeconds < 0) {
+      error('エラー', '残り時間は0以上である必要があります');
+      return;
+    }
+
+    try {
+      // 新しい残り時間から逆算してcreated_atを計算
+      const setCount = session.set_count || 1;
+      const setDuration = 3600; // 1セット = 3600秒
+      const totalSeconds = setCount * setDuration;
+      
+      // 新しい残り時間から経過時間を計算
+      const elapsed = totalSeconds - newRemainingSeconds;
+      
+      // 停止時間を考慮して新しいcreated_atを計算
+      const pausedElapsed = session.paused_elapsed || 0;
+      const pausedAt = session.paused_at ? new Date(session.paused_at).getTime() : Date.now();
+      const currentPauseDuration = Math.floor((Date.now() - pausedAt) / 1000);
+      const totalPausedTime = pausedElapsed + currentPauseDuration;
+      
+      // 新しいcreated_at = 現在時刻 - 経過時間 - 累積停止時間
+      const newCreatedAt = new Date(Date.now() - (elapsed + totalPausedTime) * 1000).toISOString();
+
+      const response = await fetch(`/api/sessions/${session.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          created_at: newCreatedAt
+        })
+      });
+
+      const result = await response.json();
+      if (!result.success) {
+        throw new Error(result.error || '残り時間の変更に失敗しました');
+      }
+
+      // 更新されたセッションデータを直接状態に反映（即座に表示を更新）
+      if (result.data) {
+        setSession(prev => prev ? { ...prev, ...result.data } : result.data);
+      }
+
+      setIsEditingRemainingTime(false);
+      setEditingRemainingMinutes('');
+      setEditingRemainingSeconds('');
+      await loadSession();
+      success('残り時間変更', '残り時間を変更しました');
+    } catch (err) {
+      console.error('残り時間変更エラー:', err);
+      error('エラー', err instanceof Error ? err.message : '残り時間の変更に失敗しました');
+    }
+  };
+
   // 停止/再開処理
   const handlePauseResume = async () => {
     if (!session) {
@@ -1623,6 +1689,11 @@ export default function TableDashboard({ params }: { params: { tableId: string }
         if (!result.success) {
           throw new Error(result.error || '再開に失敗しました');
         }
+        
+        // 編集モードをリセット
+        setIsEditingRemainingTime(false);
+        setEditingRemainingMinutes('');
+        setEditingRemainingSeconds('');
         
         await loadSession();
         success('再開', 'セット延長タイマーを再開しました');
@@ -1659,6 +1730,11 @@ export default function TableDashboard({ params }: { params: { tableId: string }
 
   // 1セットキャンセル処理
   const handleCancelSet = () => {
+    if (!session) {
+      error('エラー', 'セッション情報が見つかりません');
+      return;
+    }
+
     if (setExtensions.length === 0) {
       error('エラー', 'キャンセルできるセットがありません');
       return;
@@ -1672,34 +1748,56 @@ export default function TableDashboard({ params }: { params: { tableId: string }
     confirm(
       'セットキャンセル',
       '最後のセット延長をキャンセルしますか？60分が減算され、料金も差し引かれます。',
-      () => {
+      async () => {
         // 最後の延長情報を取得
         const lastExtension = setExtensions[setExtensions.length - 1];
         
         // 延長情報から最後の項目を削除
         const updatedExtensions = setExtensions.slice(0, -1);
-        setSetExtensions(updatedExtensions);
         
-        // ローカルストレージに保存
-        if (updatedExtensions.length > 0) {
-          localStorage.setItem('set_extensions', JSON.stringify(updatedExtensions));
+        // セットカウントを1減少
+        const newSetCount = Math.max(1, (session.set_count || 1) - 1);
+        
+        // DBにset_countとset_extensionsを同期
+        const sessionId = localStorage.getItem('current_session_id');
+        if (sessionId) {
+          try {
+            const response = await fetch(`/api/sessions/${sessionId}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                set_count: newSetCount,
+                set_extensions: updatedExtensions
+              })
+            });
+            
+            const result = await response.json();
+            if (!result.success) {
+              throw new Error(result.error || 'セットキャンセルの更新に失敗しました');
+            }
+            
+            // ローカルストレージに保存
+            if (updatedExtensions.length > 0) {
+              localStorage.setItem('set_extensions', JSON.stringify(updatedExtensions));
+            } else {
+              localStorage.removeItem('set_extensions');
+            }
+            localStorage.setItem('set_count', newSetCount.toString());
+            
+            // ローカルステートを更新
+            setSetExtensions(updatedExtensions);
+            
+            // セッション情報を再取得してカウントダウンを更新（DB更新後に反映される）
+            await loadSession();
+            
+            success('セットキャンセル', `${lastExtension.count}名分のセットをキャンセルしました`);
+          } catch (err) {
+            console.error('セットキャンセルエラー:', err);
+            error('エラー', err instanceof Error ? err.message : 'セットキャンセルに失敗しました');
+          }
         } else {
-          localStorage.removeItem('set_extensions');
+          error('エラー', 'セッションIDが見つかりません');
         }
-        
-        // 合計秒数から60分を減算（経過時間を下回らないように調整）
-        const startAtStr = localStorage.getItem('set_extension_start_time');
-        const totalStr = localStorage.getItem('set_extension_total_seconds');
-        const now = Date.now();
-        const startAt = startAtStr ? parseInt(startAtStr) : now;
-        const elapsed = Math.floor((now - startAt) / 1000);
-        let total = totalStr ? parseInt(totalStr) : 0;
-        total = Math.max(elapsed, total - 3600);
-        localStorage.setItem('set_extension_total_seconds', total.toString());
-        // 直ちに反映
-        setSetExtensionCountdown(Math.max(0, total - elapsed));
-        
-        success('セットキャンセル', `${lastExtension.count}名分のセットをキャンセルしました`);
       }
     );
   };
@@ -2918,7 +3016,6 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                               >
                                 <Users className="w-4 h-4 mr-2" />
                                 <span className="text-xs">本指名</span>
-                                {currentNominationType === 'main' && <CheckCircle className="w-3 h-3 text-green-600 absolute top-1 right-1" />}
                               </Button>
                               <Button 
                                 variant="outline"
@@ -2932,7 +3029,6 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                               >
                                 <Users className="w-4 h-4 mr-2" />
                                 <span className="text-xs">場内指名</span>
-                                {currentNominationType === 'inside' && <CheckCircle className="w-3 h-3 text-green-600 absolute top-1 right-1" />}
                               </Button>
                             </div>
                           </CardContent>
@@ -3146,14 +3242,79 @@ export default function TableDashboard({ params }: { params: { tableId: string }
               <CardContent className="space-x-2 flex">
                 <div className="w-1/2 bg-white rounded-md p-3 border border-purple-200 text-center">
                   <div className="text-[11px] text-gray-500 mb-1">残り時間</div>
-                  <div className={`text-2xl font-bold leading-none ${session?.is_paused ? 'text-gray-400' : 'text-purple-600'}`}>
-                    {Math.floor(setExtensionCountdown / 60)}:{(setExtensionCountdown % 60).toString().padStart(2, '0')}
-                  </div>
-                  <div className="text-[11px] text-gray-500 mt-1">
-                    {Math.floor(setExtensionCountdown / 60)}分 {setExtensionCountdown % 60}秒
-                  </div>
-                  {session?.is_paused && (
-                    <div className="text-xs text-orange-600 mt-1 font-semibold">停止中</div>
+                  {session?.is_paused && isEditingRemainingTime ? (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-center gap-1">
+                        <Input
+                          type="number"
+                          min="0"
+                          max="999"
+                          value={editingRemainingMinutes}
+                          onChange={(e) => setEditingRemainingMinutes(e.target.value)}
+                          className="w-16 h-8 text-center text-lg font-bold"
+                          placeholder="分"
+                        />
+                        <span className="text-2xl font-bold">:</span>
+                        <Input
+                          type="number"
+                          min="0"
+                          max="59"
+                          value={editingRemainingSeconds}
+                          onChange={(e) => setEditingRemainingSeconds(e.target.value)}
+                          className="w-16 h-8 text-center text-lg font-bold"
+                          placeholder="秒"
+                        />
+                      </div>
+                      <div className="flex gap-1 justify-center">
+                        <Button
+                          size="sm"
+                          onClick={handleChangeRemainingTime}
+                          className="bg-green-600 hover:bg-green-700 text-white"
+                        >
+                          <Save className="w-3 h-3 mr-1" />
+                          {/* 変更 */}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setIsEditingRemainingTime(false);
+                            setEditingRemainingMinutes('');
+                            setEditingRemainingSeconds('');
+                          }}
+                        >
+                          <X className="w-3 h-3 mr-1" />
+                          {/* キャンセル */}
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <div className={`text-2xl font-bold leading-none ${session?.is_paused ? 'text-gray-400' : 'text-purple-600'}`}>
+                        {Math.floor(setExtensionCountdown / 60)}:{(setExtensionCountdown % 60).toString().padStart(2, '0')}
+                      </div>
+                      <div className="text-[11px] text-gray-500 mt-1">
+                        {Math.floor(setExtensionCountdown / 60)}分 {setExtensionCountdown % 60}秒
+                      </div>
+                      {session?.is_paused && (
+                        <>
+                          <div className="text-xs text-orange-600 mt-1 font-semibold">停止中</div>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              setIsEditingRemainingTime(true);
+                              setEditingRemainingMinutes(Math.floor(setExtensionCountdown / 60).toString());
+                              setEditingRemainingSeconds((setExtensionCountdown % 60).toString());
+                            }}
+                            className="mt-2 text-xs"
+                          >
+                            <Edit2 className="w-3 h-3 mr-1" />
+                            {/* 残り時間変更 */}
+                          </Button>
+                        </>
+                      )}
+                    </>
                   )}
                 </div>
 

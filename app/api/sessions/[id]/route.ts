@@ -7,9 +7,9 @@ export async function PATCH(
 ) {
   const client = await pool.connect();
   try {
-    const { cost, end_at, set_count, client: clientCount, status, set_extensions, is_paused, paused_at, paused_elapsed } = await request.json();
+    const { cost, end_at, set_count, client: clientCount, status, set_extensions, is_paused, paused_at, paused_elapsed, created_at } = await request.json();
     
-    if (cost === undefined && !end_at && set_count === undefined && clientCount === undefined && status === undefined && set_extensions === undefined && is_paused === undefined && !paused_at && paused_elapsed === undefined) {
+    if (cost === undefined && !end_at && set_count === undefined && clientCount === undefined && status === undefined && set_extensions === undefined && is_paused === undefined && !paused_at && paused_elapsed === undefined && !created_at) {
       return NextResponse.json(
         { success: false, error: '更新するデータが必要です' },
         { status: 400 }
@@ -71,6 +71,12 @@ export async function PATCH(
     if (paused_elapsed !== undefined) {
       updateFields.push(`paused_elapsed = $${paramIndex}`);
       values.push(paused_elapsed);
+      paramIndex++;
+    }
+
+    if (created_at) {
+      updateFields.push(`created_at = $${paramIndex}`);
+      values.push(created_at);
       paramIndex++;
     }
 

@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent } from '@/components/ui/card';
-import { Users, Clock, ExternalLink, Circle, Play } from 'lucide-react';
+import { Users, Clock, ExternalLink, Circle, Play, Edit2, Save, X } from 'lucide-react';
 import TableViewer from './TableViewer';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -45,12 +45,29 @@ export default function RealTimeTableStatus({ open, onClose }: RealTimeTableStat
   const [selectedTableForSession, setSelectedTableForSession] = useState<TableData | null>(null);
   const [guestCount, setGuestCount] = useState<string>('');
   const [isStartingSession, setIsStartingSession] = useState(false);
+  const [remainingTimes, setRemainingTimes] = useState<{ [tableId: number]: number }>({});
+  const [showRemainingTimeDialog, setShowRemainingTimeDialog] = useState(false);
+  const [selectedSessionForTimeEdit, setSelectedSessionForTimeEdit] = useState<SessionData | null>(null);
+  const [editingRemainingMinutes, setEditingRemainingMinutes] = useState<string>('');
+  const [editingRemainingSeconds, setEditingRemainingSeconds] = useState<string>('');
   const { success, error } = useNotificationContext();
 
   useEffect(() => {
     if (open) {
       fetchData();
     }
+  }, [open]);
+
+  // リアルタイム更新のためのポーリング
+  useEffect(() => {
+    if (!open) return;
+
+    // 初回読み込み後、定期的にデータを更新
+    const interval = setInterval(() => {
+      fetchDataSilently();
+    }, 200); // 0.2秒ごとに更新（即時反映のため）
+
+    return () => clearInterval(interval);
   }, [open]);
 
   const fetchData = async () => {
@@ -76,6 +93,30 @@ export default function RealTimeTableStatus({ open, onClose }: RealTimeTableStat
     }
   };
 
+  // 静かな更新（ローディング表示なし）
+  const fetchDataSilently = async () => {
+    try {
+      // Fetch tables
+      const tablesRes = await fetch('/api/tables');
+      if (tablesRes.ok) {
+        const tablesData = await tablesRes.json();
+        setTables(tablesData.tables || []);
+      }
+
+      // Fetch active sessions (status=1)
+      const sessionsRes = await fetch('/api/sessions');
+      if (sessionsRes.ok) {
+        const sessionsData = await sessionsRes.json();
+        const newSessions = sessionsData.data?.filter((s: SessionData) => s.status === 1) || [];
+        // 強制的にstateを更新（created_atの変更を確実に反映）
+        // created_atなどのタイムスタンプの変更を検出するため、常に新しいデータで更新
+        setSessions(newSessions);
+      }
+    } catch (error) {
+      console.error('テーブル状態の取得エラー（静かな更新）:', error);
+    }
+  };
+
   const getTableSession = (tableId: number) => {
     return sessions.find(s => s.table_id === tableId);
   };
@@ -83,6 +124,95 @@ export default function RealTimeTableStatus({ open, onClose }: RealTimeTableStat
   const handleAccessTable = (tableId: number) => {
     // Open table in embedded viewer
     setViewingTableId(tableId);
+  };
+
+  // 残り時間変更処理（停止中のみ）
+  const handleChangeRemainingTime = async () => {
+    if (!selectedSessionForTimeEdit || !selectedSessionForTimeEdit.is_paused) {
+      error('エラー', '停止中のみ残り時間を変更できます');
+      return;
+    }
+
+    const minutes = parseInt(editingRemainingMinutes) || 0;
+    const seconds = parseInt(editingRemainingSeconds) || 0;
+    const newRemainingSeconds = minutes * 60 + seconds;
+
+    if (newRemainingSeconds < 0) {
+      error('エラー', '残り時間は0以上である必要があります');
+      return;
+    }
+
+    try {
+      // 新しい残り時間から逆算してcreated_atを計算
+      const setCount = selectedSessionForTimeEdit.set_count || 1;
+      const setDuration = 3600; // 1セット = 3600秒
+      const totalSeconds = setCount * setDuration;
+      
+      // 新しい残り時間から経過時間を計算
+      const elapsed = totalSeconds - newRemainingSeconds;
+      
+      // 停止時間を考慮して新しいcreated_atを計算
+      const pausedElapsed = selectedSessionForTimeEdit.paused_elapsed || 0;
+      const pausedAt = selectedSessionForTimeEdit.paused_at ? new Date(selectedSessionForTimeEdit.paused_at).getTime() : Date.now();
+      const currentPauseDuration = Math.floor((Date.now() - pausedAt) / 1000);
+      const totalPausedTime = pausedElapsed + currentPauseDuration;
+      
+      // 新しいcreated_at = 現在時刻 - 経過時間 - 累積停止時間
+      const newCreatedAt = new Date(Date.now() - (elapsed + totalPausedTime) * 1000).toISOString();
+
+      const response = await fetch(`/api/sessions/${selectedSessionForTimeEdit.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          created_at: newCreatedAt
+        })
+      });
+
+      const result = await response.json();
+      if (!result.success) {
+        throw new Error(result.error || '残り時間の変更に失敗しました');
+      }
+
+      // 更新されたセッションデータを直接状態に反映（即座に表示を更新）
+      if (result.data) {
+        setSessions(prevSessions => {
+          return prevSessions.map(s => 
+            s.id === result.data.id ? { ...s, ...result.data } : s
+          );
+        });
+      }
+
+      // 即座にデータを再取得して反映（複数回呼び出して確実に更新）
+      await fetchData();
+      await fetchDataSilently();
+      
+      // 少し待ってから再度更新（確実に反映されるように）
+      setTimeout(() => {
+        fetchDataSilently();
+      }, 300);
+      
+      setShowRemainingTimeDialog(false);
+      setSelectedSessionForTimeEdit(null);
+      setEditingRemainingMinutes('');
+      setEditingRemainingSeconds('');
+      success('残り時間変更', '残り時間を変更しました。テーブル側と管理者側の両方で即座に反映されます。');
+    } catch (err) {
+      console.error('残り時間変更エラー:', err);
+      error('エラー', err instanceof Error ? err.message : '残り時間の変更に失敗しました');
+    }
+  };
+
+  const handleOpenRemainingTimeDialog = (session: SessionData) => {
+    if (!session.is_paused) {
+      error('エラー', '停止中のみ残り時間を変更できます');
+      return;
+    }
+    
+    const remainingSeconds = calculateRemainingTime(session);
+    setSelectedSessionForTimeEdit(session);
+    setEditingRemainingMinutes(Math.floor(remainingSeconds / 60).toString());
+    setEditingRemainingSeconds((remainingSeconds % 60).toString());
+    setShowRemainingTimeDialog(true);
   };
 
   const handleCloseViewer = () => {
@@ -216,12 +346,34 @@ export default function RealTimeTableStatus({ open, onClose }: RealTimeTableStat
     return endTime;
   };
 
+  // 残り時間をリアルタイムで更新
+  useEffect(() => {
+    if (!open) return;
+
+    const updateRemainingTimes = () => {
+      const newRemainingTimes: { [tableId: number]: number } = {};
+      sessions.forEach(session => {
+        newRemainingTimes[session.table_id] = calculateRemainingTime(session);
+      });
+      setRemainingTimes(newRemainingTimes);
+    };
+
+    // 初回更新
+    updateRemainingTimes();
+
+    // sessionsが更新されたときは即座に再計算
+    // また、0.2秒ごとに残り時間を更新（ポーリング間隔と同期）
+    const interval = setInterval(updateRemainingTimes, 200);
+
+    return () => clearInterval(interval);
+  }, [open, sessions]);
+
   const renderTableCard = (table: TableData) => {
     const session = getTableSession(table.id);
     const isEmpty = !session;
     
-    // 残り時間と終了時間を計算
-    const remainingSeconds = session ? calculateRemainingTime(session) : 0;
+    // 残り時間と終了時間を計算（リアルタイム更新された残り時間を使用）
+    const remainingSeconds = session ? (remainingTimes[table.id] ?? calculateRemainingTime(session)) : 0;
     const endTime = session ? calculateEndTime(session) : null;
     const startTime = session ? new Date(session.created_at) : null;
 
@@ -421,6 +573,64 @@ export default function RealTimeTableStatus({ open, onClose }: RealTimeTableStat
                     セッション開始
                   </>
                 )}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* 残り時間変更モーダル */}
+      <Dialog open={showRemainingTimeDialog} onOpenChange={setShowRemainingTimeDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>残り時間変更</DialogTitle>
+            <DialogDescription>
+              停止中のみ残り時間を変更できます。変更後、「再開」ボタンを押すと、変更された時間から計測が開始されます。
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>残り時間</Label>
+              <div className="flex items-center gap-2">
+                <Input
+                  type="number"
+                  min="0"
+                  max="999"
+                  value={editingRemainingMinutes}
+                  onChange={(e) => setEditingRemainingMinutes(e.target.value)}
+                  placeholder="分"
+                  className="text-center"
+                />
+                <span className="text-lg font-bold">:</span>
+                <Input
+                  type="number"
+                  min="0"
+                  max="59"
+                  value={editingRemainingSeconds}
+                  onChange={(e) => setEditingRemainingSeconds(e.target.value)}
+                  placeholder="秒"
+                  className="text-center"
+                />
+              </div>
+            </div>
+            <div className="flex justify-end space-x-2">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowRemainingTimeDialog(false);
+                  setSelectedSessionForTimeEdit(null);
+                  setEditingRemainingMinutes('');
+                  setEditingRemainingSeconds('');
+                }}
+              >
+                キャンセル
+              </Button>
+              <Button
+                onClick={handleChangeRemainingTime}
+                className="bg-green-600 hover:bg-green-700"
+              >
+                <Save className="w-4 h-4 mr-2" />
+                変更
               </Button>
             </div>
           </div>

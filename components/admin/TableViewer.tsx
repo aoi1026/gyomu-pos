@@ -69,6 +69,9 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
   const [setExtensionCountdown, setSetExtensionCountdown] = useState<number>(0);
   const [setExtensions, setSetExtensions] = useState<Array<{ count: number; timestamp: number }>>([]);
   const [guestCount, setGuestCount] = useState<string>('');
+  const [isEditingRemainingTime, setIsEditingRemainingTime] = useState(false);
+  const [editingRemainingMinutes, setEditingRemainingMinutes] = useState<string>('');
+  const [editingRemainingSeconds, setEditingRemainingSeconds] = useState<string>('');
   const [addCharges, setAddCharges] = useState<{[key: string]: number}>({});
   const [additionalServices, setAdditionalServices] = useState<Array<{
     type: 'bottle_keep' | 'vip_room' | 'karaoke';
@@ -182,7 +185,7 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
         );
         
         if (activeSession) {
-          // セッション情報が変更された場合のみ更新（set_count、set_extensions、client、停止/再開状態の変更をチェック）
+          // セッション情報が変更された場合のみ更新（set_count、set_extensions、client、停止/再開状態、created_atの変更をチェック）
           setSession(prev => {
             const prevExtensionsStr = JSON.stringify(prev?.set_extensions || []);
             const newExtensionsStr = JSON.stringify(activeSession.set_extensions || []);
@@ -192,6 +195,7 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
                 prev?.is_paused !== activeSession.is_paused ||
                 prev?.paused_at !== activeSession.paused_at ||
                 prev?.paused_elapsed !== activeSession.paused_elapsed ||
+                prev?.created_at !== activeSession.created_at ||
                 prevExtensionsStr !== newExtensionsStr) {
               return activeSession;
             }
@@ -898,6 +902,72 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
     );
   };
 
+  // 残り時間変更処理（停止中のみ）
+  const handleChangeRemainingTime = async () => {
+    if (!session || !session.is_paused) {
+      error('エラー', '停止中のみ残り時間を変更できます');
+      return;
+    }
+
+    const minutes = parseInt(editingRemainingMinutes) || 0;
+    const seconds = parseInt(editingRemainingSeconds) || 0;
+    const newRemainingSeconds = minutes * 60 + seconds;
+
+    if (newRemainingSeconds < 0) {
+      error('エラー', '残り時間は0以上である必要があります');
+      return;
+    }
+
+    try {
+      // 新しい残り時間から逆算してcreated_atを計算
+      const setCount = session.set_count || 1;
+      const setDuration = 3600; // 1セット = 3600秒
+      const totalSeconds = setCount * setDuration;
+      
+      // 新しい残り時間から経過時間を計算
+      const elapsed = totalSeconds - newRemainingSeconds;
+      
+      // 停止時間を考慮して新しいcreated_atを計算
+      const pausedElapsed = session.paused_elapsed || 0;
+      const pausedAt = session.paused_at ? new Date(session.paused_at).getTime() : Date.now();
+      const currentPauseDuration = Math.floor((Date.now() - pausedAt) / 1000);
+      const totalPausedTime = pausedElapsed + currentPauseDuration;
+      
+      // 新しいcreated_at = 現在時刻 - 経過時間 - 累積停止時間
+      const newCreatedAt = new Date(Date.now() - (elapsed + totalPausedTime) * 1000).toISOString();
+
+      const response = await fetch(`/api/sessions/${session.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          created_at: newCreatedAt
+        })
+      });
+
+      const result = await response.json();
+      if (!result.success) {
+        throw new Error(result.error || '残り時間の変更に失敗しました');
+      }
+
+      // 更新されたセッションデータを直接状態に反映（即座に表示を更新）
+      if (result.data) {
+        setSession(prev => prev ? { ...prev, ...result.data } : result.data);
+      }
+
+      setIsEditingRemainingTime(false);
+      setEditingRemainingMinutes('');
+      setEditingRemainingSeconds('');
+      await loadSession();
+      setTimeout(() => {
+        loadSession();
+      }, 500);
+      success('残り時間変更', '残り時間を変更しました');
+    } catch (err) {
+      console.error('残り時間変更エラー:', err);
+      error('エラー', err instanceof Error ? err.message : '残り時間の変更に失敗しました');
+    }
+  };
+
   // 停止/再開処理
   const handlePauseResume = async () => {
     if (!session) {
@@ -930,6 +1000,11 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
         if (!result.success) {
           throw new Error(result.error || '再開に失敗しました');
         }
+        
+        // 編集モードをリセット
+        setIsEditingRemainingTime(false);
+        setEditingRemainingMinutes('');
+        setEditingRemainingSeconds('');
         
         // 即座にセッション情報を更新して状態を反映
         await loadSession();
@@ -1405,14 +1480,79 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
                   <CardContent className="space-x-2 flex">
                     <div className="w-1/2 bg-white rounded-md p-3 border border-purple-200 text-center">
                       <div className="text-[11px] text-gray-500 mb-1">残り時間</div>
-                      <div className={`text-2xl font-bold leading-none ${session?.is_paused ? 'text-gray-400' : 'text-purple-600'}`}>
-                        {Math.floor(setExtensionCountdown / 60)}:{(setExtensionCountdown % 60).toString().padStart(2, '0')}
-                      </div>
-                      <div className="text-[11px] text-gray-500 mt-1">
-                        {Math.floor(setExtensionCountdown / 60)}分 {setExtensionCountdown % 60}秒
-                      </div>
-                      {session?.is_paused && (
-                        <div className="text-xs text-orange-600 mt-1 font-semibold">停止中</div>
+                      {session?.is_paused && isEditingRemainingTime ? (
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-center gap-1">
+                            <Input
+                              type="number"
+                              min="0"
+                              max="999"
+                              value={editingRemainingMinutes}
+                              onChange={(e) => setEditingRemainingMinutes(e.target.value)}
+                              className="w-16 h-8 text-center text-lg font-bold"
+                              placeholder="分"
+                            />
+                            <span className="text-2xl font-bold">:</span>
+                            <Input
+                              type="number"
+                              min="0"
+                              max="59"
+                              value={editingRemainingSeconds}
+                              onChange={(e) => setEditingRemainingSeconds(e.target.value)}
+                              className="w-16 h-8 text-center text-lg font-bold"
+                              placeholder="秒"
+                            />
+                          </div>
+                          <div className="flex gap-1 justify-center">
+                            <Button
+                              size="sm"
+                              onClick={handleChangeRemainingTime}
+                              className="bg-green-600 hover:bg-green-700 text-white"
+                            >
+                              <Save className="w-3 h-3 mr-1" />
+                              {/* 変更 */}
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                setIsEditingRemainingTime(false);
+                                setEditingRemainingMinutes('');
+                                setEditingRemainingSeconds('');
+                              }}
+                            >
+                              <X className="w-3 h-3 mr-1" />
+                              {/* キャンセル */}
+                            </Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          <div className={`text-2xl font-bold leading-none ${session?.is_paused ? 'text-gray-400' : 'text-purple-600'}`}>
+                            {Math.floor(setExtensionCountdown / 60)}:{(setExtensionCountdown % 60).toString().padStart(2, '0')}
+                          </div>
+                          <div className="text-[11px] text-gray-500 mt-1">
+                            {Math.floor(setExtensionCountdown / 60)}分 {setExtensionCountdown % 60}秒
+                          </div>
+                          {session?.is_paused && (
+                            <>
+                              <div className="text-xs text-orange-600 mt-1 font-semibold">停止中</div>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                  setIsEditingRemainingTime(true);
+                                  setEditingRemainingMinutes(Math.floor(setExtensionCountdown / 60).toString());
+                                  setEditingRemainingSeconds((setExtensionCountdown % 60).toString());
+                                }}
+                                className="mt-2 text-xs"
+                              >
+                                <Edit2 className="w-3 h-3 mr-1" />
+                                {/* 残り時間変更 */}
+                              </Button>
+                            </>
+                          )}
+                        </>
                       )}
                     </div>
                     <div className="w-1/2 flex flex-col space-y-2">
