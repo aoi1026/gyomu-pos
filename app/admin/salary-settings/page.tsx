@@ -760,7 +760,7 @@ export default function SalarySettingsPage() {
                 <Save className="w-4 h-4 mr-2" />
                 {isSaving ? '保存中...' : '保存'}
               </Button>
-              <Button
+              {/* <Button
                 onClick={handleUpdateHourlyPrices}
                 disabled={isUpdating}
                 variant="outline"
@@ -768,7 +768,7 @@ export default function SalarySettingsPage() {
               >
                 <RefreshCw className={`w-4 h-4 mr-2 ${isUpdating ? 'animate-spin' : ''}`} />
                 {isUpdating ? '更新中...' : '前週の出勤日数に基づいて時給を更新'}
-              </Button>
+              </Button> */}
             </div>
           </CardContent>
         </Card>
@@ -1337,4 +1337,3 @@ export default function SalarySettingsPage() {
     </div>
   );
 }
-
