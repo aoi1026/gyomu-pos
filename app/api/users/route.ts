@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/database';
 
+// Avoid static optimization so DB is not hit at build time
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+export const runtime = 'nodejs';
+
 // 全ユーザーを取得
 export async function GET(request: NextRequest) {
   const client = await pool.connect();

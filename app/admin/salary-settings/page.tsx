@@ -40,7 +40,7 @@ export default function SalarySettingsPage() {
   const [isUpdatingCategory, setIsUpdatingCategory] = useState(false);
   
   // キャストバック率関係
-  const [allUsers, setAllUsers] = useState<Array<{ id: number; name: string }>>([]);
+  const [allUsers, setAllUsers] = useState<Array<{ id: number; name: string; role?: string }>>([]);
   const [backRateCategories, setBackRateCategories] = useState<Array<{ id: number; name: string }>>([]);
   const [backRateData, setBackRateData] = useState<{ [castId: number]: { [categoryId: number]: number } }>({});
   const [showBackRateAddModal, setShowBackRateAddModal] = useState(false);
@@ -353,7 +353,7 @@ export default function SalarySettingsPage() {
       const response = await fetch('/api/users');
       const result = await response.json();
       if (result.success) {
-        setAllUsers(result.data);
+        setAllUsers(result.data as Array<{ id: number; name: string; role?: string }>);
       }
     } catch (error) {
       console.error('ユーザー取得エラー:', error);
