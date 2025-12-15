@@ -796,7 +796,7 @@ export default function SalarySettingsPage() {
                           <Plus className="w-4 h-4 mr-2" />
                           データ追加
                         </Button>
-                        <Button
+                        {/* <Button
                           onClick={handleUpdateCategoryFromAttendance}
                           disabled={isUpdatingCategory}
                           size="sm"
@@ -805,7 +805,7 @@ export default function SalarySettingsPage() {
                         >
                           <RefreshCw className={`w-4 h-4 mr-2 ${isUpdatingCategory ? 'animate-spin' : ''}`} />
                           {isUpdatingCategory ? '更新中...' : '前週の出勤日数に基づいて給与カテゴリを更新'}
-                        </Button>
+                        </Button> */}
                       </div>
                     </div>
 
@@ -925,7 +925,9 @@ export default function SalarySettingsPage() {
                             </TableRow>
                           </TableHeader>
                           <TableBody>
-                            {allUsers.map((user) => (
+                            {allUsers
+                              .filter(user => user.role !== 'admin')
+                              .map((user) => (
                               <TableRow key={user.id}>
                                 <TableCell className="font-semibold">{user.name}</TableCell>
                                 {backRateCategories.map((cat) => {
@@ -1019,7 +1021,7 @@ export default function SalarySettingsPage() {
                           <TableBody>
                             {fullReflectCategories.map((cat, index) => (
                               <TableRow key={cat.id}>
-                                <TableCell className="text-center font-semibold">{index + 1}</TableCell>
+                                <TableCell className="font-semibold">{index + 1}</TableCell>
                                 <TableCell>
                                   <div className="flex items-center justify-between">
                                     <span>{cat.name}</span>
