@@ -18,9 +18,31 @@ async function ensureNominationTable(client: any) {
       session_id INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
       type_id VARCHAR(50) NOT NULL CHECK (type_id IN ('main','inside','together')),
       cost DECIMAL(10,2) DEFAULT 0.00 CHECK (cost >= 0),
+      cost_cast DECIMAL(10,2) DEFAULT 0.00 CHECK (cost_cast >= 0),
+      tomain_nomination INTEGER DEFAULT 0 CHECK (tomain_nomination IN (0, 1)),
+      rank_cost DECIMAL(12,2) DEFAULT 0.00 CHECK (rank_cost >= 0),
+      rank_point DECIMAL(6,2) DEFAULT 0.00 CHECK (rank_point >= 0),
       created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
     )
+  `);
+
+  // 既存テーブルに対して不足しているカラムを追加
+  await client.query(`
+    ALTER TABLE nomination
+      ADD COLUMN IF NOT EXISTS cost_cast DECIMAL(10,2) DEFAULT 0.00
+  `);
+  await client.query(`
+    ALTER TABLE nomination
+      ADD COLUMN IF NOT EXISTS tomain_nomination INTEGER DEFAULT 0
+  `);
+  await client.query(`
+    ALTER TABLE nomination
+      ADD COLUMN IF NOT EXISTS rank_cost DECIMAL(12,2) DEFAULT 0.00
+  `);
+  await client.query(`
+    ALTER TABLE nomination
+      ADD COLUMN IF NOT EXISTS rank_point DECIMAL(6,2) DEFAULT 0.00
   `);
 
   await client.query(`CREATE INDEX IF NOT EXISTS idx_nomination_cast_id ON nomination(cast_id)`);
@@ -62,6 +84,10 @@ export async function GET(request: NextRequest) {
           n.session_id,
           n.type_id,
           n.cost,
+          n.cost_cast,
+          n.tomain_nomination,
+          n.rank_cost,
+          n.rank_point,
           n.created_at,
           n.updated_at
         FROM nomination n
@@ -110,14 +136,96 @@ export async function POST(request: NextRequest) {
     }
 
     const costValue = cost !== undefined ? parseFloat(cost) : 0;
+    const tomainNomination = 0; // 初期値は0
+
+    // セッション情報（人数・延長履歴）と追加料金を取得してrank初期値を算出する
+    const sessionRes = await client.query(
+      `SELECT client, set_extensions FROM sessions WHERE id = $1`,
+      [sessionId]
+    );
+    const sessionRow = sessionRes.rows[0] || {};
+    const sessionClient = Number(sessionRow.client ?? 0) || 0;
+    let setExtensions: any[] = [];
+    try {
+      const raw = sessionRow.set_extensions;
+      setExtensions = typeof raw === 'string' ? JSON.parse(raw) : (raw ?? []);
+      if (!Array.isArray(setExtensions)) setExtensions = [];
+    } catch {
+      setExtensions = [];
+    }
+    const extensionCount = setExtensions.length;
+    // rank_costへ加算する延長料金は「1名分」：延長合計(price) / 延長人数(count)
+    const extensionTotal = setExtensions.reduce((sum: number, e: any) => {
+      const price = Number(e?.price);
+      const count = Number(e?.count) || 1;
+      if (!Number.isFinite(price) || count <= 0) return sum;
+      return sum + price / count;
+    }, 0);
+
+    const chargeRes = await client.query(
+      `SELECT charge_name, value FROM add_charges WHERE charge_name = ANY($1::text[])`,
+      [['set_price', 'main', 'together']]
+    );
+    const chargeMap: Record<string, number> = {};
+    for (const row of chargeRes.rows) {
+      chargeMap[String(row.charge_name)] = Number(row.value) || 0;
+    }
+    const setUnit = chargeMap['set_price'] || 0;
+    const mainFee = chargeMap['main'] || 0;
+    const togetherFee = chargeMap['together'] || 0;
+    // rank_costへ加算するセット料金は「1名分」：set_price.value（人数を掛けない）
+    const setFeeTotal = setUnit;
+    const mainFeeForExtensions = mainFee * extensionCount;
+
+    // キャスト用注文（for_cast=1）の合計
+    const castOrderRes = await client.query(
+      `SELECT COALESCE(SUM(total_price), 0) AS total
+         FROM salesorder
+        WHERE session_id = $1 AND cast_id = $2 AND for_cast = 1`,
+      [sessionId, castId]
+    );
+    const castOrderTotal = Number(castOrderRes.rows[0]?.total ?? 0) || 0;
+
+    // rank_point 初期値
+    const rankPointInit =
+      typeId === 'inside'
+        ? 0.5
+        : 1 + extensionCount;
+
+    // rank_cost 初期値（要件ベース。insideは延長後に本指名扱いになるため初期0）
+    let rankCostInit = 0;
+    if (typeId === 'main') {
+      rankCostInit = setFeeTotal + mainFee + extensionTotal + mainFeeForExtensions + castOrderTotal;
+    } else if (typeId === 'together') {
+      rankCostInit = setFeeTotal + togetherFee + extensionTotal + mainFeeForExtensions + castOrderTotal;
+    } else {
+      rankCostInit = 0;
+    }
+
+    // cast側取り分（指名料増分 × 指名率%）を算出
+    // 指名率は user テーブルの該当カラム（main_nomination / inside_nomination / together_nomination）を参照
+    const rateRes = await client.query(
+      `SELECT main_nomination, inside_nomination, together_nomination FROM "user" WHERE id = $1`,
+      [castId]
+    );
+    const rates = rateRes.rows[0] || {};
+    // inside でも tomain_nomination=1 の場合は main 扱い（ただしPOST時は常に0）
+    const effectiveTypeId = typeId;
+    const ratePct =
+      effectiveTypeId === 'main'
+        ? Number(rates.main_nomination ?? 0)
+        : effectiveTypeId === 'inside'
+          ? Number(rates.inside_nomination ?? 0)
+          : Number(rates.together_nomination ?? 0);
+    const castShare = costValue > 0 ? (costValue * (Number.isFinite(ratePct) ? ratePct : 0)) / 100 : 0;
 
     const result = await client.query(
       `
-        INSERT INTO nomination (cast_id, table_id, session_id, type_id, cost)
-        VALUES ($1, $2, $3, $4, $5)
-        RETURNING id, cast_id, table_id, session_id, type_id, cost, created_at, updated_at
+        INSERT INTO nomination (cast_id, table_id, session_id, type_id, cost, cost_cast, tomain_nomination, rank_cost, rank_point)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        RETURNING id, cast_id, table_id, session_id, type_id, cost, cost_cast, tomain_nomination, rank_cost, rank_point, created_at, updated_at
       `,
-      [castId, tableId, sessionId, typeId, costValue]
+      [castId, tableId, sessionId, typeId, costValue, castShare, tomainNomination, rankCostInit, rankPointInit]
     );
 
     const inserted = result.rows[0];
@@ -132,6 +240,10 @@ export async function POST(request: NextRequest) {
           n.session_id,
           n.type_id,
           n.cost,
+          n.cost_cast,
+          n.tomain_nomination,
+          n.rank_cost,
+          n.rank_point,
           n.created_at,
           n.updated_at
         FROM nomination n

@@ -28,7 +28,7 @@ interface SessionData {
   set_count: number;
   status: number;
   created_at: string;
-  set_extensions?: Array<{ count: number; timestamp: number }>;
+  set_extensions?: Array<{ count: number; timestamp: number; price?: number }>;
   is_paused?: boolean;
   paused_at?: string;
   paused_elapsed?: number;
@@ -56,6 +56,11 @@ interface Nomination {
   id: number;
   cast_name: string;
   type_id: 'main' | 'inside' | 'together';
+  // 指名料金（指名登録 + 延長時加算の累計）
+  cost?: number;
+  // insideのまま本指名扱いになったか
+  tomain_nomination?: number;
+  updated_at?: string;
   created_at: string;
 }
 
@@ -67,7 +72,7 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
   const [serviceOrders, setServiceOrders] = useState<ServiceOrder[]>([]);
   const [nominations, setNominations] = useState<Nomination[]>([]);
   const [setExtensionCountdown, setSetExtensionCountdown] = useState<number>(0);
-  const [setExtensions, setSetExtensions] = useState<Array<{ count: number; timestamp: number }>>([]);
+  const [setExtensions, setSetExtensions] = useState<Array<{ count: number; timestamp: number; price?: number }>>([]);
   const [guestCount, setGuestCount] = useState<string>('');
   const [isEditingRemainingTime, setIsEditingRemainingTime] = useState(false);
   const [editingRemainingMinutes, setEditingRemainingMinutes] = useState<string>('');
@@ -342,7 +347,7 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
   // 指名リストを取得
   const loadNominations = async (sessionId: number) => {
     try {
-      const response = await fetch(`/api/nominations?session_id=${sessionId}`);
+      const response = await fetch(`/api/nominations?session_id=${sessionId}&_ts=${Date.now()}`, { cache: 'no-store' });
       const result = await response.json();
       
       if (result.success) {
@@ -743,37 +748,11 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
 
   // 指名料金の合計を計算（テーブルページと同じロジック）
   const calculateNominationCharges = (): number => {
-    let total = 0;
-    
-    nominations.forEach(nomination => {
-      let charge = 0;
-      if (nomination.type_id === 'together') {
-        const mainCharge = addCharges['main'] || 0;
-        const togetherCharge = addCharges['together'] || 0;
-        charge = mainCharge + togetherCharge;
-      } else if (nomination.type_id === 'main') {
-        charge = addCharges['main'] || 0;
-      } else if (nomination.type_id === 'inside') {
-        charge = addCharges['inside'] || 0;
-      }
-      total += charge;
-    });
-    
-    // セット延長回数分の指名料金
-    const extensionCount = setExtensions.length;
-    if (extensionCount > 0 && nominations.length > 0) {
-      nominations.forEach(nomination => {
-        let chargePerExtension = 0;
-        if (nomination.type_id === 'together' || nomination.type_id === 'main') {
-          chargePerExtension = addCharges['main'] || 0;
-        } else if (nomination.type_id === 'inside') {
-          chargePerExtension = addCharges['inside'] || 0;
-        }
-        total += chargePerExtension * extensionCount;
-      });
-    }
-    
-    return total;
+    // nominations APIのcostは「指名登録 + 延長時加算」の累計になっている前提
+    return nominations.reduce((sum, n) => {
+      const v = Number((n as any).cost);
+      return sum + (Number.isFinite(v) ? v : 0);
+    }, 0);
   };
 
   // キャストリストを取得
@@ -1292,6 +1271,8 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
     }
     
     let subtotal = 0;
+    const setPrice = addCharges['set_price'] || 0;
+    const extensionUnit = addCharges['extension_price'] || 0;
     
     // 商品の合計（承認済みのみ）
     if (cartOrders && cartOrders.length > 0) {
@@ -1311,14 +1292,15 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
     if (guestCount && guestCount.trim() !== '') {
       const initialGuestCount = parseInt(guestCount);
       if (!isNaN(initialGuestCount) && initialGuestCount > 0) {
-        subtotal += 5000 * initialGuestCount;
+        subtotal += setPrice * initialGuestCount;
       }
     }
     
     // セット延長料金
     setExtensions.forEach(extension => {
       if (extension.count > 0) {
-        subtotal += 5000 * extension.count;
+        const ext = Number(extension.price ?? (extensionUnit * extension.count));
+        subtotal += Number.isFinite(ext) ? ext : 0;
       }
     });
     
@@ -1371,6 +1353,8 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
   // 自動計算された合計値を取得（手動設定値の表示用）
   const getAutoCalculatedTotal = () => {
     let subtotal = 0;
+    const setPrice = addCharges['set_price'] || 0;
+    const extensionUnit = addCharges['extension_price'] || 0;
     
     // 商品の合計（承認済みのみ）
     if (cartOrders && cartOrders.length > 0) {
@@ -1390,14 +1374,15 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
     if (guestCount && guestCount.trim() !== '') {
       const initialGuestCount = parseInt(guestCount);
       if (!isNaN(initialGuestCount) && initialGuestCount > 0) {
-        subtotal += 5000 * initialGuestCount;
+        subtotal += setPrice * initialGuestCount;
       }
     }
     
     // セット延長料金
     setExtensions.forEach(extension => {
       if (extension.count > 0) {
-        subtotal += 5000 * extension.count;
+        const ext = Number(extension.price ?? (extensionUnit * extension.count));
+        subtotal += Number.isFinite(ext) ? ext : 0;
       }
     });
     
@@ -1988,7 +1973,7 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
                       {guestCount && (
                         <div className="flex justify-between text-sm">
                           <span>セッション料金 ({guestCount}名)</span>
-                          <span>{formatCurrency(5000 * parseInt(guestCount || '0'))}</span>
+                          <span>{formatCurrency((addCharges['set_price'] || 0) * parseInt(guestCount || '0'))}</span>
                         </div>
                       )}
 
@@ -1996,7 +1981,7 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
                       {setExtensions.map((extension, index) => (
                         <div key={index} className="flex justify-between text-sm">
                           <span>セット延長 ({extension.count}名)</span>
-                          <span>{formatCurrency(5000 * extension.count)}</span>
+                          <span>{formatCurrency(Number(extension.price ?? ((addCharges['extension_price'] || 0) * extension.count)) || 0)}</span>
                         </div>
                       ))}
 
@@ -2005,57 +1990,24 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
                         <div className="border-t pt-2 space-y-1">
                           <div className="text-xs font-semibold text-gray-600 mb-1">指名料金</div>
                           {nominations.map((nomination) => {
-                            let charge = 0;
                             let chargeLabel = '';
                             
                             if (nomination.type_id === 'together') {
-                              const mainCharge = addCharges['main'] || 0;
-                              const togetherCharge = addCharges['together'] || 0;
-                              charge = mainCharge + togetherCharge;
                               chargeLabel = `${getNominationTypeLabel(nomination.type_id)} - ${nomination.cast_name}`;
                             } else if (nomination.type_id === 'main') {
-                              charge = addCharges['main'] || 0;
                               chargeLabel = `${getNominationTypeLabel(nomination.type_id)} - ${nomination.cast_name}`;
                             } else if (nomination.type_id === 'inside') {
-                              charge = addCharges['inside'] || 0;
-                              chargeLabel = `${getNominationTypeLabel(nomination.type_id)} - ${nomination.cast_name}`;
+                              const promoted = Number((nomination as any).tomain_nomination) === 1;
+                              chargeLabel = `${getNominationTypeLabel(nomination.type_id)}${promoted ? '（本指名へ昇格）' : ''} - ${nomination.cast_name}`;
                             }
                             
                             return (
                               <div key={nomination.id} className="flex justify-between text-sm pl-3">
                                 <span className="text-gray-700">{chargeLabel}</span>
-                                <span>{formatCurrency(charge)}</span>
+                                <span>{formatCurrency(Number((nomination as any).cost) || 0)}</span>
                               </div>
                             );
                           })}
-                          
-                          {/* セット延長時の指名料金 */}
-                          {(() => {
-                            // セット延長回数分の指名料金を計算
-                            const extensionCount = setExtensions.length;
-                            if (extensionCount > 0 && nominations.length > 0) {
-                              let extensionNominationTotal = 0;
-                              nominations.forEach(nomination => {
-                                let chargePerExtension = 0;
-                                if (nomination.type_id === 'together' || nomination.type_id === 'main') {
-                                  chargePerExtension = addCharges['main'] || 0;
-                                } else if (nomination.type_id === 'inside') {
-                                  chargePerExtension = addCharges['inside'] || 0;
-                                }
-                                extensionNominationTotal += chargePerExtension * extensionCount;
-                              });
-                              
-                              if (extensionNominationTotal > 0) {
-                                return (
-                                  <div className="flex justify-between text-sm pl-3 border-t pt-1 mt-1">
-                                    <span className="text-gray-700">指名料金（延長 × {extensionCount}回）</span>
-                                    <span>{formatCurrency(extensionNominationTotal)}</span>
-                                  </div>
-                                );
-                              }
-                            }
-                            return null;
-                          })()}
                         </div>
                       )}
                       
@@ -2101,18 +2053,22 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
                           subtotal += productTotal;
                         }
                         
+                        const setPrice = addCharges['set_price'] || 0;
+                        const extensionUnit = addCharges['extension_price'] || 0;
+
                         // セッション開始時の料金
                         if (guestCount && guestCount.trim() !== '') {
                           const initialGuestCount = parseInt(guestCount);
                           if (!isNaN(initialGuestCount) && initialGuestCount > 0) {
-                            subtotal += 5000 * initialGuestCount;
+                            subtotal += setPrice * initialGuestCount;
                           }
                         }
                         
                         // セット延長料金
                         setExtensions.forEach(extension => {
                           if (extension.count > 0) {
-                            subtotal += 5000 * extension.count;
+                            const ext = Number(extension.price ?? (extensionUnit * extension.count));
+                            subtotal += Number.isFinite(ext) ? ext : 0;
                           }
                         });
                         
@@ -2290,7 +2246,7 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
               />
               <p className="text-sm text-gray-500">
                 延長料金: {extensionGuestCount && !isNaN(parseInt(extensionGuestCount)) && parseInt(extensionGuestCount) > 0 
-                  ? formatCurrency(5000 * parseInt(extensionGuestCount))
+                  ? formatCurrency((addCharges['extension_price'] || 0) * parseInt(extensionGuestCount))
                   : formatCurrency(0)}
               </p>
             </div>

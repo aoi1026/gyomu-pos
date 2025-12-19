@@ -342,6 +342,15 @@ export default function MonthlySalesPage() {
                   <RefreshCw className="w-4 h-4 mr-2" />
                   <span className="hidden sm:inline">更新</span>
                 </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => router.push(`/admin/sales/cast-ranking?year=${selectedYear}&month=${selectedMonth}`)}
+                  className="flex-1 sm:flex-none"
+                >
+                  <Users className="w-4 h-4 mr-2" />
+                  <span className="hidden sm:inline">キャストランキング</span>
+                </Button>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button

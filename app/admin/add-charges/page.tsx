@@ -18,7 +18,9 @@ type ChargeName =
   | 'together'
   | 'bottle_keep'
   | 'vip_room'
-  | 'song_room';
+  | 'song_room'
+  | 'set_price'
+  | 'extension_price';
 
 interface AddCharge {
   id: number;
@@ -30,12 +32,14 @@ interface AddCharge {
 }
 
 const CHARGE_LABELS: Record<ChargeName, { title: string; description: string }> = {
-  main: { title: '本指名料', description: '' }, //来店時に発生する本指名料です。
-  inside: { title: '場内指名料', description: '' }, //店内滞在に対して発生する本指名料です。
-  together: { title: '同伴料', description: '' }, //キャストとの同伴にかかる料金です。
-  bottle_keep: { title: 'ボトル保管料', description: '' }, //ボトルをキープする際に発生する料金です。
-  vip_room: { title: '個室使用料', description: '' }, //VIPルーム利用時の追加料金です。
-  song_room: { title: 'カラオケ利用料', description: '' }, //カラオケ設備の利用に対する料金です。
+  main: { title: '本指名料', description: '' }, // 来店時に発生する本指名料です。
+  inside: { title: '場内指名料', description: '' }, // 店内滞在に対して発生する指名料です。
+  together: { title: '同伴料', description: '' }, // キャストとの同伴にかかる料金です。
+  bottle_keep: { title: 'ボトル保管料', description: '' }, // ボトルをキープする際に発生する料金です。
+  vip_room: { title: '個室使用料', description: '' }, // VIPルーム利用時の追加料金です。
+  song_room: { title: 'カラオケ利用料', description: '' }, // カラオケ設備の利用に対する料金です。
+  set_price: { title: 'セット料金', description: '' }, // 基本セット料金です。
+  extension_price: { title: '延長料金', description: '' }, // セット延長時の料金です。
 };
 
 const currencyFormatter = new Intl.NumberFormat('ja-JP', {
@@ -70,11 +74,19 @@ export default function AddChargesPage() {
       const result = await response.json();
       if (result.success) {
         setCharges(
-          (result.charges || []).map((charge: any) => ({
-            ...charge,
-            value: Number(charge.value ?? 0),
-            other: charge.other ?? '',
-          }))
+          (result.charges || [])
+            // standard_date / regular / arubaito など、追加料金以外の設定レコードは表示から除外
+            .filter(
+              (charge: any) =>
+                !['standard_date', 'regular', 'arubaito'].includes(
+                  String(charge.charge_name)
+                )
+            )
+            .map((charge: any) => ({
+              ...charge,
+              value: Number(charge.value ?? 0),
+              other: charge.other ?? '',
+            }))
         );
       } else {
         error('エラー', result.error || '追加料金の取得に失敗しました');
@@ -192,13 +204,20 @@ export default function AddChargesPage() {
                   <TableRow>
                     <TableHead>項目</TableHead>
                     <TableHead className="text-center w-32">現在の料金</TableHead>
+                    {/* <TableHead className="text-center w-32">セット料金</TableHead>
+                    <TableHead className="text-center w-32">延長料金</TableHead> */}
                     <TableHead className="text-center w-75">メモ</TableHead>
                     <TableHead className="w-24 text-center">操作</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {sortedCharges.map((charge) => {
-                    const metadata = CHARGE_LABELS[charge.charge_name];
+                    // DBに予期しないcharge_nameが入っている場合に備えてフォールバックを用意
+                    const metadata =
+                      CHARGE_LABELS[charge.charge_name] ?? {
+                        title: charge.charge_name,
+                        description: '',
+                      };
                     return (
                       <TableRow key={charge.id}>
                         <TableCell>
@@ -212,6 +231,7 @@ export default function AddChargesPage() {
                             {currencyFormatter.format(charge.value)}
                           </Badge>
                         </TableCell>
+                        {/* set_price / extension_price は「行（charge_name）」として管理し、valueを参照する */}
                         <TableCell className="text-center text-sm text-gray-600">
                           {charge.other ? charge.other : <span className="text-gray-400">-</span>}
                         </TableCell>
@@ -242,7 +262,12 @@ export default function AddChargesPage() {
             <DialogTitle className="flex items-center space-x-2">
               <Settings2 className="w-5 h-5 text-purple-600" />
               <span>
-                {selectedCharge ? CHARGE_LABELS[selectedCharge.charge_name].title : ''}
+                {selectedCharge
+                  ? (CHARGE_LABELS[selectedCharge.charge_name] ?? {
+                      title: selectedCharge.charge_name,
+                      description: '',
+                    }).title
+                  : ''}
               </span>
             </DialogTitle>
           </DialogHeader>
@@ -262,6 +287,7 @@ export default function AddChargesPage() {
                 />
               </div>
 
+              {/* セット料金/延長料金は add_charges の set_price / extension_price 行の value を編集してください */}
               <div>
                 <Label htmlFor="charge_other">メモ</Label>
                 <Input

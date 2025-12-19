@@ -62,6 +62,10 @@ CREATE TABLE IF NOT EXISTS nomination (
     session_id INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
     type_id VARCHAR(50) NOT NULL CHECK (type_id IN ('main', 'inside', 'together')),
     cost DECIMAL(10,2) DEFAULT 0.00 CHECK (cost >= 0),
+    cost_cast DECIMAL(10,2) DEFAULT 0.00 CHECK (cost_cast >= 0),
+    tomain_nomination INTEGER DEFAULT 0 CHECK (tomain_nomination IN (0, 1)),
+    rank_cost DECIMAL(12,2) DEFAULT 0.00 CHECK (rank_cost >= 0),
+    rank_point DECIMAL(6,2) DEFAULT 0.00 CHECK (rank_point >= 0),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );

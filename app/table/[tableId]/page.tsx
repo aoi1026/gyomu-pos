@@ -87,7 +87,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
   const [storeCreditCardPaymentAmount, setStoreCreditCardPaymentAmount] = useState<string>('');
   const [guestCount, setGuestCount] = useState<string>('');
   const [setExtensionCountdown, setSetExtensionCountdown] = useState<number>(0); // 再計算で設定する（初期表示のリセットを防止）
-  const [setExtensions, setSetExtensions] = useState<Array<{ count: number; timestamp: number }>>([]); // 延長履歴
+  const [setExtensions, setSetExtensions] = useState<Array<{ count: number; timestamp: number; price?: number }>>([]); // 延長履歴（priceは延長料金の合計を保存）
   const [showSetExtensionDialog, setShowSetExtensionDialog] = useState(false);
   const [extensionGuestCount, setExtensionGuestCount] = useState<string>('');
   const [isEditingRemainingTime, setIsEditingRemainingTime] = useState(false);
@@ -567,14 +567,37 @@ export default function TableDashboard({ params }: { params: { tableId: string }
     if (!sessionId) return;
 
     try {
-      const response = await fetch(`/api/nominations?table_id=${tableAuth.table_id}&session_id=${sessionId}`);
+      // cost更新（延長時の加算）を確実に反映するためキャッシュを避ける
+      const response = await fetch(
+        `/api/nominations?table_id=${tableAuth.table_id}&session_id=${sessionId}&_ts=${Date.now()}`,
+        { cache: 'no-store' }
+      );
       const result = await response.json();
       if (result.success) {
         const newNominations = result.nominations || [];
         // データが変更された場合のみ状態を更新（ちらつき防止）
         setNominations(prev => {
-          const prevStr = JSON.stringify(prev.map((n: any) => ({ id: n.id, cast_name: n.cast_name, type_id: n.type_id, created_at: n.created_at })));
-          const newStr = JSON.stringify(newNominations.map((n: any) => ({ id: n.id, cast_name: n.cast_name, type_id: n.type_id, created_at: n.created_at })));
+          // NOTE: cost が変わるケース（延長時の加算）を検出できるように cost/updated_at も比較に含める
+          const prevStr = JSON.stringify(
+            prev.map((n: any) => ({
+              id: n.id,
+              cast_name: n.cast_name,
+              type_id: n.type_id,
+              cost: n.cost,
+              created_at: n.created_at,
+              updated_at: n.updated_at,
+            }))
+          );
+          const newStr = JSON.stringify(
+            newNominations.map((n: any) => ({
+              id: n.id,
+              cast_name: n.cast_name,
+              type_id: n.type_id,
+              cost: n.cost,
+              created_at: n.created_at,
+              updated_at: n.updated_at,
+            }))
+          );
           if (prevStr !== newStr) {
             return newNominations;
           }
@@ -1206,6 +1229,30 @@ export default function TableDashboard({ params }: { params: { tableId: string }
     }
     
     try {
+      // セット料金（DB: add_charges の set_price.value）が未設定なら開始できない
+      let charges = addCharges;
+      if (Object.keys(charges).length === 0 || charges['set_price'] === undefined) {
+        try {
+          const chargesResponse = await fetch('/api/add-charges');
+          const chargesResult = await chargesResponse.json();
+          if (chargesResult.success && chargesResult.charges) {
+            const chargesMap: {[key: string]: number} = {};
+            chargesResult.charges.forEach((charge: any) => {
+              chargesMap[charge.charge_name] = parseFloat(charge.value) || 0;
+            });
+            charges = chargesMap;
+            setAddCharges(chargesMap);
+          }
+        } catch (err) {
+          console.error('追加料金取得エラー:', err);
+        }
+      }
+
+      if (charges['set_price'] === undefined) {
+        error('エラー', 'セット料金（add_charges: set_price）が未設定です。管理者画面の追加料金設定で登録してください。');
+        return;
+      }
+
       // 人数をローカルストレージに保存
       localStorage.setItem('guest_count', guestCount);
       
@@ -1361,6 +1408,8 @@ export default function TableDashboard({ params }: { params: { tableId: string }
 
   const calculateTotal = () => {
     let subtotal = 0;
+    const setPrice = addCharges['set_price'] || 0;
+    const extensionPrice = addCharges['extension_price'] || 0;
     
     // 商品の合計
     if (cartOrders && cartOrders.length > 0) {
@@ -1377,50 +1426,27 @@ export default function TableDashboard({ params }: { params: { tableId: string }
       subtotal += productTotal;
     }
     
-    // セッション開始時の料金（5000円 × 人数）
+    // セッション開始時の料金（add_charges の set_price.value × 人数）
     if (guestCount && guestCount.trim() !== '') {
       const initialGuestCount = parseInt(guestCount);
       if (!isNaN(initialGuestCount) && initialGuestCount > 0) {
-        subtotal += 5000 * initialGuestCount;
+        subtotal += setPrice * initialGuestCount;
       }
     }
     
-    // セット延長料金（延長回数 × 5000円 × 延長時の人数）
+    // セット延長料金（add_charges の extension_price.value × 延長時人数）
     setExtensions.forEach(extension => {
       if (extension.count > 0) {
-        subtotal += 5000 * extension.count;
+        // 既存データ互換: priceが入っていればそれを優先（合計）、無ければ単価×人数で計算
+        subtotal += (extension.price ?? (extensionPrice * extension.count));
       }
     });
     
-    // 指名料金の合計（nominations配列から計算）
+    // 指名料金（DBのnomination.costは「指名登録 + 延長時加算」の累計になっている前提）
     nominations.forEach(nomination => {
-      let charge = 0;
-      if (nomination.type_id === 'together') {
-        // 同伴指名の場合は本指名料と同伴料の両方
-        const mainCharge = addCharges['main'] || 0;
-        const togetherCharge = addCharges['together'] || 0;
-        charge = mainCharge + togetherCharge;
-      } else if (nomination.type_id === 'main') {
-        charge = addCharges['main'] || 0;
-      } else if (nomination.type_id === 'inside') {
-        charge = addCharges['inside'] || 0;
-      }
-      subtotal += charge;
+      const cost = Number((nomination as any).cost);
+      subtotal += Number.isFinite(cost) ? cost : 0;
     });
-    
-    // セット延長回数分の指名料金
-    const extensionCount = setExtensions.length;
-    if (extensionCount > 0 && nominations.length > 0) {
-      nominations.forEach(nomination => {
-        let chargePerExtension = 0;
-        if (nomination.type_id === 'together' || nomination.type_id === 'main') {
-          chargePerExtension = addCharges['main'] || 0;
-        } else if (nomination.type_id === 'inside') {
-          chargePerExtension = addCharges['inside'] || 0;
-        }
-        subtotal += chargePerExtension * extensionCount;
-      });
-    }
     
     // 追加サービス料金の合計
     additionalServices.forEach(service => {
@@ -1482,8 +1508,33 @@ export default function TableDashboard({ params }: { params: { tableId: string }
       return;
     }
 
-    // 延長情報を追加
-    const newExtension = { count, timestamp: Date.now() };
+    // 延長料金（DB: add_charges の extension_price.value）を取得（単価）
+    let charges = addCharges;
+    if (Object.keys(charges).length === 0 || charges['extension_price'] === undefined) {
+      try {
+        const chargesResponse = await fetch('/api/add-charges');
+        const chargesResult = await chargesResponse.json();
+        if (chargesResult.success && chargesResult.charges) {
+          const chargesMap: {[key: string]: number} = {};
+          chargesResult.charges.forEach((charge: any) => {
+            chargesMap[charge.charge_name] = parseFloat(charge.value) || 0;
+          });
+          charges = chargesMap;
+          setAddCharges(chargesMap);
+        }
+      } catch (err) {
+        console.error('追加料金取得エラー:', err);
+      }
+    }
+
+    if (charges['extension_price'] === undefined) {
+      error('エラー', '延長料金（add_charges: extension_price）が未設定です。管理者画面の追加料金設定で登録してください。');
+      return;
+    }
+
+    // 延長情報を追加（priceは「延長料金の合計」＝単価×人数として保存し、明細を固定化）
+    const extensionUnitPrice = charges['extension_price'];
+    const newExtension = { count, timestamp: Date.now(), price: extensionUnitPrice * count };
     const updatedExtensions = [...setExtensions, newExtension];
     setSetExtensions(updatedExtensions);
     
@@ -1530,7 +1581,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
     
     // 現在の指名リストの料金を追加
     // addChargesが空の場合は再取得
-    let charges = addCharges;
+    charges = charges;
     if (Object.keys(charges).length === 0) {
       try {
         const chargesResponse = await fetch('/api/add-charges');
@@ -1549,17 +1600,36 @@ export default function TableDashboard({ params }: { params: { tableId: string }
     }
 
     const extensionNominationCharges: number[] = [];
+    const nominationDeltaById = new Map<number, { add: number; toMainFlag?: 1; rankCostAdd: number; rankPointAdd: number }>();
     
-    // 各指名のcostを更新
+    // 各指名のcostを更新（延長のたびに「該当する指名料」を加算）
+    // 仕様: 延長時に場内指名(inside)は自動的に本指名(main)へ切り替え、基本料金に本指名料金を加算する
     for (const nomination of nominations) {
       let charge = 0;
-      if (nomination.type_id === 'together') {
-        // 同伴指名の場合は本指名の料金として扱う
-        charge = charges['main'] || 0;
+      const mainCharge = charges['main'] || 0;
+
+      if (nomination.type_id === 'inside') {
+        // 場内指名は本指名に切り替え → 本指名料金を加算
+        charge = mainCharge;
+      } else if (nomination.type_id === 'together') {
+        // 同伴指名は延長時は本指名料金を加算（既存仕様踏襲）
+        charge = mainCharge;
       } else {
-        charge = charges[nomination.type_id] || 0;
+        // main など
+        charge = mainCharge;
       }
       extensionNominationCharges.push(charge);
+      if (charge > 0) {
+        // rank_cost は「延長料金(1名分) + 本指名料」を加算、rank_point は延長ごとに +1
+        const extTotal = newExtension.price ?? 0;
+        const extUnit = count > 0 ? extTotal / count : 0;
+        nominationDeltaById.set(Number(nomination.id), {
+          add: charge,
+          ...(nomination.type_id === 'inside' ? { toMainFlag: 1 as const } : {}),
+          rankCostAdd: extUnit + charge,
+          rankPointAdd: 1,
+        });
+      }
       
       // nominationテーブルのcostを更新
       if (charge > 0) {
@@ -1570,13 +1640,39 @@ export default function TableDashboard({ params }: { params: { tableId: string }
               'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-              cost: charge
+              cost: charge,
+              ...(nomination.type_id === 'inside' ? { tomain_nomination: 1 } : {}),
+              // rank用加算
+              rank_cost_add: (count > 0 ? (newExtension.price ?? 0) / count : 0) + charge,
+              rank_point_add: 1
             })
           });
         } catch (err) {
           console.error(`指名ID ${nomination.id} のcost更新エラー:`, err);
         }
       }
+    }
+
+    // UIを即時反映（F5不要）。DB反映はこの後のloadNominationsで最終同期する。
+    if (nominationDeltaById.size > 0) {
+      setNominations(prev =>
+        prev.map((n: any) => {
+          const delta = nominationDeltaById.get(Number(n.id));
+          if (!delta) return n;
+          const currentCost = Number(n.cost);
+          const nextCost = (Number.isFinite(currentCost) ? currentCost : 0) + delta.add;
+          return {
+            ...n,
+            cost: nextCost,
+            // type_idはinsideのまま維持し、フラグで「本指名扱い」を示す
+            tomain_nomination: delta.toMainFlag ?? n.tomain_nomination ?? 0,
+            // rank系は画面表示に使う可能性があるため即時反映
+            rank_cost: (Number(n.rank_cost) || 0) + (Number(delta.rankCostAdd) || 0),
+            rank_point: (Number(n.rank_point) || 0) + (Number(delta.rankPointAdd) || 0),
+            updated_at: new Date().toISOString(),
+          };
+        })
+      );
     }
     
     console.log('セット延長時の指名料金:', extensionNominationCharges, 'charges:', charges);
@@ -3541,7 +3637,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                     if (guestCount && guestCount.trim() !== '') {
                       const initialGuestCount = parseInt(guestCount);
                       if (!isNaN(initialGuestCount) && initialGuestCount > 0) {
-                        const sessionFee = 5000 * initialGuestCount;
+                        const sessionFee = (addCharges['set_price'] || 0) * initialGuestCount;
                         return (
                           <div className="flex justify-between text-sm">
                             <span>セッション料金 ({guestCount}名)</span>
@@ -3557,7 +3653,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                   {setExtensions.length > 0 && setExtensions.map((extension, index) => (
                     <div key={index} className="flex justify-between text-sm">
                       <span>セット延長 ({extension.count}名)</span>
-                      <span>{formatCurrency(5000 * extension.count)}</span>
+                      <span>{formatCurrency(extension.price ?? ((addCharges['extension_price'] || 0) * extension.count))}</span>
                     </div>
                   ))}
                   
@@ -3566,57 +3662,24 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                     <div className="border-t pt-2 space-y-1">
                       <div className="text-xs font-semibold text-gray-600 mb-1">指名料金</div>
                       {nominations.map((nomination, index) => {
-                        let charge = 0;
                         let chargeLabel = '';
                         
                         if (nomination.type_id === 'together') {
-                          const mainCharge = addCharges['main'] || 0;
-                          const togetherCharge = addCharges['together'] || 0;
-                          charge = mainCharge + togetherCharge;
                           chargeLabel = `${getNominationTypeLabel(nomination.type_id)} - ${nomination.cast_name}`;
                         } else if (nomination.type_id === 'main') {
-                          charge = addCharges['main'] || 0;
                           chargeLabel = `${getNominationTypeLabel(nomination.type_id)} - ${nomination.cast_name}`;
                         } else if (nomination.type_id === 'inside') {
-                          charge = addCharges['inside'] || 0;
-                          chargeLabel = `${getNominationTypeLabel(nomination.type_id)} - ${nomination.cast_name}`;
+                          const promoted = Number((nomination as any).tomain_nomination) === 1;
+                          chargeLabel = `${getNominationTypeLabel(nomination.type_id)}${promoted ? '（本指名へ昇格）' : ''} - ${nomination.cast_name}`;
                         }
                         
                         return (
                           <div key={nomination.id} className="flex justify-between text-sm pl-3">
                             <span className="text-gray-700">{chargeLabel}</span>
-                            <span>{formatCurrency(charge)}</span>
+                            <span>{formatCurrency(Number((nomination as any).cost) || 0)}</span>
                           </div>
                         );
                       })}
-                      
-                      {/* セット延長時の指名料金 */}
-                      {(() => {
-                        // セット延長回数分の指名料金を計算
-                        const extensionCount = setExtensions.length;
-                        if (extensionCount > 0 && nominations.length > 0) {
-                          let extensionNominationTotal = 0;
-                          nominations.forEach(nomination => {
-                            let chargePerExtension = 0;
-                            if (nomination.type_id === 'together' || nomination.type_id === 'main') {
-                              chargePerExtension = addCharges['main'] || 0;
-                            } else if (nomination.type_id === 'inside') {
-                              chargePerExtension = addCharges['inside'] || 0;
-                            }
-                            extensionNominationTotal += chargePerExtension * extensionCount;
-                          });
-                          
-                          if (extensionNominationTotal > 0) {
-                            return (
-                              <div className="flex justify-between text-sm pl-3 border-t pt-1 mt-1">
-                                <span className="text-gray-700">指名料金（延長 × {extensionCount}回）</span>
-                                <span>{formatCurrency(extensionNominationTotal)}</span>
-                              </div>
-                            );
-                          }
-                        }
-                        return null;
-                      })()}
                     </div>
                   )}
                   
@@ -3666,46 +3729,22 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                     if (guestCount && guestCount.trim() !== '') {
                       const initialGuestCount = parseInt(guestCount);
                       if (!isNaN(initialGuestCount) && initialGuestCount > 0) {
-                        subtotal += 5000 * initialGuestCount;
+                        subtotal += (addCharges['set_price'] || 0) * initialGuestCount;
                       }
                     }
                     
                     // セット延長料金
                     setExtensions.forEach(extension => {
                       if (extension.count > 0) {
-                        subtotal += 5000 * extension.count;
+                        subtotal += (extension.price ?? ((addCharges['extension_price'] || 0) * extension.count));
                       }
                     });
                     
-                    // 指名料金の合計（nominations配列から計算）
+                    // 指名料金（DBのnomination.cost累計）
                     nominations.forEach(nomination => {
-                      let charge = 0;
-                      if (nomination.type_id === 'together') {
-                        // 同伴指名の場合は本指名料と同伴料の両方
-                        const mainCharge = addCharges['main'] || 0;
-                        const togetherCharge = addCharges['together'] || 0;
-                        charge = mainCharge + togetherCharge;
-                      } else if (nomination.type_id === 'main') {
-                        charge = addCharges['main'] || 0;
-                      } else if (nomination.type_id === 'inside') {
-                        charge = addCharges['inside'] || 0;
-                      }
-                      subtotal += charge;
+                      const cost = Number((nomination as any).cost);
+                      subtotal += Number.isFinite(cost) ? cost : 0;
                     });
-                    
-                    // セット延長回数分の指名料金
-                    const extensionCount = setExtensions.length;
-                    if (extensionCount > 0 && nominations.length > 0) {
-                      nominations.forEach(nomination => {
-                        let chargePerExtension = 0;
-                        if (nomination.type_id === 'together' || nomination.type_id === 'main') {
-                          chargePerExtension = addCharges['main'] || 0;
-                        } else if (nomination.type_id === 'inside') {
-                          chargePerExtension = addCharges['inside'] || 0;
-                        }
-                        subtotal += chargePerExtension * extensionCount;
-                      });
-                    }
                     
                     // 追加サービス料金の合計
                     additionalServices.forEach(service => {
@@ -4519,7 +4558,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                 />
                 <p className="text-sm text-gray-500">
                   延長料金: {extensionGuestCount && !isNaN(parseInt(extensionGuestCount)) && parseInt(extensionGuestCount) > 0 
-                    ? formatCurrency(5000 * parseInt(extensionGuestCount))
+                    ? formatCurrency((addCharges['extension_price'] || 0) * parseInt(extensionGuestCount))
                     : formatCurrency(0)}
                 </p>
               </div>

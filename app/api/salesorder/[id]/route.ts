@@ -36,7 +36,10 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
 
     // 既存注文の取得（在庫更新のため）
     const existingRes = await client.query(
-      `SELECT product_id, amount, status FROM salesorder WHERE id = $1 FOR UPDATE`,
+      `SELECT id, product_id, amount, status, for_cast, cast_id, session_id, total_price
+         FROM salesorder
+        WHERE id = $1
+        FOR UPDATE`,
       [params.id]
     );
     if (existingRes.rows.length === 0) {
@@ -48,6 +51,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
     }
     const existing = existingRes.rows[0];
     const wasRejected = existing.status === 'rejected';
+    const wasAccepted = existing.status === 'accepted';
 
     const updateFields = ['status = $1'];
     const values = [status];
@@ -134,6 +138,38 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
           { success: false, error: '在庫の更新に失敗しました', details: stockErr instanceof Error ? stockErr.message : String(stockErr) },
           { status: 500 }
         );
+      }
+    }
+
+    // 承認時：キャスト用注文(for_cast=1)は、承認された瞬間に rank_cost へ加算（未accepted→accepted のときのみ）
+    if (status === 'accepted' && !wasAccepted) {
+      const forCast = Number(existing.for_cast) === 1;
+      const castId = existing.cast_id ? Number(existing.cast_id) : null;
+      const sessId = existing.session_id ? Number(existing.session_id) : null;
+      const price = Number(existing.total_price) || 0;
+
+      if (forCast && castId && sessId && price > 0) {
+        try {
+          // 旧環境でも落ちないように最低限の保険
+          await client.query(`ALTER TABLE nomination ADD COLUMN IF NOT EXISTS rank_cost DECIMAL(12,2) DEFAULT 0.00`);
+          await client.query(`ALTER TABLE nomination ADD COLUMN IF NOT EXISTS tomain_nomination INTEGER DEFAULT 0`);
+
+          await client.query(
+            `
+            UPDATE nomination
+               SET rank_cost = COALESCE(rank_cost, 0) + $1
+             WHERE session_id = $2
+               AND cast_id = $3
+               AND (
+                 type_id IN ('main','together')
+                 OR (type_id = 'inside' AND COALESCE(tomain_nomination,0) = 1)
+               )
+            `,
+            [price, sessId, castId]
+          );
+        } catch (e) {
+          console.error('rank_cost加算エラー（承認時）:', e);
+        }
       }
     }
 

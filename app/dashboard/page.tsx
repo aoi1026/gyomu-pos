@@ -860,7 +860,7 @@ export default function Dashboard() {
                   onClick={() => router.push('/admin/add-charges')}
                 >
                   <span className="w-6 h-5 text-slate-600 text-2xl"><MdOutlinePriceChange /></span>
-                  <span className="text-sm font-medium">追加料金設定</span>
+                  <span className="text-sm font-medium">料金設定</span>
                 </Button>
                 
                 <Button 
