@@ -345,8 +345,7 @@ CREATE TABLE IF NOT EXISTS public.salary (
     main_nomination_fee DECIMAL(12,2) DEFAULT 0.00 CHECK (main_nomination_fee >= 0),
     inside_nomination_count INTEGER DEFAULT 0 CHECK (inside_nomination_count >= 0),
     inside_nomination_fee DECIMAL(12,2) DEFAULT 0.00 CHECK (inside_nomination_fee >= 0),
-    drink_back_yen DECIMAL(12,2) DEFAULT 0.00 CHECK (drink_back_yen >= 0),
-    food_back_yen DECIMAL(12,2) DEFAULT 0.00 CHECK (food_back_yen >= 0),
+    sales_back_yen DECIMAL(12,2) DEFAULT 0.00 CHECK (sales_back_yen >= 0),
     together_nomination_cost DECIMAL(12,2) DEFAULT 0.00 CHECK (together_nomination_cost >= 0),
     together_nomination_count INTEGER DEFAULT 0 CHECK (together_nomination_count >= 0),
     together_nomination_fee DECIMAL(12,2) DEFAULT 0.00 CHECK (together_nomination_fee >= 0),
@@ -357,6 +356,62 @@ CREATE TABLE IF NOT EXISTS public.salary (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(user_id, year, month)
 );
+
+-- 既存salaryテーブルの列メンテナンス
+-- - food_back_yen を削除
+-- - drink_back_yen を sales_back_yen にリネーム
+-- - sales_back_yen が無ければ追加
+DO $$
+BEGIN
+    -- drink_back_yen -> sales_back_yen
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'salary' AND column_name = 'drink_back_yen'
+    ) AND NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'salary' AND column_name = 'sales_back_yen'
+    ) THEN
+        ALTER TABLE public.salary RENAME COLUMN drink_back_yen TO sales_back_yen;
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'salary' AND column_name = 'sales_back_yen'
+    ) THEN
+        ALTER TABLE public.salary
+          ADD COLUMN sales_back_yen DECIMAL(12,2) DEFAULT 0.00;
+    END IF;
+
+    -- food_back_yen drop
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'salary' AND column_name = 'food_back_yen'
+    ) THEN
+        ALTER TABLE public.salary DROP COLUMN food_back_yen;
+    END IF;
+EXCEPTION WHEN OTHERS THEN
+    NULL;
+END $$;
+
+-- 既存salaryテーブルへのUNIQUE制約追加（user_id, year, month）
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+          FROM pg_constraint c
+          JOIN pg_class t ON t.oid = c.conrelid
+          JOIN pg_namespace n ON n.oid = t.relnamespace
+         WHERE n.nspname = 'public'
+           AND t.relname = 'salary'
+           AND c.contype = 'u'
+           AND pg_get_constraintdef(c.oid) LIKE '%(user_id, year, month)%'
+    ) THEN
+        ALTER TABLE public.salary
+          ADD CONSTRAINT salary_user_year_month_unique UNIQUE (user_id, year, month);
+    END IF;
+EXCEPTION WHEN OTHERS THEN
+    NULL;
+END $$;
 
 -- コメント追加（エラーを無視）
 DO $$ 
@@ -407,6 +462,8 @@ CREATE TABLE IF NOT EXISTS public.salesorder (
     session_id INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
     unit_price DECIMAL(10,2) NOT NULL CHECK (unit_price >= 0),
     total_price DECIMAL(10,2) NOT NULL CHECK (total_price >= 0),
+    -- キャスト給与計算用（承認済み & for_cast=1 の場合に計算して保存）
+    castsalary_price DECIMAL(12,2) DEFAULT 0.00 CHECK (castsalary_price >= 0),
     for_cast INTEGER DEFAULT 0 CHECK (for_cast IN (0, 1)),
     status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'accepted', 'rejected', 'completed')),
     accepted_at TIMESTAMP WITH TIME ZONE,
@@ -414,6 +471,24 @@ CREATE TABLE IF NOT EXISTS public.salesorder (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
+
+-- 既存salesorderテーブルへのカラム追加（castsalary_price）
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'salesorder'
+          AND column_name = 'castsalary_price'
+    ) THEN
+        ALTER TABLE public.salesorder
+          ADD COLUMN castsalary_price DECIMAL(12,2) DEFAULT 0.00;
+        ALTER TABLE public.salesorder
+          ADD CONSTRAINT salesorder_castsalary_price_check CHECK (castsalary_price >= 0);
+    END IF;
+EXCEPTION WHEN OTHERS THEN
+    NULL;
+END $$;
 
 -- サービス注文管理テーブル
 CREATE TABLE IF NOT EXISTS public.serviceorder (

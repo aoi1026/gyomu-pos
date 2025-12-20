@@ -20,7 +20,7 @@ export interface PayrollCalculation {
   field_nomination_count: number;
   field_nomination_amount_yen: number;
   bottle_sales_yen: number;
-  drink_back_yen: number;
+  sales_back_yen: number;
   overtime_hours: number;
   overtime_wage_yen: number;
   deduction_yen: number;
@@ -130,7 +130,7 @@ export async function calculateStaffPayroll(
     field_nomination_count: nominationSummary.field_nomination_count,
     field_nomination_amount_yen: nominationSummary.total_field_nomination_amount,
     bottle_sales_yen: castSalesData.bottle_sales_yen,
-    drink_back_yen: bottleBack,
+    sales_back_yen: bottleBack,
     overtime_hours: overtimeHours,
     overtime_wage_yen: overtimeWage,
     deduction_yen: deductionYen,

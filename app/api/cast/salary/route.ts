@@ -33,8 +33,7 @@ export async function GET(request: NextRequest) {
           main_nomination_fee: 0,
           inside_nomination_count: 0,
           inside_nomination_fee: 0,
-          drink_back_yen: 0,
-          food_back_yen: 0,
+          sales_back_yen: 0,
           overtime_wage_yen: 0,
           deduction_yen: 0,
           total_pay_yen: 0

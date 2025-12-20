@@ -11,7 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { 
-  ArrowLeft, Clock, CheckCircle, XCircle, Eye, 
+  ArrowLeft, Bell, Clock, CheckCircle, XCircle, Eye, 
   Save, User, Mail, Calendar, Timer, MessageSquare, Clock3
 } from 'lucide-react';
 import { useNotificationContext } from '@/lib/notification-context';
@@ -277,6 +277,8 @@ export default function AdminAttendancePage() {
 
   if (!adminUser) return null;
 
+  const pendingCount = attendanceData.filter((a) => String(a.status) === 'pending').length;
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-pink-50 to-blue-50">
       {/* Header */}
@@ -298,6 +300,20 @@ export default function AdminAttendancePage() {
                 <h1 className="text-lg sm:text-xl font-bold text-gray-900">勤怠承認</h1>
                 <p className="text-xs sm:text-sm text-gray-500">キャストの勤怠データ承認</p>
               </div>
+            </div>
+            <div className="flex items-center space-x-4">
+              {pendingCount > 0 && (
+                <div className="relative" title={`承認待ち ${pendingCount}件`}>
+                  <Bell className="w-6 h-6 text-red-500 animate-pulse" />
+                  <div className="absolute -top-2 -right-2 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+                    {pendingCount}
+                  </div>
+                </div>
+              )}
+              <Button onClick={() => fetchAttendanceData()} variant="outline">
+                <Clock3 className="w-4 h-4 mr-2" />
+                更新
+              </Button>
             </div>
           </div>
         </div>

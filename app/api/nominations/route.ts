@@ -135,6 +135,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    await client.query('BEGIN');
+
     const costValue = cost !== undefined ? parseFloat(cost) : 0;
     const tomainNomination = 0; // 初期値は0
 
@@ -230,6 +232,60 @@ export async function POST(request: NextRequest) {
 
     const inserted = result.rows[0];
 
+    // 指名が新規追加されたら、salaryテーブルの同月レコードをUPSERTしてカウントを加算
+    // main -> main_nomination_count +1
+    // inside -> inside_nomination_count +1
+    // together -> together_nomination_count +1
+    const ymRes = await client.query(
+      `
+      SELECT
+        EXTRACT(YEAR FROM created_at)::int AS year,
+        EXTRACT(MONTH FROM created_at)::int AS month
+      FROM nomination
+      WHERE id = $1
+      `,
+      [inserted.id]
+    );
+    const year = Number(ymRes.rows[0]?.year);
+    const month = Number(ymRes.rows[0]?.month);
+
+    const addMain = typeId === 'main' ? 1 : 0;
+    const addInside = typeId === 'inside' ? 1 : 0;
+    const addTogether = typeId === 'together' ? 1 : 0;
+
+    // cost_cast に加算した増分（castShare）を、salaryの指名料取り分にも反映
+    const addMainFee = typeId === 'main' ? castShare : 0;
+    const addInsideFee = typeId === 'inside' ? castShare : 0;
+    const addTogetherFee = typeId === 'together' ? castShare : 0;
+
+    if (Number.isFinite(year) && Number.isFinite(month)) {
+      await client.query(
+        `
+        INSERT INTO salary (
+          user_id,
+          year,
+          month,
+          main_nomination_count,
+          inside_nomination_count,
+          together_nomination_count,
+          main_nomination_fee,
+          inside_nomination_fee,
+          together_nomination_fee
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        ON CONFLICT (user_id, year, month)
+        DO UPDATE SET
+          main_nomination_count = COALESCE(salary.main_nomination_count, 0) + EXCLUDED.main_nomination_count,
+          inside_nomination_count = COALESCE(salary.inside_nomination_count, 0) + EXCLUDED.inside_nomination_count,
+          together_nomination_count = COALESCE(salary.together_nomination_count, 0) + EXCLUDED.together_nomination_count,
+          main_nomination_fee = COALESCE(salary.main_nomination_fee, 0) + EXCLUDED.main_nomination_fee,
+          inside_nomination_fee = COALESCE(salary.inside_nomination_fee, 0) + EXCLUDED.inside_nomination_fee,
+          together_nomination_fee = COALESCE(salary.together_nomination_fee, 0) + EXCLUDED.together_nomination_fee
+        `,
+        [castId, year, month, addMain, addInside, addTogether, addMainFee, addInsideFee, addTogetherFee]
+      );
+    }
+
     const detailResult = await client.query(
       `
         SELECT 
@@ -256,9 +312,11 @@ export async function POST(request: NextRequest) {
     const nomination = detailResult.rows[0];
     nomination.type_label = NOMINATION_TYPE_LABELS[nomination.type_id] || nomination.type_id;
 
+    await client.query('COMMIT');
     return NextResponse.json({ success: true, nomination });
   } catch (error) {
     console.error('指名登録エラー:', error);
+    try { await client.query('ROLLBACK'); } catch {}
     return NextResponse.json(
       { success: false, error: '指名の登録に失敗しました' },
       { status: 500 }

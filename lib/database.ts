@@ -15,7 +15,19 @@ const dbConfig = {
 };
 
 // PostgreSQL接続プールの設定
-export const pool = new Pool(dbConfig);
+// NOTE: Next.js(dev)のホットリロードでPoolが多重生成されると、PostgreSQL側で
+// "too many clients already" が発生しやすい。globalThisでシングルトン化する。
+declare global {
+  // eslint-disable-next-line no-var
+  var __smartecPgPool: Pool | undefined;
+}
+
+export const pool =
+  global.__smartecPgPool ?? new Pool(dbConfig);
+
+if (process.env.NODE_ENV !== 'production') {
+  global.__smartecPgPool = pool;
+}
 
 // データベース接続テスト
 export async function testConnection(): Promise<boolean> {

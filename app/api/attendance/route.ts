@@ -3,10 +3,17 @@ import { pool } from '@/lib/database';
 
 export async function GET(request: NextRequest) {
   try {
+    const { searchParams } = new URL(request.url);
+    const status = searchParams.get('status'); // e.g. pending / approved / rejected / saved
+
     const client = await pool.connect();
     
     try {
       // 勤怠データ一覧を取得
+      const params: any[] = [];
+      const where = status ? `WHERE a.status = $1` : '';
+      if (status) params.push(status);
+
       const result = await client.query(`
         SELECT 
           a.*,
@@ -14,8 +21,9 @@ export async function GET(request: NextRequest) {
           u.mail as staff_email
         FROM attendance a
         JOIN "user" u ON a.staff_id = u.id
+        ${where}
         ORDER BY a.created_at DESC
-      `);
+      `, params);
 
       return NextResponse.json({
         success: true,

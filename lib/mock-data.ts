@@ -217,7 +217,7 @@ export interface PayrollItem {
   nomination_count: number;
   nomination_amount_yen: number;
   bottle_sales_yen: number;
-  drink_back_yen: number;
+  sales_back_yen: number;
   overtime_hours: number;
   overtime_wage_yen: number;
   deduction_yen: number;
@@ -1078,7 +1078,7 @@ export const mockPayrollItems: PayrollItem[] = [
     nomination_count: 15,
     nomination_amount_yen: 75000,
     bottle_sales_yen: 500000,
-    drink_back_yen: 50000,
+    sales_back_yen: 50000,
     overtime_hours: 5,
     overtime_wage_yen: 15000,
     deduction_yen: 5000,
@@ -1094,7 +1094,7 @@ export const mockPayrollItems: PayrollItem[] = [
     nomination_count: 8,
     nomination_amount_yen: 24000,
     bottle_sales_yen: 0,
-    drink_back_yen: 0,
+    sales_back_yen: 0,
     overtime_hours: 2,
     overtime_wage_yen: 5000,
     deduction_yen: 2000,

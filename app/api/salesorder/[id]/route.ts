@@ -153,6 +153,8 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
           // 旧環境でも落ちないように最低限の保険
           await client.query(`ALTER TABLE nomination ADD COLUMN IF NOT EXISTS rank_cost DECIMAL(12,2) DEFAULT 0.00`);
           await client.query(`ALTER TABLE nomination ADD COLUMN IF NOT EXISTS tomain_nomination INTEGER DEFAULT 0`);
+          await client.query(`ALTER TABLE salesorder ADD COLUMN IF NOT EXISTS castsalary_price DECIMAL(12,2) DEFAULT 0.00`);
+          await client.query(`ALTER TABLE salary ADD COLUMN IF NOT EXISTS sales_back_yen DECIMAL(12,2) DEFAULT 0.00`);
 
           await client.query(
             `
@@ -167,6 +169,66 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
             `,
             [price, sessId, castId]
           );
+
+          // castsalary_price を計算して salesorder に保存
+          // salary_category.value の規則:
+          // -1 => total_price
+          // 0..1 => total_price * value
+          // >1 => value
+          // (未設定の場合は total_price をそのまま扱う)
+          const categoryRes = await client.query(
+            `SELECT category_id FROM product WHERE id = $1`,
+            [Number(existing.product_id)]
+          );
+          const categoryId = categoryRes.rows[0]?.category_id ? Number(categoryRes.rows[0].category_id) : null;
+
+          let computed = price;
+          if (categoryId) {
+            const scRes = await client.query(
+              `SELECT value FROM salary_category WHERE cast_id = $1 AND category_id = $2 ORDER BY id DESC LIMIT 1`,
+              [castId, categoryId]
+            );
+            const vRaw = scRes.rows[0]?.value;
+            const v = vRaw === null || vRaw === undefined ? null : Number(vRaw);
+            if (v === null || !Number.isFinite(v)) {
+              computed = price;
+            } else if (v === -1) {
+              computed = price;
+            } else if (v >= 0 && v <= 1) {
+              computed = price * v;
+            } else if (v > 1) {
+              computed = v;
+            } else {
+              computed = 0;
+            }
+          }
+
+          await client.query(
+            `UPDATE salesorder SET castsalary_price = $1 WHERE id = $2`,
+            [computed, params.id]
+          );
+
+          // salary.sales_back_yen へ castsalary_price を accepted_at の年月で加算
+          // accepted_at はこのPATCHで accepted にした瞬間にセットされる想定
+          const acceptedAt = result.rows[0]?.accepted_at ?? null;
+          const ymRes = await client.query(
+            `SELECT EXTRACT(YEAR FROM $1::timestamptz)::int AS year, EXTRACT(MONTH FROM $1::timestamptz)::int AS month`,
+            [acceptedAt]
+          );
+          const year = Number(ymRes.rows[0]?.year);
+          const month = Number(ymRes.rows[0]?.month);
+          const add = Number(computed) || 0;
+          if (Number.isFinite(year) && Number.isFinite(month) && add > 0) {
+            await client.query(
+              `
+              INSERT INTO salary (user_id, year, month, sales_back_yen)
+              VALUES ($1, $2, $3, $4)
+              ON CONFLICT (user_id, year, month)
+              DO UPDATE SET sales_back_yen = COALESCE(salary.sales_back_yen, 0) + EXCLUDED.sales_back_yen
+              `,
+              [castId, year, month, add]
+            );
+          }
         } catch (e) {
           console.error('rank_cost加算エラー（承認時）:', e);
         }

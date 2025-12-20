@@ -40,6 +40,7 @@ export default function Dashboard() {
   const [pendingOrderCount, setPendingOrderCount] = useState(0);
   const [pendingServiceOrderCount, setPendingServiceOrderCount] = useState(0);
   const [pendingManagerCallCount, setPendingManagerCallCount] = useState(0);
+  const [pendingAttendanceCount, setPendingAttendanceCount] = useState(0);
   const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
   const [todaySalesKpi, setTodaySalesKpi] = useState<{ total_yen: number; customer_count: number; order_count: number }>({ total_yen: 0, customer_count: 0, order_count: 0 });
   const [showTableStatus, setShowTableStatus] = useState(false);
@@ -127,6 +128,18 @@ export default function Dashboard() {
     }
   };
 
+  const loadPendingAttendanceCount = async () => {
+    try {
+      const response = await fetch('/api/attendance?status=pending');
+      const result = await response.json();
+      if (result.success) {
+        setPendingAttendanceCount(result.data.length);
+      }
+    } catch (err) {
+      console.error('勤怠承認待ち件数取得エラー:', err);
+    }
+  };
+
   useEffect(() => {
     // 管理者認証情報を確認
     const adminAuth = localStorage.getItem('admin_auth');
@@ -140,12 +153,14 @@ export default function Dashboard() {
         loadPendingOrderCount(); // 注文リクエスト数を取得
         loadPendingServiceOrderCount(); // サービス注文リクエスト数を取得
         loadPendingManagerCallCount(); // スタッフ呼び出し数を取得
+        loadPendingAttendanceCount(); // 勤怠承認待ち件数を取得
         
         // 5秒ごとに注文リクエスト数とスタッフ呼び出し数を更新（即時反映のため）
         const interval = setInterval(() => {
           loadPendingOrderCount();
           loadPendingServiceOrderCount();
           loadPendingManagerCallCount();
+          loadPendingAttendanceCount();
         }, 5000);
         return () => clearInterval(interval);
       } catch (error) {
@@ -799,12 +814,17 @@ export default function Dashboard() {
                 
                 <Button 
                   variant="outline" 
-                  className="h-24 flex-col space-y-2 hover:bg-pink-50 hover:border-pink-300"
+                  className="h-24 flex-col space-y-2 hover:bg-pink-50 hover:border-pink-300 relative"
                   onClick={() => router.push('/admin/attendance')}
                 >
                   {/* <Users className="w-6 h-6 text-pink-600" /> */}
                   <span className="w-6 h-5 text-pink-600 text-2xl"><GiTimeTrap /></span>
                   <span className="text-sm font-medium">勤怠承認</span>
+                  {pendingAttendanceCount > 0 && (
+                    <div className="absolute -top-2 -right-2 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center animate-pulse">
+                      {pendingAttendanceCount}
+                    </div>
+                  )}
                 </Button>
                 
                 <Button 

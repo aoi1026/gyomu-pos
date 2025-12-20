@@ -16,12 +16,25 @@ export async function PATCH(
       );
     }
 
+    await client.query('BEGIN');
+
     // 現在の指名情報を取得（cast側取り分計算のため）
     const currentRes = await client.query(
-      `SELECT id, cast_id, type_id, tomain_nomination FROM nomination WHERE id = $1`,
+      `
+      SELECT
+        id,
+        cast_id,
+        type_id,
+        tomain_nomination,
+        EXTRACT(YEAR FROM created_at)::int AS year,
+        EXTRACT(MONTH FROM created_at)::int AS month
+      FROM nomination
+      WHERE id = $1
+      `,
       [params.id]
     );
     if (currentRes.rows.length === 0) {
+      await client.query('ROLLBACK');
       return NextResponse.json(
         { success: false, error: '指名が見つかりません' },
         { status: 404 }
@@ -97,18 +110,54 @@ export async function PATCH(
     );
 
     if (result.rows.length === 0) {
+      await client.query('ROLLBACK');
       return NextResponse.json(
         { success: false, error: '指名が見つかりません' },
         { status: 404 }
       );
     }
 
+    // cost_castに加算した増分（castShareAdd）を、salaryの指名料取り分にも反映
+    if (cost !== undefined && Number.isFinite(castShareAdd) && castShareAdd > 0) {
+      const year = Number(current.year);
+      const month = Number(current.month);
+      const castId = Number(current.cast_id);
+
+      const addMainFee = effectiveTypeId === 'main' ? castShareAdd : 0;
+      const addInsideFee = effectiveTypeId === 'inside' ? castShareAdd : 0;
+      const addTogetherFee = effectiveTypeId === 'together' ? castShareAdd : 0;
+
+      if (Number.isFinite(year) && Number.isFinite(month) && Number.isFinite(castId) && castId > 0) {
+        await client.query(
+          `
+          INSERT INTO salary (
+            user_id,
+            year,
+            month,
+            main_nomination_fee,
+            inside_nomination_fee,
+            together_nomination_fee
+          )
+          VALUES ($1, $2, $3, $4, $5, $6)
+          ON CONFLICT (user_id, year, month)
+          DO UPDATE SET
+            main_nomination_fee = COALESCE(salary.main_nomination_fee, 0) + EXCLUDED.main_nomination_fee,
+            inside_nomination_fee = COALESCE(salary.inside_nomination_fee, 0) + EXCLUDED.inside_nomination_fee,
+            together_nomination_fee = COALESCE(salary.together_nomination_fee, 0) + EXCLUDED.together_nomination_fee
+          `,
+          [castId, year, month, addMainFee, addInsideFee, addTogetherFee]
+        );
+      }
+    }
+
+    await client.query('COMMIT');
     return NextResponse.json({
       success: true,
       nomination: result.rows[0]
     });
   } catch (error) {
     console.error('指名更新エラー:', error);
+    try { await client.query('ROLLBACK'); } catch {}
     return NextResponse.json(
       { success: false, error: '指名の更新に失敗しました' },
       { status: 500 }

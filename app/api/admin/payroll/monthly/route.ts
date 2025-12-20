@@ -81,26 +81,6 @@ export async function GET(request: NextRequest) {
         WHERE charge_name = 'together'
         LIMIT 1
       ),
-      so_drink AS (
-        SELECT so.cast_id AS user_id, COALESCE(SUM(so.total_price), 0) AS total
-        FROM salesorder so
-        JOIN product p ON p.id = so.product_id
-        WHERE p.category_id IN (1, 2)
-          AND so.for_cast = 1
-          AND so.status = 'accepted'
-          AND so.accepted_at >= $1::date AND so.accepted_at < ${endExpr}
-        GROUP BY so.cast_id
-      ),
-      so_food AS (
-        SELECT so.cast_id AS user_id, COALESCE(SUM(so.total_price), 0) AS total
-        FROM salesorder so
-        JOIN product p ON p.id = so.product_id
-        WHERE p.category_id = 3
-          AND so.for_cast = 1
-          AND so.status = 'accepted'
-          AND so.accepted_at >= $1::date AND so.accepted_at < ${endExpr}
-        GROUP BY so.cast_id
-      ),
       sal AS (
         SELECT * FROM salary WHERE year = $2 AND month = $3
       )
@@ -121,8 +101,7 @@ export async function GET(request: NextRequest) {
           (COALESCE(ac.together_unit, 0) * COALESCE(nt.cnt, 0) * COALESCE(c.together_nomination, 0)) +
           ((COALESCE(nt.sum_cost, 0) - (COALESCE(ac.together_unit, 0) * COALESCE(nt.cnt, 0))) * COALESCE(c.main_nomination, 0))
         )::DECIMAL(12,2) AS together_nomination_fee,
-        COALESCE(sal.drink_back_yen, (COALESCE(sd.total, 0) * COALESCE(c.drink_back, 0)))::DECIMAL(12,2) AS drink_back_yen,
-        COALESCE(sal.food_back_yen, (COALESCE(sf.total, 0) * COALESCE(c.food_back, 0)))::DECIMAL(12,2) AS food_back_yen,
+        COALESCE(sal.sales_back_yen, 0)::DECIMAL(12,2) AS sales_back_yen,
         COALESCE(sal.overtime_wage_yen, 0)::DECIMAL(12,2) AS overtime_wage_yen,
         COALESCE(sal.deduction_yen, 0)::DECIMAL(12,2) AS deduction_yen
       FROM casts c
@@ -130,8 +109,6 @@ export async function GET(request: NextRequest) {
       LEFT JOIN nom_main nm ON nm.user_id = c.user_id
       LEFT JOIN nom_inside ni ON ni.user_id = c.user_id
       LEFT JOIN nom_together nt ON nt.user_id = c.user_id
-      LEFT JOIN so_drink sd ON sd.user_id = c.user_id
-      LEFT JOIN so_food sf ON sf.user_id = c.user_id
       LEFT JOIN sal sal ON sal.user_id = c.user_id
       LEFT JOIN ac ac ON TRUE
       ORDER BY c.name
@@ -145,8 +122,7 @@ export async function GET(request: NextRequest) {
         Number(r.main_nomination_fee || 0) +
         Number(r.inside_nomination_fee || 0) +
         Number(r.together_nomination_fee || 0) +
-        Number(r.drink_back_yen || 0) +
-        Number(r.food_back_yen || 0) +
+        Number(r.sales_back_yen || 0) +
         Number(r.overtime_wage_yen || 0) -
         Number(r.deduction_yen || 0);
       return { ...r, total_pay_yen: total };
@@ -198,7 +174,7 @@ export async function PUT(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { user_id, year, month, basic_hours, main_nomination_count, inside_nomination_count, together_nomination_cost, together_nomination_count, drink_back_yen, food_back_yen, overtime_wage_yen, deduction_yen, base_pay, main_nomination_fee, inside_nomination_fee, together_nomination_fee } = body;
+    const { user_id, year, month, basic_hours, main_nomination_count, inside_nomination_count, together_nomination_cost, together_nomination_count, sales_back_yen, overtime_wage_yen, deduction_yen, base_pay, main_nomination_fee, inside_nomination_fee, together_nomination_fee } = body;
     if (!user_id || !year || !month) {
       return NextResponse.json({ success: false, error: 'user_id, year, month は必須です' }, { status: 400 });
     }
@@ -206,8 +182,8 @@ export async function PUT(request: NextRequest) {
     await client.query('BEGIN');
     const upsert = await client.query(
       `
-      INSERT INTO salary (user_id, year, month, basic_hours, base_pay, main_nomination_count, main_nomination_fee, inside_nomination_count, inside_nomination_fee, together_nomination_cost, together_nomination_count, together_nomination_fee, drink_back_yen, food_back_yen, overtime_wage_yen, deduction_yen, total_pay_yen)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+      INSERT INTO salary (user_id, year, month, basic_hours, base_pay, main_nomination_count, main_nomination_fee, inside_nomination_count, inside_nomination_fee, together_nomination_cost, together_nomination_count, together_nomination_fee, sales_back_yen, overtime_wage_yen, deduction_yen, total_pay_yen)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
       ON CONFLICT (user_id, year, month)
       DO UPDATE SET 
         basic_hours = EXCLUDED.basic_hours,
@@ -219,8 +195,7 @@ export async function PUT(request: NextRequest) {
         together_nomination_cost = EXCLUDED.together_nomination_cost,
         together_nomination_count = EXCLUDED.together_nomination_count,
         together_nomination_fee = EXCLUDED.together_nomination_fee,
-        drink_back_yen = EXCLUDED.drink_back_yen,
-        food_back_yen = EXCLUDED.food_back_yen,
+        sales_back_yen = EXCLUDED.sales_back_yen,
         overtime_wage_yen = EXCLUDED.overtime_wage_yen,
         deduction_yen = EXCLUDED.deduction_yen,
         total_pay_yen = EXCLUDED.total_pay_yen,
@@ -237,11 +212,10 @@ export async function PUT(request: NextRequest) {
         together_nomination_cost ?? 0,
         together_nomination_count ?? 0,
         together_nomination_fee ?? 0,
-        drink_back_yen ?? 0,
-        food_back_yen ?? 0,
+        sales_back_yen ?? 0,
         overtime_wage_yen ?? 0,
         deduction_yen ?? 0,
-        (Number(base_pay || 0) + Number(main_nomination_fee || 0) + Number(inside_nomination_fee || 0) + Number(together_nomination_fee || 0) + Number(drink_back_yen || 0) + Number(food_back_yen || 0) + Number(overtime_wage_yen || 0) - Number(deduction_yen || 0))
+        (Number(base_pay || 0) + Number(main_nomination_fee || 0) + Number(inside_nomination_fee || 0) + Number(together_nomination_fee || 0) + Number(sales_back_yen || 0) + Number(overtime_wage_yen || 0) - Number(deduction_yen || 0))
       ]
     );
     await client.query('COMMIT');

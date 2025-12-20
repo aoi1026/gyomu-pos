@@ -545,7 +545,7 @@ export default function DailySalesPage() {
           </div>
 
           {/* 時間別売上分析 */}
-          <Card className="mb-8">
+          {/* <Card className="mb-8">
             <CardHeader>
               <CardTitle>時間別売上分析</CardTitle>
             </CardHeader>
@@ -569,7 +569,7 @@ export default function DailySalesPage() {
                       })}
                     </div>
                     
-                    {/* 分析インサイト */}
+                    // 分析インサイト 
                     {(() => {
                       const hourlySalesValues = hourlySales.map((h: any) => Number(h.total_sales) || 0);
                       const maxHourlySales = hourlySalesValues.length > 0 ? Math.max(...hourlySalesValues) : 0;
@@ -596,7 +596,7 @@ export default function DailySalesPage() {
                 )}
               </div>
             </CardContent>
-          </Card>
+          </Card> */}
 
 		  {/* Sales Chart */}
           <div className="mt-8">

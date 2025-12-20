@@ -202,7 +202,7 @@ export default function CastPayrollPage() {
                   </CardHeader>
                   <CardContent>
                     <div className="text-2xl font-bold text-orange-900 mb-1">
-                      {formatCurrency2(Number(salary.drink_back_yen || 0) + Number(salary.food_back_yen || 0))}
+                      {formatCurrency2(Number(salary.sales_back_yen || 0))}
                     </div>
                     <div className="text-sm text-orange-700">
                       総バック額
@@ -237,12 +237,8 @@ export default function CastPayrollPage() {
                             <span className="font-medium">{formatCurrency2(Number(salary.together_nomination_fee || 0))}</span>
                           </div>
                           <div className="flex justify-between">
-                            <span>ドリンクバック</span>
-                            <span className="font-medium">{formatCurrency2(Number(salary.drink_back_yen || 0))}</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span>フードバック</span>
-                            <span className="font-medium">{formatCurrency2(Number(salary.food_back_yen || 0))}</span>
+                            <span>売上バック</span>
+                            <span className="font-medium">{formatCurrency2(Number(salary.sales_back_yen || 0))}</span>
                           </div>
                           <div className="flex justify-between">
                             <span>残業代</span>

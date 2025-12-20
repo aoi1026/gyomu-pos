@@ -79,8 +79,7 @@ export default function PayrollPreviewPage() {
         together_nomination_cost: Number(row.together_nomination_cost || 0),
         together_nomination_count: Number(row.together_nomination_count || 0),
         together_nomination_fee: Number(row.together_nomination_fee || 0),
-        drink_back_yen: Number(row.drink_back_yen || 0),
-        food_back_yen: Number(row.food_back_yen || 0),
+        sales_back_yen: Number(row.sales_back_yen || 0),
         overtime_wage_yen: Number(row.overtime_wage_yen || 0),
         deduction_yen: Number(row.deduction_yen || 0)
       };
@@ -147,8 +146,7 @@ export default function PayrollPreviewPage() {
        Number(r.main_nomination_fee || 0) +
        Number(r.inside_nomination_fee || 0) +
        Number(r.together_nomination_fee || 0) +
-       Number(r.drink_back_yen || 0) +
-       Number(r.food_back_yen || 0) +
+         Number(r.sales_back_yen || 0) +
        Number(r.overtime_wage_yen || 0) -
        Number(r.deduction_yen || 0))
     ), 0);
@@ -172,8 +170,7 @@ export default function PayrollPreviewPage() {
         '場内指名料(円)',
         '同伴者(件)',
         '同伴料(円)',
-        'ドリンクバック(円)',
-        'フードバック(円)',
+        '売上バック(円)',
         '残業代(円)',
         '控除(円)',
         '支給額(円)'
@@ -189,8 +186,8 @@ export default function PayrollPreviewPage() {
         const insideFee = Number(r.inside_nomination_fee || 0);
         const togetherCnt = Number(r.together_nomination_count || 0);
         const togetherFee = Number(r.together_nomination_fee || 0);
-        const bottle = Number(r.drink_back_yen || 0);
-        const drink = Number(r.food_back_yen || 0);
+        const bottle = Number(r.sales_back_yen || 0);
+        const drink = 0;
         const over = Number(r.overtime_wage_yen || 0);
         const deduct = Number(r.deduction_yen || 0);
         const total = basePay + mainFee + insideFee + togetherFee + bottle + drink + over - deduct;
@@ -208,7 +205,6 @@ export default function PayrollPreviewPage() {
           String(togetherCnt),
           String(togetherFee),
           String(bottle),
-          String(drink),
           String(over),
           String(deduct),
           String(total)
@@ -232,7 +228,6 @@ export default function PayrollPreviewPage() {
         String(sumTogetherCnt),
         String(sumTogetherFee),
         String(sumBottle),
-        String(sumDrink),
         String(sumOver),
         String(sumDeduct),
         String(sumTotal)
@@ -268,7 +263,7 @@ export default function PayrollPreviewPage() {
     base_hours: 0,
     nomination_count: 0,
     field_nomination_count: 0,
-    drink_back_yen: 0,
+    sales_back_yen: 0,
     overtime_wage_yen: 0,
     deduction_yen: 0
   });
@@ -359,7 +354,7 @@ export default function PayrollPreviewPage() {
       base_hours: item.base_hours,
       nomination_count: item.nomination_count,
       field_nomination_count: (item as any).field_nomination_count || 0,
-      drink_back_yen: item.drink_back_yen,
+      sales_back_yen: (item as any).sales_back_yen ?? 0,
       overtime_wage_yen: item.overtime_wage_yen,
       deduction_yen: item.deduction_yen
     });
@@ -375,7 +370,7 @@ export default function PayrollPreviewPage() {
     const nominationAmount = editValues.nomination_count * 15000; // 1件15,000円と仮定
     
     // 総支給額を再計算
-    const total = baseWage + nominationAmount + editValues.drink_back_yen + editValues.overtime_wage_yen - editValues.deduction_yen;
+    const total = baseWage + nominationAmount + editValues.sales_back_yen + editValues.overtime_wage_yen - editValues.deduction_yen;
     
     const updatedItem: PayrollItem = {
       ...editingItem,
@@ -383,7 +378,7 @@ export default function PayrollPreviewPage() {
       base_wage_yen: baseWage,
       nomination_count: editValues.nomination_count,
       nomination_amount_yen: nominationAmount,
-      drink_back_yen: editValues.drink_back_yen,
+      sales_back_yen: editValues.sales_back_yen,
       overtime_wage_yen: editValues.overtime_wage_yen,
       deduction_yen: editValues.deduction_yen,
       total_yen: total
@@ -622,8 +617,7 @@ export default function PayrollPreviewPage() {
                     <th className="p-2 text-center">場内指名料</th>
                     <th className="p-2 text-center">同伴者</th>
                     <th className="p-2 text-center">同伴料</th>
-                    <th className="p-2 text-center">ドリンクバック</th>
-                    <th className="p-2 text-center">フードバック</th>
+                    <th className="p-2 text-center">売上バック</th>
                     <th className="p-2 text-center">残業代</th>
                     <th className="p-2 text-center">控除</th>
                     <th className="p-2 text-center min-w-[6rem]">支給額</th>
@@ -642,8 +636,7 @@ export default function PayrollPreviewPage() {
                         Number(next.main_nomination_fee || 0) +
                         Number(next.inside_nomination_fee || 0) +
                         Number(next.together_nomination_fee || 0) +
-                        Number(next.drink_back_yen || 0) +
-                        Number(next.food_back_yen || 0) +
+                        Number(next.sales_back_yen || 0) +
                         Number(next.overtime_wage_yen || 0) -
                         Number(next.deduction_yen || 0);
                       next.base_pay = base_pay;
@@ -717,20 +710,11 @@ export default function PayrollPreviewPage() {
                         </td>
                         <td className="p-2 text-center">{formatCurrency(row.together_nomination_fee || 0)}</td>
                         <td className="p-2 text-center min-w-[6rem]">
-                          <Input type="text" value={row.drink_back_yen ?? 0}
+                          <Input type="text" value={row.sales_back_yen ?? 0}
                             className="px-1 text-center"
                             inputMode="decimal"
                             pattern="[0-9]*[.,]?[0-9]*"
-                            onChange={(e) => { if (!isUnlocked) return; updateField('drink_back_yen', Number((e.target.value || '').replace(',', '.'))); ensureAutoRelock(row.user_id); }}
-                            disabled={!isUnlocked}
-                          />
-                        </td>
-                        <td className="p-2 text-center min-w-[6rem]">
-                          <Input type="text" value={row.food_back_yen ?? 0}
-                            className="px-1 text-center"
-                            inputMode="decimal"
-                            pattern="[0-9]*[.,]?[0-9]*"
-                            onChange={(e) => { if (!isUnlocked) return; updateField('food_back_yen', Number((e.target.value || '').replace(',', '.'))); ensureAutoRelock(row.user_id); }}
+                            onChange={(e) => { if (!isUnlocked) return; updateField('sales_back_yen', Number((e.target.value || '').replace(',', '.'))); ensureAutoRelock(row.user_id); }}
                             disabled={!isUnlocked}
                           />
                         </td>
@@ -763,8 +747,7 @@ export default function PayrollPreviewPage() {
                             Number(row.main_nomination_fee || 0) +
                             Number(row.inside_nomination_fee || 0) +
                             Number(row.together_nomination_fee || 0) +
-                            Number(row.drink_back_yen || 0) +
-                            Number(row.food_back_yen || 0) +
+                            Number(row.sales_back_yen || 0) +
                             Number(row.overtime_wage_yen || 0) -
                             Number(row.deduction_yen || 0)
                           )}
@@ -804,10 +787,7 @@ export default function PayrollPreviewPage() {
                       {formatCurrency(monthlyRows.reduce((sum, r) => sum + Number(r.together_nomination_fee || 0), 0))}
                     </td>
                     <td className="p-2 text-center min-w-[6rem]">
-                      {formatCurrency(monthlyRows.reduce((sum, r) => sum + Number(r.drink_back_yen || 0), 0))}
-                    </td>
-                    <td className="p-2 text-center min-w-[6rem]">
-                      {formatCurrency(monthlyRows.reduce((sum, r) => sum + Number(r.food_back_yen || 0), 0))}
+                      {formatCurrency(monthlyRows.reduce((sum, r) => sum + Number(r.sales_back_yen || 0), 0))}
                     </td>
                     <td className="p-2 text-center min-w-[6rem]">
                       {formatCurrency(monthlyRows.reduce((sum, r) => sum + Number(r.overtime_wage_yen || 0), 0))}
@@ -823,8 +803,7 @@ export default function PayrollPreviewPage() {
                           Number(r.main_nomination_fee || 0) +
                           Number(r.inside_nomination_fee || 0) +
                           Number(r.together_nomination_fee || 0) +
-                          Number(r.drink_back_yen || 0) +
-                          Number(r.food_back_yen || 0) +
+                          Number(r.sales_back_yen || 0) +
                           Number(r.overtime_wage_yen || 0) -
                           Number(r.deduction_yen || 0)
                         ), 0)
@@ -922,7 +901,7 @@ export default function PayrollPreviewPage() {
                           <th className="text-center p-3">本指名料</th>
                           <th className="text-center p-3">場内指名数</th>
                           <th className="text-center p-3">場内指名料</th>
-                          <th className="text-center p-3">ドリンクバック</th>
+                          <th className="text-center p-3">売上バック</th>
                           <th className="text-center p-3">残業代</th>
                           <th className="text-center p-3">控除</th>
                           <th className="text-center p-3 font-bold">支給額</th>
@@ -977,12 +956,12 @@ export default function PayrollPreviewPage() {
                               {editingItem?.id === item.id ? (
                                 <Input
                                   type="number"
-                                  value={editValues.drink_back_yen}
-                                  onChange={(e) => setEditValues({...editValues, drink_back_yen: Number(e.target.value)})}
+                                  value={editValues.sales_back_yen}
+                                  onChange={(e) => setEditValues({...editValues, sales_back_yen: Number(e.target.value)})}
                                   className="w-24 text-center"
                                 />
                               ) : (
-                                formatCurrency(item.drink_back_yen)
+                                formatCurrency((item as any).sales_back_yen ?? 0)
                               )}
                             </td>
                             <td className="p-3 text-center">
@@ -1054,7 +1033,7 @@ export default function PayrollPreviewPage() {
                             {formatCurrency(payrollItems.reduce((sum, item) => sum + ((item as any).field_nomination_amount_yen || 0), 0))}
                           </td>
                           <td className="p-3 text-center">
-                            {formatCurrency(payrollItems.reduce((sum, item) => sum + item.drink_back_yen, 0))}
+                            {formatCurrency(payrollItems.reduce((sum, item) => sum + Number((item as any).sales_back_yen ?? 0), 0))}
                           </td>
                           <td className="p-3 text-center">
                             {formatCurrency(payrollItems.reduce((sum, item) => sum + item.overtime_wage_yen, 0))}
