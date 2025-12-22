@@ -8,7 +8,7 @@ export async function GET(request: NextRequest) {
     try {
       // テーブル一覧を取得
       const result = await client.query(
-        'SELECT id, name, capacity, other, created_at FROM "table" ORDER BY created_at DESC'
+        'SELECT id, name, capacity, other, created_at FROM "table" ORDER BY created_at ASC, id ASC'
       );
 
       return NextResponse.json({
