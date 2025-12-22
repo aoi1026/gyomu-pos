@@ -3,12 +3,15 @@
 export const dynamic = 'force-dynamic';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import RoleGate from '@/components/auth/RoleGate';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import {
   ArrowLeft, BarChart3, TrendingUp, TrendingDown,
   Users, ShoppingCart, DollarSign, Calendar,
@@ -29,12 +32,22 @@ import {
 } from '@/components/ui/dropdown-menu';
 
 export default function DailySalesPage() {
-  const [selectedDate, setSelectedDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
+  const searchParams = useSearchParams();
+  const [selectedDate, setSelectedDate] = useState<string>(() => searchParams.get('date') || new Date().toISOString().split('T')[0]);
   const [salesData, setSalesData] = useState<any>(null);
   const [tableSales, setTableSales] = useState<any[]>([]);
   const [castSales, setCastSales] = useState<any[]>([]);
 	const [productSales, setProductSales] = useState<any[]>([]);
   const [hourlySales, setHourlySales] = useState<any[]>([]);
+  const [deducts, setDeducts] = useState<any[]>([]);
+  const [isDeductLoading, setIsDeductLoading] = useState(false);
+  const [isAddDeductOpen, setIsAddDeductOpen] = useState(false);
+  const [deductForm, setDeductForm] = useState<{ date: string; value: string; reason: string; other: string }>({
+    date: new Date().toISOString().split('T')[0],
+    value: '',
+    reason: '',
+    other: '',
+  });
   const [isLoading, setIsLoading] = useState(true);
 
   const router = useRouter();
@@ -42,7 +55,69 @@ export default function DailySalesPage() {
 
   useEffect(() => {
     loadSalesData(selectedDate);
+    loadDeducts(selectedDate);
   }, [selectedDate]);
+
+  const loadDeducts = async (date: string) => {
+    setIsDeductLoading(true);
+    try {
+      const res = await fetch(`/api/deduct?date=${date}`, { cache: 'no-store' });
+      const result = await res.json();
+      if (result.success) {
+        setDeducts(result.data || []);
+      } else {
+        setDeducts([]);
+      }
+    } catch {
+      setDeducts([]);
+    } finally {
+      setIsDeductLoading(false);
+    }
+  };
+
+  const openAddDeduct = () => {
+    setDeductForm({
+      date: selectedDate || new Date().toISOString().split('T')[0],
+      value: '',
+      reason: '',
+      other: '',
+    });
+    setIsAddDeductOpen(true);
+  };
+
+  const saveDeduct = async () => {
+    const valueNum = Number(String(deductForm.value || '').replace(',', '.'));
+    if (!deductForm.date) {
+      error('エラー', '日付を選択してください');
+      return;
+    }
+    if (!Number.isFinite(valueNum) || valueNum < 0) {
+      error('エラー', '経費金額は0以上の数値を入力してください');
+      return;
+    }
+    try {
+      const res = await fetch('/api/deduct', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          date: deductForm.date,
+          value: valueNum,
+          reason: deductForm.reason,
+          other: deductForm.other,
+        }),
+      });
+      const result = await res.json();
+      if (!result.success) {
+        error('エラー', result.error || '経費の保存に失敗しました');
+        return;
+      }
+      setIsAddDeductOpen(false);
+      await loadDeducts(selectedDate);
+      info('保存完了', '経費を追加しました', 2000);
+    } catch (e) {
+      error('エラー', `経費の保存に失敗しました: ${e instanceof Error ? e.message : '不明なエラー'}`);
+    }
+  };
 
   const loadSalesData = async (date: string) => {
     setIsLoading(true);
@@ -324,6 +399,7 @@ export default function DailySalesPage() {
   const customerCount = Number(salesData?.customer_count || 0);
   const avgOrderValue = customerCount > 0 ? totalCost / customerCount : 0;
   const avgOrderValueDisplay = `¥${new Intl.NumberFormat('ja-JP', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(avgOrderValue)}`;
+  const totalDeduct = deducts.reduce((sum: number, d: any) => sum + (Number(d?.value) || 0), 0);
 
   return (
     <RoleGate allowedRoles={['admin', 'superadmin']}>
@@ -535,7 +611,16 @@ export default function DailySalesPage() {
                 <div className="space-y-3 max-h-96 overflow-y-auto">
                   {tableSales.map((row: any) => (
                     <div key={row.table_id} className="flex justify-between items-center">
-                      <span className="text-gray-700">{row.table_name}</span>
+                      <div className="flex items-center space-x-3">
+                        <span className="text-gray-700">{row.table_name}</span>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => router.push(`/admin/sales/daily/table/${row.table_id}?date=${encodeURIComponent(selectedDate)}`)}
+                        >
+                          詳細表示
+                        </Button>
+                      </div>
                       <span className="font-medium">{formatCurrency(row.total_sales)}</span>
                     </div>
                   ))}
@@ -597,6 +682,112 @@ export default function DailySalesPage() {
               </div>
             </CardContent>
           </Card> */}
+
+          {/* 経費一覧（売上分析 - 時間別 の上に表示） */}
+          <Card className="mt-8">
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle className="flex items-center">
+                  <FileText className="w-5 h-5 mr-2" />
+                  経費金額一覧
+                </CardTitle>
+                <Button size="sm" onClick={openAddDeduct}>
+                  経費追加
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {isDeductLoading ? (
+                <div className="text-sm text-gray-500">読み込み中...</div>
+              ) : deducts.length === 0 ? (
+                <div className="text-sm text-gray-500">この日の経費はありません</div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-32">日付</TableHead>
+                        <TableHead className="text-right w-32">金額</TableHead>
+                        <TableHead>理由</TableHead>
+                        <TableHead>備考</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {deducts.map((d: any) => (
+                        <TableRow key={d.id}>
+                          <TableCell>{String(d.date ?? '')}</TableCell>
+                          <TableCell className="text-right font-medium">{formatCurrency(Number(d.value) || 0)}</TableCell>
+                          <TableCell className="whitespace-pre-wrap">{d.reason || '-'}</TableCell>
+                          <TableCell className="whitespace-pre-wrap">{d.other || '-'}</TableCell>
+                        </TableRow>
+                      ))}
+                      <TableRow>
+                        <TableCell className="font-semibold">合計</TableCell>
+                        <TableCell className="text-right font-bold">{formatCurrency(totalDeduct)}</TableCell>
+                        <TableCell />
+                        <TableCell />
+                      </TableRow>
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Dialog open={isAddDeductOpen} onOpenChange={setIsAddDeductOpen}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>経費追加</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="deduct-date">日付</Label>
+                  <Input
+                    id="deduct-date"
+                    type="date"
+                    value={deductForm.date}
+                    onChange={(e) => setDeductForm((p) => ({ ...p, date: e.target.value }))}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="deduct-value">経費金額</Label>
+                  <Input
+                    id="deduct-value"
+                    inputMode="decimal"
+                    value={deductForm.value}
+                    onChange={(e) => setDeductForm((p) => ({ ...p, value: e.target.value }))}
+                    placeholder="例: 10000"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="deduct-reason">理由</Label>
+                  <Input
+                    id="deduct-reason"
+                    value={deductForm.reason}
+                    onChange={(e) => setDeductForm((p) => ({ ...p, reason: e.target.value }))}
+                    placeholder="例: 備品購入"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="deduct-other">備考</Label>
+                  <Textarea
+                    id="deduct-other"
+                    value={deductForm.other}
+                    onChange={(e) => setDeductForm((p) => ({ ...p, other: e.target.value }))}
+                    placeholder="任意"
+                  />
+                </div>
+              </div>
+              <DialogFooter className="mt-4">
+                <Button variant="outline" onClick={() => setIsAddDeductOpen(false)}>
+                  キャンセル
+                </Button>
+                <Button onClick={saveDeduct}>
+                  保存
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
 
 		  {/* Sales Chart */}
           <div className="mt-8">

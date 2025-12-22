@@ -1127,8 +1127,15 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
       await fetch(`/api/sessions/${session.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cost: newCost })
+        body: JSON.stringify({ cost: newCost, pay_type: 2 })
       });
+
+      // 決済履歴を保存（失敗しても決済フローは継続）
+      fetch('/api/session-payments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: session.id, pay_type: 2, amount: paymentAmount })
+      }).catch(() => {});
       
       // 承認待ちの注文を拒否
       const ordersToReject = cartOrders.filter((order: any) => {
@@ -1182,8 +1189,15 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
       await fetch(`/api/sessions/${session.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cost: newCost })
+        body: JSON.stringify({ cost: newCost, pay_type: 1 })
       });
+
+      // 決済履歴を保存（失敗しても決済フローは継続）
+      fetch('/api/session-payments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: session.id, pay_type: 1, amount })
+      }).catch(() => {});
       
       // 承認待ちの注文を拒否
       const ordersToReject = cartOrders.filter((order: any) => {
@@ -1228,8 +1242,15 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
       await fetch(`/api/sessions/${session.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cost: newCost })
+        body: JSON.stringify({ cost: newCost, pay_type: 0 })
       });
+
+      // 決済履歴を保存（失敗しても決済フローは継続）
+      fetch('/api/session-payments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: session.id, pay_type: 0, amount })
+      }).catch(() => {});
       
       // 承認待ちの注文を拒否
       const ordersToReject = cartOrders.filter((order: any) => {

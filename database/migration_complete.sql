@@ -139,9 +139,30 @@ CREATE TABLE IF NOT EXISTS public.sessions (
     is_paused BOOLEAN DEFAULT false,
     paused_at TIMESTAMP WITH TIME ZONE,
     paused_elapsed INTEGER DEFAULT 0,
+    -- 決済方法: 0=店舗用クレジットカード, 1=現金, 2=クレジットカード
+    pay_type INTEGER CHECK (pay_type IN (0, 1, 2)),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
+
+-- セッション決済履歴テーブル
+CREATE TABLE IF NOT EXISTS public.session_payments (
+    id SERIAL PRIMARY KEY,
+    session_id INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+    -- 決済方法: 0=店舗用クレジットカード, 1=現金, 2=クレジットカード
+    pay_type INTEGER NOT NULL CHECK (pay_type IN (0, 1, 2)),
+    amount DECIMAL(12,2) NOT NULL CHECK (amount >= 0),
+    other TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_session_payments_session_id ON public.session_payments(session_id);
+CREATE INDEX IF NOT EXISTS idx_session_payments_created_at ON public.session_payments(created_at);
+
+CREATE TRIGGER update_session_payments_updated_at
+    BEFORE UPDATE ON public.session_payments
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- 既存sessionsテーブルへのカラム追加（存在しない場合のみ）
 DO $$ 
@@ -175,6 +196,35 @@ BEGIN
     ) THEN
         ALTER TABLE public.sessions ADD COLUMN paused_elapsed INTEGER DEFAULT 0;
     END IF;
+
+    -- pay_typeカラムを追加
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_schema = 'public' 
+        AND table_name = 'sessions' 
+        AND column_name = 'pay_type'
+    ) THEN
+        ALTER TABLE public.sessions ADD COLUMN pay_type INTEGER;
+    END IF;
+END $$;
+
+-- pay_type CHECK制約追加（エラーを無視）
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+          FROM pg_constraint c
+          JOIN pg_class t ON t.oid = c.conrelid
+          JOIN pg_namespace n ON n.oid = t.relnamespace
+         WHERE n.nspname = 'public'
+           AND t.relname = 'sessions'
+           AND c.conname = 'sessions_pay_type_check'
+    ) THEN
+        ALTER TABLE public.sessions
+          ADD CONSTRAINT sessions_pay_type_check CHECK (pay_type IN (0, 1, 2));
+    END IF;
+EXCEPTION WHEN OTHERS THEN
+    NULL;
 END $$;
 
 -- コメント追加（エラーを無視）
@@ -356,6 +406,23 @@ CREATE TABLE IF NOT EXISTS public.salary (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(user_id, year, month)
 );
+
+-- 経費テーブル
+CREATE TABLE IF NOT EXISTS public.deduct (
+    id SERIAL PRIMARY KEY,
+    date DATE NOT NULL,
+    value DECIMAL(12,2) NOT NULL CHECK (value >= 0),
+    reason TEXT,
+    other TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_deduct_date ON public.deduct(date);
+
+CREATE TRIGGER update_deduct_updated_at
+    BEFORE UPDATE ON public.deduct
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- 既存salaryテーブルの列メンテナンス
 -- - food_back_yen を削除

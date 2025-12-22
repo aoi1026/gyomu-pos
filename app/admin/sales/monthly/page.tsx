@@ -11,7 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { 
   ArrowLeft, BarChart3, TrendingUp, TrendingDown, 
   Users, ShoppingCart, DollarSign, Calendar,
-  Download, RefreshCw, Wine, Utensils, Package, FileSpreadsheet, FileText
+  Download, RefreshCw, Wine, Utensils, Package, FileSpreadsheet, FileText, ExternalLink
 } from 'lucide-react';
 import { 
   mockMonthlySales, mockMenuItems,
@@ -19,6 +19,7 @@ import {
 } from '@/lib/mock-data';
 import { useNotificationContext } from '@/lib/notification-context';
 import * as XLSX from 'xlsx';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -35,6 +36,7 @@ export default function MonthlySalesPage() {
   const [productSales, setProductSales] = useState<any[]>([]);
   const [castSales, setCastSales] = useState<any[]>([]);
   const [dailySales, setDailySales] = useState<any[]>([]);
+  const [dailyCheckRows, setDailyCheckRows] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   
   const router = useRouter();
@@ -47,8 +49,13 @@ export default function MonthlySalesPage() {
   const loadMonthlySalesData = async (year: number, month: number) => {
     setIsLoading(true);
     try {
-      const res = await fetch(`/api/admin/sales/monthly?year=${year}&month=${month}`);
+      const [res, dailyCheckRes] = await Promise.all([
+        fetch(`/api/admin/sales/monthly?year=${year}&month=${month}`),
+        fetch(`/api/admin/sales/daily-check?year=${year}&month=${month}`, { cache: 'no-store' }),
+      ]);
       const result = await res.json();
+      const dailyCheckResult = await dailyCheckRes.json();
+
       if (result.success) {
         const { total_sales, order_count, visitor_count, avg_cost, sessions_total_cost, category_sales, product_sales, cast_sales, daily_sales } = result.data;
         setSalesData({
@@ -65,6 +72,12 @@ export default function MonthlySalesPage() {
           date: new Date(d.day).toLocaleDateString('ja-JP', { month: 'numeric', day: 'numeric' }),
           value: Number(d.total_sales) || 0
         })));
+
+        if (dailyCheckResult?.success) {
+          setDailyCheckRows(dailyCheckResult.data || []);
+        } else {
+          setDailyCheckRows([]);
+        }
       } else {
         setSalesData({
           total_yen: 0,
@@ -77,6 +90,7 @@ export default function MonthlySalesPage() {
         setProductSales([]);
         setCastSales([]);
         setDailySales([]);
+        setDailyCheckRows([]);
       }
     } catch (e) {
       setSalesData({
@@ -90,6 +104,7 @@ export default function MonthlySalesPage() {
       setProductSales([]);
       setCastSales([]);
       setDailySales([]);
+      setDailyCheckRows([]);
     } finally {
     setIsLoading(false);
     }
@@ -625,6 +640,56 @@ export default function MonthlySalesPage() {
                   </div>
                 </div>
               )}
+            </CardContent>
+          </Card>
+
+          {/* 日別売上確認表（折れ線の下） */}
+          <Card className="mb-8">
+            <CardHeader>
+              <CardTitle>日別売上確認表</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="h-[420px] overflow-auto rounded-md border relative">
+                <Table>
+                  <TableHeader className="sticky top-0 z-20 bg-white/95 backdrop-blur border-b shadow-sm">
+                    <TableRow className="sticky top-0">
+                      <TableHead className="sticky top-0 z-20 bg-white/95 backdrop-blur w-28">日付</TableHead>
+                      <TableHead className="sticky top-0 z-20 bg-white/95 backdrop-blur text-right">売上合計</TableHead>
+                      <TableHead className="sticky top-0 z-20 bg-white/95 backdrop-blur text-right">現金</TableHead>
+                      <TableHead className="sticky top-0 z-20 bg-white/95 backdrop-blur text-right">店舗用カード</TableHead>
+                      <TableHead className="sticky top-0 z-20 bg-white/95 backdrop-blur text-right">クレジットカード</TableHead>
+                      <TableHead className="sticky top-0 z-20 bg-white/95 backdrop-blur text-right">顧客数</TableHead>
+                      <TableHead className="sticky top-0 z-20 bg-white/95 backdrop-blur text-right">キャスト給与</TableHead>
+                      <TableHead className="sticky top-0 z-20 bg-white/95 backdrop-blur text-right">経費金額</TableHead>
+                      <TableHead className="sticky top-0 z-20 bg-white/95 backdrop-blur text-center">詳細情報</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {dailyCheckRows.map((r: any) => (
+                      <TableRow key={r.date}>
+                        <TableCell className="font-medium">{r.date}</TableCell>
+                        <TableCell className="text-right">{formatCurrency(Number(r.total_sales) || 0)}</TableCell>
+                        <TableCell className="text-right">{formatCurrency(Number(r.cash_sales) || 0)}</TableCell>
+                        <TableCell className="text-right">{formatCurrency(Number(r.store_card_sales) || 0)}</TableCell>
+                        <TableCell className="text-right">{formatCurrency(Number(r.credit_card_sales) || 0)}</TableCell>
+                        <TableCell className="text-right">{formatNumber(Number(r.customer_count) || 0)}</TableCell>
+                        <TableCell className="text-right">{formatCurrency(Number(r.cast_salary) || 0)}</TableCell>
+                        <TableCell className="text-right">{formatCurrency(Number(r.deduct_total) || 0)}</TableCell>
+                        <TableCell className="text-center">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => router.push(`/admin/sales/daily?date=${encodeURIComponent(r.date)}`)}
+                          >
+                            <ExternalLink className="w-4 h-4 mr-2" />
+                            詳細
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
             </CardContent>
           </Card>
 

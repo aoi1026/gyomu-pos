@@ -233,6 +233,23 @@ CREATE TABLE IF NOT EXISTS salary (
 -- 給与インデックス
 CREATE INDEX IF NOT EXISTS idx_salary_user_month ON salary(user_id, year, month);
 
+-- 経費テーブル
+CREATE TABLE IF NOT EXISTS deduct (
+    id SERIAL PRIMARY KEY,
+    date DATE NOT NULL,
+    value DECIMAL(12,2) NOT NULL CHECK (value >= 0),
+    reason TEXT,
+    other TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_deduct_date ON deduct(date);
+
+CREATE TRIGGER update_deduct_updated_at
+    BEFORE UPDATE ON deduct
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
 -- セッション管理テーブル
 CREATE TABLE IF NOT EXISTS sessions (
     id SERIAL PRIMARY KEY,
@@ -242,6 +259,8 @@ CREATE TABLE IF NOT EXISTS sessions (
     client INTEGER,
     set_count INTEGER DEFAULT 1 CHECK (set_count >= 1),
     set_extensions JSONB DEFAULT '[]'::jsonb,
+    -- 決済方法: 0=店舗用クレジットカード, 1=現金, 2=クレジットカード
+    pay_type INTEGER CHECK (pay_type IN (0, 1, 2)),
     status INTEGER DEFAULT 0 CHECK (status IN (0, 1)),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
@@ -255,6 +274,25 @@ CREATE INDEX IF NOT EXISTS idx_sessions_created_at ON sessions(created_at);
 -- セッション更新時のトリガー
 CREATE TRIGGER update_sessions_updated_at 
     BEFORE UPDATE ON sessions 
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- セッション決済履歴テーブル
+CREATE TABLE IF NOT EXISTS session_payments (
+    id SERIAL PRIMARY KEY,
+    session_id INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+    -- 決済方法: 0=店舗用クレジットカード, 1=現金, 2=クレジットカード
+    pay_type INTEGER NOT NULL CHECK (pay_type IN (0, 1, 2)),
+    amount DECIMAL(12,2) NOT NULL CHECK (amount >= 0),
+    other TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_session_payments_session_id ON session_payments(session_id);
+CREATE INDEX IF NOT EXISTS idx_session_payments_created_at ON session_payments(created_at);
+
+CREATE TRIGGER update_session_payments_updated_at
+    BEFORE UPDATE ON session_payments
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- 売上注文管理テーブル

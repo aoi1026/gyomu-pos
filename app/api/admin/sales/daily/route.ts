@@ -12,6 +12,19 @@ export async function GET(request: NextRequest) {
 			? dateParam
 			: new Date().toISOString().split('T')[0];
 
+		// 旧DB向けの最低限の保険（決済履歴）
+		await client.query(`
+			CREATE TABLE IF NOT EXISTS session_payments (
+				id SERIAL PRIMARY KEY,
+				session_id INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+				pay_type INTEGER NOT NULL CHECK (pay_type IN (0, 1, 2)),
+				amount DECIMAL(12,2) NOT NULL CHECK (amount >= 0),
+				other TEXT,
+				created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+				updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+			)
+		`);
+
 		const ordersAgg = await client.query(
 			`
 			SELECT 
@@ -46,15 +59,34 @@ export async function GET(request: NextRequest) {
 		// テーブル別売上集計
 		const tableSalesResult = await client.query(
 			`
-			SELECT 
+			WITH sess AS (
+				SELECT id, table_id, cost
+				FROM sessions
+				WHERE created_at >= $1::date
+				  AND created_at < ($1::date + INTERVAL '1 day')
+			),
+			pay AS (
+				SELECT sp.session_id, COALESCE(SUM(sp.amount), 0) AS pay_total
+				FROM session_payments sp
+				INNER JOIN sess s ON s.id = sp.session_id
+				GROUP BY sp.session_id
+			),
+			sess_paid AS (
+				SELECT
+					s.table_id,
+					CASE
+						WHEN p.session_id IS NOT NULL THEN COALESCE(p.pay_total, 0)
+						ELSE COALESCE(s.cost, 0)
+					END AS paid_total
+				FROM sess s
+				LEFT JOIN pay p ON p.session_id = s.id
+			)
+			SELECT
 				t.id AS table_id,
 				t.name AS table_name,
-				COALESCE(SUM(so.total_price), 0) AS total_sales
+				COALESCE(SUM(spd.paid_total), 0) AS total_sales
 			FROM "table" t
-			LEFT JOIN salesorder so
-			  ON so.table_id = t.id
-			 AND so.accepted_at >= $1::date
-			 AND so.accepted_at < ($1::date + INTERVAL '1 day')
+			LEFT JOIN sess_paid spd ON spd.table_id = t.id
 			GROUP BY t.id, t.name
 			ORDER BY t.id
 			`,
