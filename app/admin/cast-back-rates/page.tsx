@@ -156,12 +156,6 @@ export default function CastBackRatesPage() {
   const validateBackRates = (form: EditBackRateForm): string[] => {
     const errors: string[] = [];
     
-    if (form.food_back < 0 || form.food_back > 100) {
-      errors.push('フードバック率は0-100%の範囲で入力してください');
-    }
-    if (form.drink_back < 0 || form.drink_back > 100) {
-      errors.push('ドリンクバック率は0-100%の範囲で入力してください');
-    }
     if (form.main_nomination < 0 || form.main_nomination > 100) {
       errors.push('本指名料率は0-100%の範囲で入力してください');
     }
@@ -170,9 +164,6 @@ export default function CastBackRatesPage() {
     }
     if (form.together_nomination < 0 || form.together_nomination > 100) {
       errors.push('同伴料率は0-100%の範囲で入力してください');
-    }
-    if (form.hourly_price < 0) {
-      errors.push('時間当たり価格は0以上で入力してください');
     }
     
     return errors;
@@ -272,12 +263,9 @@ export default function CastBackRatesPage() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>キャスト名</TableHead>
-                      <TableHead className="text-center">フードバック</TableHead>
-                      <TableHead className="text-center">ドリンクバック</TableHead>
                       <TableHead className="text-center">本指名料</TableHead>
                       <TableHead className="text-center">場内指名料</TableHead>
                       <TableHead className="text-center">同伴料</TableHead>
-                      <TableHead className="text-center">時間当たり価格</TableHead>
                       <TableHead className="text-center">登録日</TableHead>
                       <TableHead className="text-center">操作</TableHead>
                     </TableRow>
@@ -297,16 +285,6 @@ export default function CastBackRatesPage() {
                           </div>
                         </TableCell>
                         <TableCell className="text-center">
-                          <Badge variant="outline" className="bg-green-50 text-green-700">
-                            {formatBackRate(cast.food_back)}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <Badge variant="outline" className="bg-blue-50 text-blue-700">
-                            {formatBackRate(cast.drink_back)}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-center">
                           <Badge variant="outline" className="bg-purple-50 text-purple-700">
                             {formatBackRate(cast.main_nomination)}
                           </Badge>
@@ -319,11 +297,6 @@ export default function CastBackRatesPage() {
                         <TableCell className="text-center">
                           <Badge variant="outline" className="bg-amber-50 text-amber-700">
                             {formatBackRate(cast.together_nomination)}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <Badge variant="outline" className="bg-gray-50 text-gray-700">
-                            {new Intl.NumberFormat('ja-JP', { style: 'currency', currency: 'JPY', maximumFractionDigits: 0 }).format(cast.hourly_price || 0)}
                           </Badge>
                         </TableCell>
                         <TableCell className="text-center text-sm text-gray-500">
@@ -379,40 +352,6 @@ export default function CastBackRatesPage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-4">
                     <div className="space-y-2">
-                      <Label htmlFor="food_back">フードバック率 (%)</Label>
-                      <Input
-                        id="food_back"
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        max="100"
-                        value={editForm.food_back}
-                        onChange={(e) => setEditForm(prev => ({
-                          ...prev,
-                          food_back: parseFloat(e.target.value)
-                        }))}
-                      />
-                    </div>
-                    
-                    <div className="space-y-2">
-                      <Label htmlFor="drink_back">ドリンクバック率 (%)</Label>
-                      <Input
-                        id="drink_back"
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        max="100"
-                        value={editForm.drink_back}
-                        onChange={(e) => setEditForm(prev => ({
-                          ...prev,
-                          drink_back: parseFloat(e.target.value)
-                        }))}
-                      />
-                    </div>
-                  </div>
-                  
-                  <div className="space-y-4">
-                    <div className="space-y-2">
                       <Label htmlFor="main_nomination">本指名料率 (%)</Label>
                       <Input
                         id="main_nomination"
@@ -458,35 +397,13 @@ export default function CastBackRatesPage() {
                         }))}
                       />
                     </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="hourly_price">時間当たり価格 (円/時)</Label>
-                      <Input
-                        id="hourly_price"
-                        type="number"
-                        step="1"
-                        min="0"
-                        value={editForm.hourly_price}
-                        onChange={(e) => setEditForm(prev => ({
-                          ...prev,
-                          hourly_price: Number(e.target.value)
-                        }))}
-                      />
-                    </div>
                   </div>
                 </div>
 
                 {/* プレビュー */}
                 <div className="bg-gray-50 rounded-lg p-4">
                   <h4 className="font-medium text-gray-900 mb-3">設定プレビュー</h4>
-                  <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-sm">
-                    <div>
-                      <div className="text-gray-600">フードバック</div>
-                      <div className="font-medium">{formatBackRate(editForm.food_back)}</div>
-                    </div>
-                    <div>
-                      <div className="text-gray-600">ドリンクバック</div>
-                      <div className="font-medium">{formatBackRate(editForm.drink_back)}</div>
-                    </div>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
                     <div>
                       <div className="text-gray-600">本指名料</div>
                       <div className="font-medium">{formatBackRate(editForm.main_nomination)}</div>
@@ -498,12 +415,6 @@ export default function CastBackRatesPage() {
                     <div>
                       <div className="text-gray-600">同伴料</div>
                       <div className="font-medium">{formatBackRate(editForm.together_nomination)}</div>
-                    </div>
-                    <div className="col-span-2 md:col-span-2">
-                      <div className="text-gray-600">時間当たり価格</div>
-                      <div className="font-medium">
-                        {new Intl.NumberFormat('ja-JP', { style: 'currency', currency: 'JPY', maximumFractionDigits: 0 }).format(editForm.hourly_price)} / 時
-                      </div>
                     </div>
                   </div>
                 </div>
