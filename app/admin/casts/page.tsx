@@ -585,9 +585,9 @@ export default function CastsPage() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {admins.map((admin) => (
+                        {admins.map((admin, index) => (
                           <TableRow key={admin.id}>
-                            <TableCell>{admin.id}</TableCell>
+                            <TableCell>{index + 1}</TableCell>
                             <TableCell className="font-medium">{admin.name}</TableCell>
                             <TableCell>
                               <div className="flex items-center space-x-2">
