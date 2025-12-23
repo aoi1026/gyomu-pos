@@ -39,6 +39,11 @@ export const testAccounts = {
   superadmin: [
     { email: 'system@example.com', password: 'password', name: 'システム管理者' },
     { email: 'tech@example.com', password: 'password', name: '技術責任者' }
+  ],
+  // 互換: DBロール(super_admin)を旧UIロール(superadmin)と同一扱いにする
+  super_admin: [
+    { email: 'system@example.com', password: 'password', name: 'システム管理者' },
+    { email: 'tech@example.com', password: 'password', name: '技術責任者' }
   ]
 };
 // セッション管理（将来はJWT/セッションストレージに置き換え）
@@ -49,8 +54,11 @@ export const login = async (credentials: LoginCredentials): Promise<AuthUser> =>
   await new Promise(resolve => setTimeout(resolve, 1000)); // API遅延シミュレート
   
   // テストアカウントでの認証
-  const roleAccounts = testAccounts[credentials.role];
-  const account = roleAccounts.find(acc => acc.email === credentials.email);
+  const roleAccounts =
+    // super_admin は superadmin と同一扱い
+    (credentials.role === 'super_admin' ? testAccounts.super_admin : (testAccounts as any)[credentials.role]) ||
+    testAccounts.cast;
+  const account = roleAccounts.find((acc: { email: string }) => acc.email === credentials.email);
   
   if (!account || credentials.password !== 'password') {
     throw new Error('認証に失敗しました。正しいメールアドレスとパスワードを入力してください。');
@@ -163,6 +171,14 @@ export const canPerformAction = (user: AuthUser | null, action: string): boolean
       'view_sales', 'process_service_requests'
     ],
     admin: [
+      'view_menu', 'create_order', 'modify_order', 'process_payment',
+      'view_attendance', 'create_attendance', 'modify_attendance', 'approve_attendance',
+      'view_payroll', 'process_payroll', 'view_sales', 'manage_inventory',
+      'manage_customers', 'manage_settings', 'close_register', 'process_refund',
+      'manage_tables', 'manage_sessions', 'manage_bottles', 'process_service_requests'
+    ],
+    manager: [
+      // manager権限は現状adminに近い運用を想定（必要に応じて絞る）
       'view_menu', 'create_order', 'modify_order', 'process_payment',
       'view_attendance', 'create_attendance', 'modify_attendance', 'approve_attendance',
       'view_payroll', 'process_payroll', 'view_sales', 'manage_inventory',
