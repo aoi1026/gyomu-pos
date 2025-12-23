@@ -7,6 +7,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import RoleGate from '@/components/auth/RoleGate';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { ArrowLeft, Clock, CreditCard, Users } from 'lucide-react';
@@ -34,8 +35,22 @@ export default function DailyTableDetailPage({ params }: { params: { tableId: st
 
   const [isLoading, setIsLoading] = useState(true);
   const [sessions, setSessions] = useState<any[]>([]);
+  const [adminAuth, setAdminAuth] = useState<any>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [editMap, setEditMap] = useState<Record<string, { unit_price: string; quantity: string; total: string }>>({});
+  const [costEditMap, setCostEditMap] = useState<Record<string, string>>({});
 
   useEffect(() => {
+    // admin_auth を読み込み（super_admin 判定に使う）
+    const raw = typeof window !== 'undefined' ? localStorage.getItem('admin_auth') : null;
+    if (raw) {
+      try {
+        setAdminAuth(JSON.parse(raw));
+      } catch {
+        setAdminAuth(null);
+      }
+    }
+
     const load = async () => {
       if (!Number.isFinite(tableId) || tableId <= 0) return;
       setIsLoading(true);
@@ -57,6 +72,116 @@ export default function DailyTableDetailPage({ params }: { params: { tableId: st
   }, [tableId, date]);
 
   const title = useMemo(() => `テーブル ${tableId} 詳細（${date}）`, [tableId, date]);
+  const isSuperAdmin = useMemo(() => {
+    const role = String(adminAuth?.role || '');
+    return role === 'super_admin';
+  }, [adminAuth]);
+
+  const getEditKey = (sessionId: any, itemKey: any) => `${String(sessionId)}::${String(itemKey)}`;
+
+  const ensureEditRow = (sessionId: any, item: any) => {
+    const itemKey = String(item?.item_key || '');
+    if (!itemKey) return;
+    const k = getEditKey(sessionId, itemKey);
+    setEditMap((prev) => {
+      if (prev[k]) return prev;
+      return {
+        ...prev,
+        [k]: {
+          unit_price: String(item?.unit_price ?? ''),
+          quantity: item?.quantity === null || item?.quantity === undefined ? '' : String(item.quantity),
+          total: String(item?.total ?? ''),
+        }
+      };
+    });
+  };
+
+  const saveOverride = async (sessionId: any, item: any) => {
+    if (!isSuperAdmin) return;
+    const itemKey = String(item?.item_key || '');
+    if (!itemKey) return;
+
+    const k = getEditKey(sessionId, itemKey);
+    const row = editMap[k];
+    if (!row) return;
+
+    setIsSaving(true);
+    try {
+      const body: any = {
+        session_id: Number(sessionId),
+        item_key: itemKey,
+        unit_price: row.unit_price === '' ? null : Number(row.unit_price),
+        quantity: row.quantity === '' ? null : Number(row.quantity),
+        total: row.total === '' ? null : Number(row.total),
+      };
+
+      const res = await fetch('/api/admin/sales/daily-table-detail', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-admin-id': String(adminAuth?.id || ''),
+        },
+        body: JSON.stringify(body),
+      });
+      const result = await res.json();
+      if (!result?.success) {
+        // eslint-disable-next-line no-alert
+        alert(result?.error || '保存に失敗しました');
+        return;
+      }
+
+      // 再読み込みして表示を反映
+      const reload = await fetch(
+        `/api/admin/sales/daily-table-detail?table_id=${tableId}&date=${encodeURIComponent(date)}`,
+        { cache: 'no-store' }
+      );
+      const reloadResult = await reload.json();
+      if (reloadResult.success) setSessions(reloadResult.data?.sessions || []);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const saveCost = async (sessionId: any) => {
+    if (!isSuperAdmin) return;
+    const v = costEditMap[String(sessionId)];
+    const costNum = Number(String(v ?? '').replace(',', '.'));
+    if (!Number.isFinite(costNum) || costNum < 0) {
+      // eslint-disable-next-line no-alert
+      alert('支払額（cost）は0以上の数値を入力してください');
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const res = await fetch('/api/admin/sales/daily-table-detail', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-admin-id': String(adminAuth?.id || ''),
+        },
+        body: JSON.stringify({
+          session_id: Number(sessionId),
+          cost: costNum,
+        }),
+      });
+      const result = await res.json();
+      if (!result?.success) {
+        // eslint-disable-next-line no-alert
+        alert(result?.error || '保存に失敗しました');
+        return;
+      }
+
+      const reload = await fetch(
+        `/api/admin/sales/daily-table-detail?table_id=${tableId}&date=${encodeURIComponent(date)}`,
+        { cache: 'no-store' }
+      );
+      const reloadResult = await reload.json();
+      if (reloadResult.success) setSessions(reloadResult.data?.sessions || []);
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   if (isLoading) {
     return (
@@ -67,7 +192,7 @@ export default function DailyTableDetailPage({ params }: { params: { tableId: st
   }
 
   return (
-    <RoleGate allowedRoles={['admin', 'superadmin']}>
+    <RoleGate allowedRoles={['admin', 'super_admin', 'superadmin']}>
       <div className="min-h-screen bg-gradient-to-br from-purple-50 via-pink-50 to-blue-50">
         <header className="bg-white/80 backdrop-blur-sm border-b border-gray-200 sticky top-0 z-40">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -122,7 +247,27 @@ export default function DailyTableDetailPage({ params }: { params: { tableId: st
                         </div>
                         <div className="p-4 bg-white rounded-lg border">
                           <div className="text-xs text-gray-500 mb-1">支払額（cost）</div>
-                          <div className="text-xl font-bold text-green-700">{formatCurrency(Number(s.cost) || 0)}</div>
+                          {isSuperAdmin ? (
+                            <div className="flex items-center gap-2">
+                              <Input
+                                className="text-left font-bold text-green-700"
+                                inputMode="decimal"
+                                value={costEditMap[String(s.id)] ?? String(Number(s.cost) || 0)}
+                                onFocus={() =>
+                                  setCostEditMap((prev) => ({
+                                    ...prev,
+                                    [String(s.id)]: prev[String(s.id)] ?? String(Number(s.cost) || 0),
+                                  }))
+                                }
+                                onChange={(e) => setCostEditMap((prev) => ({ ...prev, [String(s.id)]: e.target.value }))}
+                              />
+                              <Button size="sm" variant="outline" disabled={isSaving} onClick={() => saveCost(s.id)}>
+                                {isSaving ? '保存中…' : '保存'}
+                              </Button>
+                            </div>
+                          ) : (
+                            <div className="text-xl font-bold text-green-700">{formatCurrency(Number(s.cost) || 0)}</div>
+                          )}
                         </div>
                         <div className="p-4 bg-white rounded-lg border space-y-2 text-sm">
                           <div className="flex items-center justify-between">
@@ -155,27 +300,96 @@ export default function DailyTableDetailPage({ params }: { params: { tableId: st
                                 <TableHead className="text-right w-32">金額</TableHead>
                                 <TableHead className="text-right w-20">数量</TableHead>
                                 <TableHead className="text-right w-36">総金額</TableHead>
+                                {isSuperAdmin ? <TableHead className="text-right w-28">保存</TableHead> : null}
                               </TableRow>
                             </TableHeader>
                             <TableBody>
-                              {nonPaymentItems.map((it: any, idx: number) => (
+                              {nonPaymentItems.map((it: any, idx: number) => {
+                                const itemKey = String(it?.item_key || '');
+                                const k = getEditKey(s.id, itemKey);
+                                const row = editMap[k];
+                                return (
                                 <TableRow key={idx}>
                                   <TableCell className="font-medium">{it.category}</TableCell>
                                   <TableCell>{it.name}</TableCell>
                                   <TableCell className="text-right">
-                                    {formatCurrency(Number(it.unit_price) || 0)}
+                                    {isSuperAdmin && itemKey ? (
+                                      <Input
+                                        className="text-right"
+                                        inputMode="decimal"
+                                        value={row?.unit_price ?? String(it.unit_price ?? '')}
+                                        onFocus={() => ensureEditRow(s.id, it)}
+                                        onChange={(e) =>
+                                          setEditMap((prev) => ({
+                                            ...prev,
+                                            [k]: { ...(prev[k] || { unit_price: '', quantity: '', total: '' }), unit_price: e.target.value }
+                                          }))
+                                        }
+                                      />
+                                    ) : (
+                                      formatCurrency(Number(it.unit_price) || 0)
+                                    )}
                                     {it?.unit_price_note ? <span className="ml-1 text-xs text-gray-600">{String(it.unit_price_note)}</span> : null}
                                   </TableCell>
-                                  <TableCell className="text-right">{it.category === '指名' ? '-' : formatNumber(Number(it.quantity) || 0)}</TableCell>
-                                  <TableCell className="text-right font-medium">{formatCurrency(Number(it.total) || 0)}</TableCell>
+                                  <TableCell className="text-right">
+                                    {it.category === '指名' ? (
+                                      '-'
+                                    ) : isSuperAdmin && itemKey ? (
+                                      <Input
+                                        className="text-right"
+                                        inputMode="numeric"
+                                        value={row?.quantity ?? String(it.quantity ?? '')}
+                                        onFocus={() => ensureEditRow(s.id, it)}
+                                        onChange={(e) =>
+                                          setEditMap((prev) => ({
+                                            ...prev,
+                                            [k]: { ...(prev[k] || { unit_price: '', quantity: '', total: '' }), quantity: e.target.value }
+                                          }))
+                                        }
+                                      />
+                                    ) : (
+                                      formatNumber(Number(it.quantity) || 0)
+                                    )}
+                                  </TableCell>
+                                  <TableCell className="text-right font-medium">
+                                    {isSuperAdmin && itemKey ? (
+                                      <Input
+                                        className="text-right font-medium"
+                                        inputMode="decimal"
+                                        value={row?.total ?? String(it.total ?? '')}
+                                        onFocus={() => ensureEditRow(s.id, it)}
+                                        onChange={(e) =>
+                                          setEditMap((prev) => ({
+                                            ...prev,
+                                            [k]: { ...(prev[k] || { unit_price: '', quantity: '', total: '' }), total: e.target.value }
+                                          }))
+                                        }
+                                      />
+                                    ) : (
+                                      formatCurrency(Number(it.total) || 0)
+                                    )}
+                                  </TableCell>
+                                  {isSuperAdmin ? (
+                                    <TableCell className="text-right">
+                                      {itemKey ? (
+                                        <Button size="sm" variant="outline" disabled={isSaving} onClick={() => saveOverride(s.id, it)}>
+                                          {isSaving ? '保存中…' : '保存'}
+                                        </Button>
+                                      ) : (
+                                        <span className="text-xs text-gray-400">-</span>
+                                      )}
+                                    </TableCell>
+                                  ) : null}
                                 </TableRow>
-                              ))}
+                                );
+                              })}
                               <TableRow>
                                 <TableCell className="font-semibold">小計</TableCell>
                                 <TableCell />
                                 <TableCell />
                                 <TableCell />
                                 <TableCell className="text-right font-bold">{formatCurrency(subtotal)}</TableCell>
+                                {isSuperAdmin ? <TableCell /> : null}
                               </TableRow>
 
                               {paymentItems.length > 0 && (
@@ -183,21 +397,87 @@ export default function DailyTableDetailPage({ params }: { params: { tableId: st
                                   <TableCell colSpan={5} className="bg-gray-50 text-sm font-semibold text-gray-700">
                                     決済
                                   </TableCell>
+                                  {isSuperAdmin ? <TableCell className="bg-gray-50" /> : null}
                                 </TableRow>
                               )}
 
-                              {paymentItems.map((it: any, idx: number) => (
+                              {paymentItems.map((it: any, idx: number) => {
+                                const itemKey = String(it?.item_key || '');
+                                const k = getEditKey(s.id, itemKey);
+                                const row = editMap[k];
+                                return (
                                 <TableRow key={`pay-${idx}`}>
                                   <TableCell className="font-medium">{it.category}</TableCell>
                                   <TableCell>{it.name}</TableCell>
                                   <TableCell className="text-right">
-                                    {formatCurrency(Number(it.unit_price) || 0)}
+                                    {isSuperAdmin && itemKey ? (
+                                      <Input
+                                        className="text-right"
+                                        inputMode="decimal"
+                                        value={row?.unit_price ?? String(it.unit_price ?? '')}
+                                        onFocus={() => ensureEditRow(s.id, it)}
+                                        onChange={(e) =>
+                                          setEditMap((prev) => ({
+                                            ...prev,
+                                            [k]: { ...(prev[k] || { unit_price: '', quantity: '', total: '' }), unit_price: e.target.value }
+                                          }))
+                                        }
+                                      />
+                                    ) : (
+                                      formatCurrency(Number(it.unit_price) || 0)
+                                    )}
                                     {it?.unit_price_note ? <span className="ml-1 text-xs text-gray-600">{String(it.unit_price_note)}</span> : null}
                                   </TableCell>
-                                  <TableCell className="text-right">{formatNumber(Number(it.quantity) || 0)}</TableCell>
-                                  <TableCell className="text-right font-medium">{formatCurrency(Number(it.total) || 0)}</TableCell>
+                                  <TableCell className="text-right">
+                                    {isSuperAdmin && itemKey ? (
+                                      <Input
+                                        className="text-right"
+                                        inputMode="numeric"
+                                        value={row?.quantity ?? String(it.quantity ?? '')}
+                                        onFocus={() => ensureEditRow(s.id, it)}
+                                        onChange={(e) =>
+                                          setEditMap((prev) => ({
+                                            ...prev,
+                                            [k]: { ...(prev[k] || { unit_price: '', quantity: '', total: '' }), quantity: e.target.value }
+                                          }))
+                                        }
+                                      />
+                                    ) : (
+                                      formatNumber(Number(it.quantity) || 0)
+                                    )}
+                                  </TableCell>
+                                  <TableCell className="text-right font-medium">
+                                    {isSuperAdmin && itemKey ? (
+                                      <Input
+                                        className="text-right font-medium"
+                                        inputMode="decimal"
+                                        value={row?.total ?? String(it.total ?? '')}
+                                        onFocus={() => ensureEditRow(s.id, it)}
+                                        onChange={(e) =>
+                                          setEditMap((prev) => ({
+                                            ...prev,
+                                            [k]: { ...(prev[k] || { unit_price: '', quantity: '', total: '' }), total: e.target.value }
+                                          }))
+                                        }
+                                      />
+                                    ) : (
+                                      formatCurrency(Number(it.total) || 0)
+                                    )}
+                                  </TableCell>
+                                  {isSuperAdmin ? (
+                                    <TableCell className="text-right">
+                                      {itemKey ? (
+                                        <Button size="sm" variant="outline" disabled={isSaving} onClick={() => saveOverride(s.id, it)}>
+                                          {isSaving ? '保存中…' : '保存'}
+                                        </Button>
+                                      ) : (
+                                        <span className="text-xs text-gray-400">-</span>
+                                      )}
+                                    </TableCell>
+                                  ) : null}
                                 </TableRow>
-                              ))}
+                                );
+                              })}
 
                               {paymentItems.length > 0 && (
                                 <TableRow>
@@ -206,6 +486,7 @@ export default function DailyTableDetailPage({ params }: { params: { tableId: st
                                   <TableCell />
                                   <TableCell />
                                   <TableCell className="text-right font-bold">{formatCurrency(paymentTotal)}</TableCell>
+                                  {isSuperAdmin ? <TableCell /> : null}
                                 </TableRow>
                               )}
                             </TableBody>

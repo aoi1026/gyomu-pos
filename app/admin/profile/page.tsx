@@ -72,7 +72,7 @@ export default function AdminProfilePage() {
       }
       // ローカルの認証情報を更新
       const updated = { ...user, name: result.data.name, email: result.data.mail };
-      if (typeof window !== 'undefined' && (user?.role === 'admin' || user?.role === 'superadmin')) {
+      if (typeof window !== 'undefined' && (user?.role === 'admin' || user?.role === 'super_admin' || user?.role === 'superadmin')) {
         localStorage.setItem('admin_auth', JSON.stringify(updated));
       }
       setUser(updated);
@@ -128,7 +128,7 @@ export default function AdminProfilePage() {
   }
 
   return (
-    <RoleGate allowedRoles={['admin', 'superadmin']}>
+    <RoleGate allowedRoles={['admin', 'super_admin', 'superadmin']}>
       <div className="min-h-screen bg-gradient-to-br from-purple-50 via-pink-50 to-blue-50">
         {/* Header */}
         <header className="bg-white/80 backdrop-blur-sm border-b border-gray-200 sticky top-0 z-40">

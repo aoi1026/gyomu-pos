@@ -191,7 +191,7 @@ export default function Dashboard() {
     }
     
     // キャスト・管理者・システム管理者のみアクセス可能
-    if (!currentUser.roles.some(role => ['cast', 'admin', 'superadmin'].includes(role))) {
+    if (!currentUser.roles.some(role => ['cast', 'admin', 'super_admin', 'superadmin'].includes(role))) {
       router.push('/login');
       return;
     }
@@ -384,7 +384,7 @@ export default function Dashboard() {
               </div>
             </div>
             <div className="flex items-center space-x-2 sm:space-x-4">
-              {((adminUser && (adminUser.role === 'admin' || adminUser.role === 'superadmin')) || hasRole(user, 'admin') || hasRole(user, 'superadmin')) && (
+              {((adminUser && (adminUser.role === 'admin' || adminUser.role === 'super_admin' || adminUser.role === 'superadmin')) || hasRole(user, 'admin') || hasRole(user, 'super_admin') || hasRole(user, 'superadmin')) && (
                 <>
                   <Button
                     variant="outline"
@@ -419,7 +419,7 @@ export default function Dashboard() {
                   {adminUser ? (
                     <Badge variant="secondary" className="text-xs">
                       {adminUser.role === 'admin' ? '管理者' : 
-                       adminUser.role === 'superadmin' ? 'システム管理者' : adminUser.role}
+                       (adminUser.role === 'super_admin' || adminUser.role === 'superadmin') ? 'システム管理者' : adminUser.role}
                     </Badge>
                   ) : castUser ? (
                     <Badge variant="secondary" className="text-xs">
@@ -430,7 +430,7 @@ export default function Dashboard() {
                       <Badge key={role} variant="secondary" className="text-xs">
                         {role === 'cast' ? 'キャスト' : 
                          role === 'admin' ? '管理者' : 
-                         role === 'superadmin' ? 'システム管理者' : role}
+                         (role === 'super_admin' || role === 'superadmin') ? 'システム管理者' : role}
                       </Badge>
                     ))
                   ) : null}
@@ -440,11 +440,11 @@ export default function Dashboard() {
                 <Badge variant="secondary" className="text-xs">
                   {adminUser ? (
                     adminUser.role === 'admin' ? '管理者' : 
-                    adminUser.role === 'superadmin' ? 'システム管理者' : adminUser.role
+                    (adminUser.role === 'super_admin' || adminUser.role === 'superadmin') ? 'システム管理者' : adminUser.role
                   ) : castUser ? (
                     'キャスト'
                   ) : user ? (
-                    user.roles.includes('superadmin') ? 'システム管理者' :
+                    (user.roles.includes('super_admin') || user.roles.includes('superadmin')) ? 'システム管理者' :
                     user.roles.includes('admin') ? '管理者' : 'キャスト'
                   ) : 'ユーザー'}
                 </Badge>
@@ -669,7 +669,7 @@ export default function Dashboard() {
         )}
 
         {/* Admin Dashboard */}
-        {((adminUser && (adminUser.role === 'admin' || adminUser.role === 'superadmin')) || hasRole(user, 'admin')) && (
+        {((adminUser && (adminUser.role === 'admin' || adminUser.role === 'super_admin' || adminUser.role === 'superadmin')) || hasRole(user, 'admin') || hasRole(user, 'super_admin') || hasRole(user, 'superadmin')) && (
           <div className="space-y-8">
             {/* 売上KPI */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -899,7 +899,7 @@ export default function Dashboard() {
                 >
                   {/* <Users className="w-6 h-6 text-rose-600" /> */}
                   <span className="w-6 h-5 text-rose-600 text-2xl"><FiUserPlus /></span>
-                  <span className="text-sm font-medium">キャスト管理</span>
+                  <span className="text-sm font-medium">スタッフ管理</span>
                 </Button>
                 
                 <Button 
@@ -979,7 +979,7 @@ export default function Dashboard() {
         )}
 
         {/* SuperAdmin Dashboard */}
-        {((adminUser && adminUser.role === 'superadmin') || hasRole(user, 'superadmin')) && (
+        {/* {((adminUser && (adminUser.role === 'super_admin' || adminUser.role === 'superadmin')) || hasRole(user, 'super_admin') || hasRole(user, 'superadmin')) && (
           <div className="space-y-8">
             <div>
               <h3 className="text-xl font-semibold text-gray-900 mb-4">システム管理</h3>
@@ -1004,11 +1004,11 @@ export default function Dashboard() {
               </div>
             </div>
           </div>
-        )}
+        )} */}
       </div>
 
       {/* Floating Real-Time Table Status Button (Admin only on Dashboard) */}
-      {(adminUser || hasRole(user, 'admin') || hasRole(user, 'superadmin')) && (
+      {(adminUser || hasRole(user, 'admin') || hasRole(user, 'super_admin') || hasRole(user, 'superadmin')) && (
         <>
           <button
             onClick={() => setShowTableStatus(true)}

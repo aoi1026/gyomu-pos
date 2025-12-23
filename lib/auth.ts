@@ -1,7 +1,10 @@
 // 認証・権限管理
 import { mockStaff, Staff } from './mock-data';
 
-export type UserRole = 'cast' | 'admin' | 'superadmin';
+// NOTE:
+// - DB側のロールは 'admin' | 'cast' | 'manager' | 'super_admin'
+// - 旧実装では 'superadmin' が使われている箇所があるため互換で残す
+export type UserRole = 'cast' | 'admin' | 'manager' | 'super_admin' | 'superadmin';
 
 export interface AuthUser {
   id: string;
@@ -102,7 +105,26 @@ export const getCurrentUser = (): AuthUser | null => {
 };
 
 export const hasRole = (user: AuthUser | null, role: UserRole): boolean => {
-  return user?.roles.includes(role) ?? false;
+  if (!user) return false;
+
+  const roles = user.roles || [];
+
+  // super_admin / superadmin は全権限（互換）
+  const isSuper = roles.includes('super_admin') || roles.includes('superadmin');
+  if (isSuper) {
+    // super は任意ロール要求を満たす扱い
+    return true;
+  }
+
+  // admin要求はadminのみ（superは上で処理済み）
+  if (role === 'admin') return roles.includes('admin');
+
+  // super系要求はどちらでも満たす
+  if (role === 'super_admin' || role === 'superadmin') {
+    return roles.includes('super_admin') || roles.includes('superadmin');
+  }
+
+  return roles.includes(role);
 };
 
 export const hasAnyRole = (user: AuthUser | null, roles: UserRole[]): boolean => {
@@ -115,15 +137,15 @@ export const canAccessRoute = (user: AuthUser | null, route: string): boolean =>
   
   // ルートベースの権限チェック
   if (route.startsWith('/cast/')) {
-    return hasAnyRole(user, ['cast', 'admin', 'superadmin']);
+    return hasAnyRole(user, ['cast', 'admin', 'super_admin', 'superadmin']);
   }
   
   if (route.startsWith('/admin/')) {
-    return hasAnyRole(user, ['admin', 'superadmin']);
+    return hasAnyRole(user, ['admin', 'super_admin', 'superadmin']);
   }
   
   if (route.startsWith('/super/')) {
-    return hasRole(user, 'superadmin');
+    return hasAnyRole(user, ['super_admin', 'superadmin']);
   }
   
   return true;
@@ -147,7 +169,8 @@ export const canPerformAction = (user: AuthUser | null, action: string): boolean
       'manage_customers', 'manage_settings', 'close_register', 'process_refund',
       'manage_tables', 'manage_sessions', 'manage_bottles', 'process_service_requests'
     ],
-    superadmin: ['*'] // 全権限
+    super_admin: ['*'], // 全権限（DB）
+    superadmin: ['*'] // 全権限（旧互換）
   };
   
   return user.roles.some(role => {

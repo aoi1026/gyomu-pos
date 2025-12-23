@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
   ArrowLeft, Users, Plus, Edit, Trash2, Save, X, 
   UserPlus, Mail, Calendar, FileText
@@ -24,9 +25,19 @@ interface CastData {
   created_at: string;
 }
 
+interface AdminData {
+  id: number;
+  name: string;
+  mail: string;
+  other: string | null;
+  created_at: string;
+}
+
 export default function CastsPage() {
   const [adminUser, setAdminUser] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<'staff' | 'admins'>('staff');
+
   const [casts, setCasts] = useState<CastData[]>([]);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
@@ -49,6 +60,27 @@ export default function CastsPage() {
     other: ''
   });
 
+  const [admins, setAdmins] = useState<AdminData[]>([]);
+  const [isAddAdminDialogOpen, setIsAddAdminDialogOpen] = useState(false);
+  const [isEditAdminDialogOpen, setIsEditAdminDialogOpen] = useState(false);
+  const [editingAdmin, setEditingAdmin] = useState<AdminData | null>(null);
+  const [deleteAdminId, setDeleteAdminId] = useState<number | null>(null);
+  const [isDeleteAdminDialogOpen, setIsDeleteAdminDialogOpen] = useState(false);
+
+  const [addAdminForm, setAddAdminForm] = useState({
+    name: '',
+    mail: '',
+    password: '',
+    other: ''
+  });
+
+  const [editAdminForm, setEditAdminForm] = useState({
+    name: '',
+    mail: '',
+    password: '',
+    other: ''
+  });
+
   const router = useRouter();
   const { success, error } = useNotificationContext();
 
@@ -61,6 +93,7 @@ export default function CastsPage() {
         setAdminUser(parsedAdminAuth);
         setIsLoading(false);
         fetchCasts();
+        fetchAdmins();
         return;
       } catch (err) {
         console.error('管理者認証情報の解析に失敗しました:', err);
@@ -79,11 +112,26 @@ export default function CastsPage() {
       if (result.success) {
         setCasts(result.data);
       } else {
-        error('エラー', 'キャスト一覧の取得に失敗しました');
+        error('エラー', 'スタッフ一覧の取得に失敗しました');
       }
     } catch (err) {
-      console.error('キャスト一覧取得エラー:', err);
-      error('エラー', 'キャスト一覧の取得に失敗しました');
+      console.error('スタッフ一覧取得エラー:', err);
+      error('エラー', 'スタッフ一覧の取得に失敗しました');
+    }
+  };
+
+  const fetchAdmins = async () => {
+    try {
+      const response = await fetch('/api/admins');
+      const result = await response.json();
+      if (result.success) {
+        setAdmins(result.data);
+      } else {
+        error('エラー', '管理者一覧の取得に失敗しました');
+      }
+    } catch (err) {
+      console.error('管理者一覧取得エラー:', err);
+      error('エラー', '管理者一覧の取得に失敗しました');
     }
   };
 
@@ -108,6 +156,32 @@ export default function CastsPage() {
     setIsDeleteDialogOpen(true);
   };
 
+  const handleAddAdmin = () => {
+    setAddAdminForm({ name: '', mail: '', password: '', other: '' });
+    setIsAddAdminDialogOpen(true);
+  };
+
+  const handleEditAdmin = (admin: AdminData) => {
+    setEditingAdmin(admin);
+    setEditAdminForm({
+      name: admin.name,
+      mail: admin.mail,
+      password: '',
+      other: admin.other || ''
+    });
+    setIsEditAdminDialogOpen(true);
+  };
+
+  const handleDeleteAdmin = (adminId: number) => {
+    setDeleteAdminId(adminId);
+    setIsDeleteAdminDialogOpen(true);
+  };
+
+  const handleAddForActiveTab = () => {
+    if (activeTab === 'staff') handleAdd();
+    else handleAddAdmin();
+  };
+
   const handleSaveAdd = async () => {
     if (!addForm.name || !addForm.mail || !addForm.password) {
       error('エラー', '名前、メールアドレス、パスワードを入力してください');
@@ -124,16 +198,16 @@ export default function CastsPage() {
 
       const result = await response.json();
       if (result.success) {
-        success('追加完了', 'キャストが正常に追加されました');
+        success('追加完了', 'スタッフが正常に追加されました');
         setIsAddDialogOpen(false);
         setAddForm({ name: '', mail: '', password: '', other: '' });
         fetchCasts();
       } else {
-        error('エラー', result.error || 'キャストの追加に失敗しました');
+        error('エラー', result.error || 'スタッフの追加に失敗しました');
       }
     } catch (err) {
-      console.error('キャスト追加エラー:', err);
-      error('エラー', 'キャストの追加に失敗しました');
+      console.error('スタッフ追加エラー:', err);
+      error('エラー', 'スタッフの追加に失敗しました');
     } finally {
       setIsSubmitting(false);
     }
@@ -157,16 +231,16 @@ export default function CastsPage() {
 
       const result = await response.json();
       if (result.success) {
-        success('更新完了', 'キャスト情報が正常に更新されました');
+        success('更新完了', 'スタッフ情報が正常に更新されました');
         setIsEditDialogOpen(false);
         setEditingCast(null);
         fetchCasts();
       } else {
-        error('エラー', result.error || 'キャストの更新に失敗しました');
+        error('エラー', result.error || 'スタッフの更新に失敗しました');
       }
     } catch (err) {
-      console.error('キャスト更新エラー:', err);
-      error('エラー', 'キャストの更新に失敗しました');
+      console.error('スタッフ更新エラー:', err);
+      error('エラー', 'スタッフの更新に失敗しました');
     } finally {
       setIsSubmitting(false);
     }
@@ -183,16 +257,106 @@ export default function CastsPage() {
 
       const result = await response.json();
       if (result.success) {
-        success('削除完了', 'キャストが正常に削除されました');
+        success('削除完了', 'スタッフが正常に削除されました');
         setIsDeleteDialogOpen(false);
         setDeleteCastId(null);
         fetchCasts();
       } else {
-        error('エラー', result.error || 'キャストの削除に失敗しました');
+        error('エラー', result.error || 'スタッフの削除に失敗しました');
       }
     } catch (err) {
-      console.error('キャスト削除エラー:', err);
-      error('エラー', 'キャストの削除に失敗しました');
+      console.error('スタッフ削除エラー:', err);
+      error('エラー', 'スタッフの削除に失敗しました');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleSaveAddAdmin = async () => {
+    if (!addAdminForm.name || !addAdminForm.mail || !addAdminForm.password) {
+      error('エラー', '管理者名、管理者メール、パスワードを入力してください');
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const response = await fetch('/api/admins', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(addAdminForm)
+      });
+
+      const result = await response.json();
+      if (result.success) {
+        success('登録完了', '管理者が正常に登録されました');
+        setIsAddAdminDialogOpen(false);
+        setAddAdminForm({ name: '', mail: '', password: '', other: '' });
+        fetchAdmins();
+      } else {
+        error('エラー', result.error || '管理者の登録に失敗しました');
+      }
+    } catch (err) {
+      console.error('管理者登録エラー:', err);
+      error('エラー', '管理者の登録に失敗しました');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleSaveEditAdmin = async () => {
+    if (!editAdminForm.name || !editAdminForm.mail) {
+      error('エラー', '管理者名と管理者メールを入力してください');
+      return;
+    }
+
+    if (!editingAdmin) return;
+
+    setIsSubmitting(true);
+    try {
+      const response = await fetch(`/api/admins/${editingAdmin.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(editAdminForm)
+      });
+
+      const result = await response.json();
+      if (result.success) {
+        success('変更完了', '管理者情報が正常に変更されました');
+        setIsEditAdminDialogOpen(false);
+        setEditingAdmin(null);
+        fetchAdmins();
+      } else {
+        error('エラー', result.error || '管理者情報の変更に失敗しました');
+      }
+    } catch (err) {
+      console.error('管理者変更エラー:', err);
+      error('エラー', '管理者情報の変更に失敗しました');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleConfirmDeleteAdmin = async () => {
+    if (!deleteAdminId) return;
+
+    setIsSubmitting(true);
+    try {
+      const response = await fetch(`/api/admins/${deleteAdminId}`, {
+        method: 'DELETE'
+      });
+
+      const result = await response.json();
+      if (result.success) {
+        success('削除完了', '管理者が正常に削除されました');
+        setIsDeleteAdminDialogOpen(false);
+        setDeleteAdminId(null);
+        fetchAdmins();
+      } else {
+        error('エラー', result.error || '管理者の削除に失敗しました');
+      }
+    } catch (err) {
+      console.error('管理者削除エラー:', err);
+      error('エラー', '管理者の削除に失敗しました');
     } finally {
       setIsSubmitting(false);
     }
@@ -236,14 +400,14 @@ export default function CastsPage() {
                 <span className="sm:hidden">戻る</span>
               </Button>
               <div className="flex flex-col sm:flex-row sm:items-center space-y-1 sm:space-y-0 sm:space-x-3">
-                <h1 className="text-lg sm:text-xl font-bold text-gray-900">キャスト管理</h1>
-                <p className="text-xs sm:text-sm text-gray-500">キャストの追加・編集・削除</p>
+                <h1 className="text-lg sm:text-xl font-bold text-gray-900">スタッフ管理</h1>
+                <p className="text-xs sm:text-sm text-gray-500">スタッフ・管理者の登録/変更/削除</p>
               </div>
             </div>
             <div className="flex items-center space-x-2">
-              <Button onClick={handleAdd} className="bg-purple-600 hover:bg-purple-700">
+              <Button onClick={handleAddForActiveTab} className="bg-purple-600 hover:bg-purple-700">
                 <Plus className="w-4 h-4 mr-2" />
-                キャスト追加
+                {activeTab === 'staff' ? 'スタッフ追加' : '管理者登録'}
               </Button>
             </div>
           </div>
@@ -256,150 +420,237 @@ export default function CastsPage() {
           <CardHeader>
             <CardTitle className="flex items-center text-purple-800">
               <Users className="w-5 h-5 mr-2" />
-              キャスト管理
+              スタッフ管理
             </CardTitle>
             <CardDescription>
-              キャストの追加、編集、削除を行います。キャストの基本情報と連絡先を管理できます。
+              スタッフ（キャスト）と管理者の登録、変更、削除を行います。
             </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
               <div className="flex items-center space-x-2">
                 <UserPlus className="w-4 h-4 text-blue-600" />
-                <span>キャスト追加</span>
+                <span>登録</span>
               </div>
               <div className="flex items-center space-x-2">
                 <Edit className="w-4 h-4 text-green-600" />
-                <span>情報編集</span>
+                <span>変更</span>
               </div>
               <div className="flex items-center space-x-2">
                 <Trash2 className="w-4 h-4 text-red-600" />
-                <span>キャスト削除</span>
+                <span>削除</span>
               </div>
             </div>
           </CardContent>
         </Card>
 
-        {/* キャスト一覧 */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center justify-between">
-              <span className="flex items-center">
-                <Users className="w-5 h-5 mr-2" />
-                キャスト一覧
-              </span>
-              <Badge variant="outline" className="text-sm">
-                {casts.length}名
-              </Badge>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {casts.length === 0 ? (
-              <div className="text-center py-8">
-                <Users className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                <p className="text-gray-500">キャストが登録されていません</p>
-                <Button onClick={handleAdd} className="mt-4">
-                  <Plus className="w-4 h-4 mr-2" />
-                  キャストを追加
-                </Button>
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>ID</TableHead>
-                      <TableHead>キャスト名</TableHead>
-                      <TableHead>メールアドレス</TableHead>
-                      <TableHead>備考</TableHead>
-                      <TableHead>登録日時</TableHead>
-                      <TableHead className="text-center">操作</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {casts.map((cast, index) => (
-                      <TableRow key={cast.id}>
-                        <TableCell>{index + 1}</TableCell>
-                        <TableCell>
-                          <div className="flex items-center space-x-3">
-                            <div className="w-8 h-8 bg-pink-100 rounded-full flex items-center justify-center">
-                              <Users className="w-4 h-4 text-pink-600" />
-                            </div>
-                            <div>
-                              <div className="font-medium">{cast.name}</div>
-                            </div>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center space-x-2">
-                            <Mail className="w-4 h-4 text-gray-400" />
-                            <span className="text-sm">{cast.mail}</span>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          {cast.other ? (
-                            <div className="flex items-center space-x-2">
-                              <FileText className="w-4 h-4 text-gray-400" />
-                              <span className="text-sm">{cast.other}</span>
-                            </div>
-                          ) : (
-                            <span className="text-gray-400 text-sm">-</span>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center space-x-2">
-                            <Calendar className="w-4 h-4 text-gray-400" />
-                            <span className="text-sm">{formatDate(cast.created_at)}</span>
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <div className="flex space-x-2">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => handleEdit(cast)}
-                            >
-                              <Edit className="w-4 h-4 mr-1" />
-                              編集
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => handleDelete(cast.id)}
-                              className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                            >
-                              <Trash2 className="w-4 h-4 mr-1" />
-                              削除
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'staff' | 'admins')}>
+          <TabsList className="mb-4">
+            <TabsTrigger value="staff">スタッフ</TabsTrigger>
+            <TabsTrigger value="admins">管理者</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="staff">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center justify-between">
+                  <span className="flex items-center">
+                    <Users className="w-5 h-5 mr-2" />
+                    スタッフ一覧
+                  </span>
+                  <Badge variant="outline" className="text-sm">
+                    {casts.length}名
+                  </Badge>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {casts.length === 0 ? (
+                  <div className="text-center py-8">
+                    <Users className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                    <p className="text-gray-500">スタッフが登録されていません</p>
+                    <Button onClick={handleAdd} className="mt-4">
+                      <Plus className="w-4 h-4 mr-2" />
+                      スタッフを追加
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>ID</TableHead>
+                          <TableHead>スタッフ名</TableHead>
+                          <TableHead>メールアドレス</TableHead>
+                          <TableHead>備考</TableHead>
+                          <TableHead>登録日時</TableHead>
+                          <TableHead className="text-center">操作</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {casts.map((cast, index) => (
+                          <TableRow key={cast.id}>
+                            <TableCell>{index + 1}</TableCell>
+                            <TableCell>
+                              <div className="flex items-center space-x-3">
+                                <div className="w-8 h-8 bg-pink-100 rounded-full flex items-center justify-center">
+                                  <Users className="w-4 h-4 text-pink-600" />
+                                </div>
+                                <div>
+                                  <div className="font-medium">{cast.name}</div>
+                                </div>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center space-x-2">
+                                <Mail className="w-4 h-4 text-gray-400" />
+                                <span className="text-sm">{cast.mail}</span>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              {cast.other ? (
+                                <div className="flex items-center space-x-2">
+                                  <FileText className="w-4 h-4 text-gray-400" />
+                                  <span className="text-sm">{cast.other}</span>
+                                </div>
+                              ) : (
+                                <span className="text-gray-400 text-sm">-</span>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center space-x-2">
+                                <Calendar className="w-4 h-4 text-gray-400" />
+                                <span className="text-sm">{formatDate(cast.created_at)}</span>
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-center">
+                              <div className="flex space-x-2">
+                                <Button size="sm" variant="outline" onClick={() => handleEdit(cast)}>
+                                  <Edit className="w-4 h-4 mr-1" />
+                                  編集
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => handleDelete(cast.id)}
+                                  className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                >
+                                  <Trash2 className="w-4 h-4 mr-1" />
+                                  削除
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="admins">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center justify-between">
+                  <span className="flex items-center">
+                    <Users className="w-5 h-5 mr-2" />
+                    管理者登録表
+                  </span>
+                  <Badge variant="outline" className="text-sm">
+                    {admins.length}名
+                  </Badge>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {admins.length === 0 ? (
+                  <div className="text-center py-8">
+                    <Users className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                    <p className="text-gray-500">管理者が登録されていません</p>
+                    <Button onClick={handleAddAdmin} className="mt-4">
+                      <Plus className="w-4 h-4 mr-2" />
+                      管理者を登録
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>番号</TableHead>
+                          <TableHead>管理者名</TableHead>
+                          <TableHead>管理者メール</TableHead>
+                          <TableHead>備考</TableHead>
+                          <TableHead className="text-center">操作</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {admins.map((admin) => (
+                          <TableRow key={admin.id}>
+                            <TableCell>{admin.id}</TableCell>
+                            <TableCell className="font-medium">{admin.name}</TableCell>
+                            <TableCell>
+                              <div className="flex items-center space-x-2">
+                                <Mail className="w-4 h-4 text-gray-400" />
+                                <span className="text-sm">{admin.mail}</span>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              {admin.other ? (
+                                <div className="flex items-center space-x-2">
+                                  <FileText className="w-4 h-4 text-gray-400" />
+                                  <span className="text-sm">{admin.other}</span>
+                                </div>
+                              ) : (
+                                <span className="text-gray-400 text-sm">-</span>
+                              )}
+                            </TableCell>
+                            <TableCell className="text-center">
+                              <div className="flex space-x-2 justify-center">
+                                <Button size="sm" variant="outline" onClick={() => handleEditAdmin(admin)}>
+                                  <Edit className="w-4 h-4 mr-1" />
+                                  変更
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => handleDeleteAdmin(admin.id)}
+                                  className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                >
+                                  <Trash2 className="w-4 h-4 mr-1" />
+                                  削除
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
       </div>
 
-      {/* キャスト追加ダイアログ */}
+      {/* スタッフ追加ダイアログ */}
       <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center">
               <Plus className="w-5 h-5 mr-2" />
-              キャスト追加
+              スタッフ追加
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="add-name">キャスト名 *</Label>
+              <Label htmlFor="add-name">スタッフ名 *</Label>
               <Input
                 id="add-name"
                 value={addForm.name}
                 onChange={(e) => setAddForm(prev => ({ ...prev, name: e.target.value }))}
-                placeholder="キャスト名を入力"
+                placeholder="スタッフ名を入力"
               />
             </div>
             <div className="space-y-2">
@@ -445,23 +696,23 @@ export default function CastsPage() {
         </DialogContent>
       </Dialog>
 
-      {/* キャスト編集ダイアログ */}
+      {/* スタッフ編集ダイアログ */}
       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center">
               <Edit className="w-5 h-5 mr-2" />
-              キャスト編集
+              スタッフ編集
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="edit-name">キャスト名 *</Label>
+              <Label htmlFor="edit-name">スタッフ名 *</Label>
               <Input
                 id="edit-name"
                 value={editForm.name}
                 onChange={(e) => setEditForm(prev => ({ ...prev, name: e.target.value }))}
-                placeholder="キャスト名を入力"
+                placeholder="スタッフ名を入力"
               />
             </div>
             <div className="space-y-2">
@@ -512,15 +763,162 @@ export default function CastsPage() {
       <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>キャスト削除</AlertDialogTitle>
+            <AlertDialogTitle>スタッフ削除</AlertDialogTitle>
             <AlertDialogDescription>
-              このキャストを削除しますか？この操作は取り消せません。
+              このスタッフを削除しますか？この操作は取り消せません。
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>キャンセル</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleConfirmDelete}
+              className="bg-red-600 hover:bg-red-700"
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? '削除中...' : '削除'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* 管理者登録ダイアログ */}
+      <Dialog open={isAddAdminDialogOpen} onOpenChange={setIsAddAdminDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center">
+              <Plus className="w-5 h-5 mr-2" />
+              管理者登録
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="add-admin-name">管理者名 *</Label>
+              <Input
+                id="add-admin-name"
+                value={addAdminForm.name}
+                onChange={(e) => setAddAdminForm(prev => ({ ...prev, name: e.target.value }))}
+                placeholder="管理者名を入力"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="add-admin-mail">管理者メール *</Label>
+              <Input
+                id="add-admin-mail"
+                type="email"
+                value={addAdminForm.mail}
+                onChange={(e) => setAddAdminForm(prev => ({ ...prev, mail: e.target.value }))}
+                placeholder="管理者メールを入力"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="add-admin-password">パスワード *</Label>
+              <Input
+                id="add-admin-password"
+                type="password"
+                value={addAdminForm.password}
+                onChange={(e) => setAddAdminForm(prev => ({ ...prev, password: e.target.value }))}
+                placeholder="パスワードを入力"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="add-admin-other">備考</Label>
+              <Input
+                id="add-admin-other"
+                value={addAdminForm.other}
+                onChange={(e) => setAddAdminForm(prev => ({ ...prev, other: e.target.value }))}
+                placeholder="備考を入力（任意）"
+              />
+            </div>
+            <div className="flex justify-end space-x-2">
+              <Button variant="outline" onClick={() => setIsAddAdminDialogOpen(false)}>
+                <X className="w-4 h-4 mr-2" />
+                キャンセル
+              </Button>
+              <Button onClick={handleSaveAddAdmin} disabled={isSubmitting}>
+                <Save className="w-4 h-4 mr-2" />
+                {isSubmitting ? '登録中...' : '登録'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* 管理者変更ダイアログ */}
+      <Dialog open={isEditAdminDialogOpen} onOpenChange={setIsEditAdminDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center">
+              <Edit className="w-5 h-5 mr-2" />
+              管理者変更
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="edit-admin-name">管理者名 *</Label>
+              <Input
+                id="edit-admin-name"
+                value={editAdminForm.name}
+                onChange={(e) => setEditAdminForm(prev => ({ ...prev, name: e.target.value }))}
+                placeholder="管理者名を入力"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-admin-mail">管理者メール *</Label>
+              <Input
+                id="edit-admin-mail"
+                type="email"
+                value={editAdminForm.mail}
+                onChange={(e) => setEditAdminForm(prev => ({ ...prev, mail: e.target.value }))}
+                placeholder="管理者メールを入力"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-admin-password">パスワード</Label>
+              <Input
+                id="edit-admin-password"
+                type="password"
+                value={editAdminForm.password}
+                onChange={(e) => setEditAdminForm(prev => ({ ...prev, password: e.target.value }))}
+                placeholder="新しいパスワード（変更する場合のみ）"
+              />
+              <p className="text-xs text-gray-500">空の場合は現在のパスワードを維持します</p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-admin-other">備考</Label>
+              <Input
+                id="edit-admin-other"
+                value={editAdminForm.other}
+                onChange={(e) => setEditAdminForm(prev => ({ ...prev, other: e.target.value }))}
+                placeholder="備考を入力（任意）"
+              />
+            </div>
+            <div className="flex justify-end space-x-2">
+              <Button variant="outline" onClick={() => setIsEditAdminDialogOpen(false)}>
+                <X className="w-4 h-4 mr-2" />
+                キャンセル
+              </Button>
+              <Button onClick={handleSaveEditAdmin} disabled={isSubmitting}>
+                <Save className="w-4 h-4 mr-2" />
+                {isSubmitting ? '変更中...' : '変更'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* 管理者削除確認ダイアログ */}
+      <AlertDialog open={isDeleteAdminDialogOpen} onOpenChange={setIsDeleteAdminDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>管理者削除</AlertDialogTitle>
+            <AlertDialogDescription>
+              この管理者を削除しますか？この操作は取り消せません。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>キャンセル</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirmDeleteAdmin}
               className="bg-red-600 hover:bg-red-700"
               disabled={isSubmitting}
             >

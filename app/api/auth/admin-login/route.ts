@@ -18,8 +18,11 @@ export async function POST(request: NextRequest) {
     
     try {
       const result = await client.query(
-        'SELECT id, name, mail, password, role FROM "user" WHERE mail = $1 AND role = $2',
-        [email, 'admin']
+        `SELECT id, name, mail, password, role
+         FROM "user"
+         WHERE mail = $1
+           AND role IN ('admin', 'super_admin')`,
+        [email]
       );
 
       if (result.rows.length === 0) {

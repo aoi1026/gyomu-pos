@@ -69,4 +69,39 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
   }
 }
 
+export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
+  try {
+    const adminId = params.id;
+    const client = await pool.connect();
+
+    try {
+      const result = await client.query(
+        'DELETE FROM "user" WHERE id = $1 AND role = $2 RETURNING id, name',
+        [adminId, 'admin']
+      );
+
+      if (result.rows.length === 0) {
+        return NextResponse.json(
+          { error: '管理者が見つかりません。' },
+          { status: 404 }
+        );
+      }
+
+      return NextResponse.json({
+        success: true,
+        message: '管理者が正常に削除されました',
+        data: result.rows[0]
+      });
+    } finally {
+      client.release();
+    }
+  } catch (error) {
+    console.error('管理者削除エラー:', error);
+    return NextResponse.json(
+      { error: 'サーバーエラーが発生しました。' },
+      { status: 500 }
+    );
+  }
+}
+
 

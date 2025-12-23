@@ -402,7 +402,7 @@ export default function DailySalesPage() {
   const totalDeduct = deducts.reduce((sum: number, d: any) => sum + (Number(d?.value) || 0), 0);
 
   return (
-    <RoleGate allowedRoles={['admin', 'superadmin']}>
+    <RoleGate allowedRoles={['admin', 'super_admin', 'superadmin']}>
       <div className="min-h-screen bg-gradient-to-br from-purple-50 via-pink-50 to-blue-50">
         {/* Header */}
         <header className="bg-white/80 backdrop-blur-sm border-b border-gray-200 sticky top-0 z-40">
@@ -524,10 +524,10 @@ export default function DailySalesPage() {
                 <div className="text-2xl font-bold text-green-900 mb-1">
                   {formatNumber(salesData.customer_count)}組
                 </div>
-                <div className="flex items-center text-sm text-green-700">
+                {/* <div className="flex items-center text-sm text-green-700">
                   <TrendingUp className="w-4 h-4 mr-1" />
                   前日比 +8.3%
-                </div>
+                </div> */}
               </CardContent>
             </Card>
 

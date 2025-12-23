@@ -17,7 +17,7 @@ CREATE TABLE IF NOT EXISTS "user" (
     name VARCHAR(100) NOT NULL,
     mail VARCHAR(255) UNIQUE NOT NULL,
     password VARCHAR(255) NOT NULL,
-    role VARCHAR(50) NOT NULL CHECK (role IN ('admin', 'cast', 'manager')),
+    role VARCHAR(50) NOT NULL CHECK (role IN ('admin', 'cast', 'manager', 'super_admin')),
     drink_back DECIMAL(5,2) DEFAULT 0.00 CHECK (drink_back >= 0 AND drink_back <= 100),
     food_back DECIMAL(5,2) DEFAULT 0.00 CHECK (food_back >= 0 AND food_back <= 100),
     main_nomination DECIMAL(5,2) DEFAULT 0.00 CHECK (main_nomination >= 0 AND main_nomination <= 100),

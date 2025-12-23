@@ -53,7 +53,7 @@ CREATE TABLE IF NOT EXISTS public."user" (
     name VARCHAR(100) NOT NULL,
     mail VARCHAR(255) UNIQUE NOT NULL,
     password VARCHAR(255) NOT NULL,
-    role VARCHAR(50) NOT NULL CHECK (role IN ('admin', 'cast', 'manager')),
+    role VARCHAR(50) NOT NULL CHECK (role IN ('admin', 'cast', 'manager', 'super_admin')),
     food_back DECIMAL(5,2) DEFAULT 0.00,
     drink_back DECIMAL(5,2) DEFAULT 0.00,
     main_nomination DECIMAL(5,2) DEFAULT 0.00,

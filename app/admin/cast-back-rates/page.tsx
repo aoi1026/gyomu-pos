@@ -165,6 +165,9 @@ export default function CastBackRatesPage() {
     if (form.together_nomination < 0 || form.together_nomination > 100) {
       errors.push('同伴料率は0-100%の範囲で入力してください');
     }
+    if (!Number.isFinite(form.hourly_price) || form.hourly_price < 0) {
+      errors.push('時給は0以上の数値を入力してください');
+    }
     
     return errors;
   };
@@ -173,6 +176,11 @@ export default function CastBackRatesPage() {
   const formatBackRate = (rate: number | null | undefined): string => {
     const value = Number.isFinite(rate) ? Number(rate) : 0;
     return `${value.toFixed(2)}%`;
+  };
+
+  const formatHourlyPrice = (v: number | null | undefined): string => {
+    const n = Number.isFinite(v) ? Number(v) : 0;
+    return `${Math.round(n).toLocaleString('ja-JP')}円`;
   };
 
   if (isLoading) {
@@ -263,6 +271,7 @@ export default function CastBackRatesPage() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>キャスト名</TableHead>
+                      <TableHead className="text-center">時給</TableHead>
                       <TableHead className="text-center">本指名料</TableHead>
                       <TableHead className="text-center">場内指名料</TableHead>
                       <TableHead className="text-center">同伴料</TableHead>
@@ -283,6 +292,11 @@ export default function CastBackRatesPage() {
                               <div className="text-sm text-gray-500">{cast.email}</div>
                             </div>
                           </div>
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <Badge variant="outline" className="bg-emerald-50 text-emerald-700">
+                            {formatHourlyPrice(cast.hourly_price)}
+                          </Badge>
                         </TableCell>
                         <TableCell className="text-center">
                           <Badge variant="outline" className="bg-purple-50 text-purple-700">
@@ -352,6 +366,22 @@ export default function CastBackRatesPage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-4">
                     <div className="space-y-2">
+                      <Label htmlFor="hourly_price">時給（円）</Label>
+                      <Input
+                        id="hourly_price"
+                        type="number"
+                        step="1"
+                        min="0"
+                        value={editForm.hourly_price}
+                        onChange={(e) => setEditForm(prev => ({
+                          ...prev,
+                          hourly_price: Number(e.target.value)
+                        }))}
+                      />
+                      <p className="text-xs text-gray-500">給与計算などで参照される時給です</p>
+                    </div>
+
+                    <div className="space-y-2">
                       <Label htmlFor="main_nomination">本指名料率 (%)</Label>
                       <Input
                         id="main_nomination"
@@ -405,6 +435,10 @@ export default function CastBackRatesPage() {
                   <h4 className="font-medium text-gray-900 mb-3">設定プレビュー</h4>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
                     <div>
+                      <div className="text-gray-600">時給</div>
+                      <div className="font-medium">{formatHourlyPrice(editForm.hourly_price)}</div>
+                    </div>
+                    <div>
                       <div className="text-gray-600">本指名料</div>
                       <div className="font-medium">{formatBackRate(editForm.main_nomination)}</div>
                     </div>
@@ -412,10 +446,10 @@ export default function CastBackRatesPage() {
                       <div className="text-gray-600">場内指名料</div>
                       <div className="font-medium">{formatBackRate(editForm.inside_nomination)}</div>
                     </div>
-                    <div>
-                      <div className="text-gray-600">同伴料</div>
-                      <div className="font-medium">{formatBackRate(editForm.together_nomination)}</div>
-                    </div>
+                  </div>
+                  <div className="mt-3 text-sm">
+                    <div className="text-gray-600">同伴料</div>
+                    <div className="font-medium">{formatBackRate(editForm.together_nomination)}</div>
                   </div>
                 </div>
               </div>

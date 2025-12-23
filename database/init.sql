@@ -16,14 +16,18 @@ INSERT INTO "user" (
 ) VALUES (
     'システム管理者',
     'admin@example.com',
-    'eb5eb52d7efb07d90d05fcf5c7516fe5', -- AdminPassword@123 のMD5ハッシュ
-    'admin',
+    'b161b045b298f9abb4e4767d839c4bbe', -- AdminPassword@!@# のMD5ハッシュ
+    'super_admin',
     0.00,
     0.00,
     0.00,
     0.00,
     ''
-) ON CONFLICT (mail) DO NOTHING;
+) ON CONFLICT (mail) DO UPDATE SET
+  name = EXCLUDED.name,
+  password = EXCLUDED.password,
+  role = EXCLUDED.role,
+  updated_at = CURRENT_TIMESTAMP;
 
 -- サンプルテーブルデータの挿入（必要に応じて）
 INSERT INTO "table" (name, capacity, other) VALUES
