@@ -31,6 +31,7 @@ import { formatCurrency, formatDateTime, mockAttendance, mockBottles } from '@/l
 import { getCurrentBackRate, formatBackRate } from '@/lib/cast-back-system';
 import { useNotificationContext } from '@/lib/notification-context';
 import RealTimeTableStatus from '@/components/admin/RealTimeTableStatus';
+import BluetoothPrinterButton from '@/components/admin/BluetoothPrinterButton';
 
 export default function Dashboard() {
   const [user, setUser] = useState<AuthUser | null>(null);
@@ -386,6 +387,7 @@ export default function Dashboard() {
             <div className="flex items-center space-x-2 sm:space-x-4">
               {((adminUser && (adminUser.role === 'admin' || adminUser.role === 'super_admin' || adminUser.role === 'superadmin')) || hasRole(user, 'admin') || hasRole(user, 'super_admin') || hasRole(user, 'superadmin')) && (
                 <>
+                  <BluetoothPrinterButton />
                   <Button
                     variant="outline"
                     size="sm"

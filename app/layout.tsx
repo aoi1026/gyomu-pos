@@ -4,6 +4,7 @@ import { Inter } from 'next/font/google';
 import { Toaster } from '@/components/ui/sonner';
 import { NotificationProvider } from '@/lib/notification-context';
 import { SessionProvider } from '@/lib/session-context';
+import { PrinterProvider } from '@/lib/printer-context';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -27,8 +28,10 @@ export default function RootLayout({
       <body className={`${inter.className} antialiased`}>
         <NotificationProvider>
           <SessionProvider>
+            <PrinterProvider>
             {children}
             <Toaster />
+            </PrinterProvider>
           </SessionProvider>
         </NotificationProvider>
       </body>

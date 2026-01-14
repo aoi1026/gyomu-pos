@@ -15,6 +15,9 @@ import { formatCurrency } from '@/lib/mock-data';
 import StripeProvider from '@/components/providers/StripeProvider';
 import StripePaymentForm from '@/components/payment/StripePaymentForm';
 import { useNotificationContext } from '@/lib/notification-context';
+import { usePrinter } from '@/lib/printer-context';
+import { fetchStoreName, buildCurrentAndExtensionReceipts } from '@/lib/printing/receipt-builders';
+import { buildEscPosRasterReceipt } from '@/lib/printing/escpos-raster';
 
 interface TableViewerProps {
   tableId: number | null;
@@ -66,6 +69,7 @@ interface Nomination {
 
 export default function TableViewer({ tableId, onClose }: TableViewerProps) {
   const { success, error, confirm } = useNotificationContext();
+  const printer = usePrinter();
   const [session, setSession] = useState<SessionData | null>(null);
   const [tableData, setTableData] = useState<any>(null);
   const [cartOrders, setCartOrders] = useState<CartOrder[]>([]);
@@ -107,6 +111,39 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
   const [storeCreditCardPaymentAmount, setStoreCreditCardPaymentAmount] = useState<string>('');
   const [isPaymentCompleted, setIsPaymentCompleted] = useState<boolean>(false);
   const [paidAmount, setPaidAmount] = useState<number>(0);
+
+  const tryAutoPrintReceipts = async () => {
+    // Only auto-print when a printer is already connected from the dashboard button.
+    if (printer.status !== 'connected') return;
+    if (!session || !tableId) return;
+    if (!tableData) return;
+
+    try {
+      const storeName = await fetchStoreName();
+      const tableName = String(tableData?.name ? `テーブル: ${tableData.name}` : `テーブル: ${tableId}`);
+      const issuedAt = new Date();
+
+      const { extension, current } = buildCurrentAndExtensionReceipts({
+        storeName,
+        tableName,
+        issuedAt,
+        cartOrders,
+        orderRequestStatus,
+        additionalServices,
+        guestCount: String(guestCount || ''),
+        addCharges,
+        setExtensions,
+        nominations: nominations as any,
+      });
+
+      await printer.write(buildEscPosRasterReceipt(extension));
+      await printer.write(buildEscPosRasterReceipt(current));
+    } catch (e) {
+      console.error('自動領収書印刷エラー:', e);
+      // Do not break payment flow; show a lightweight toast.
+      error('エラー', '領収書の自動印刷に失敗しました（プリンター接続を確認してください）');
+    }
+  };
   
   // 合計値の手動編集関連（テーブルごとに管理）
   const [isEditingTotal, setIsEditingTotal] = useState<boolean>(false);
@@ -1158,6 +1195,7 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
       setPaymentAmount(0);
       await loadCartOrders(session.id);
       await loadSession();
+      await tryAutoPrintReceipts();
     } catch (err) {
       console.error('クレジットカード決済エラー:', err);
     }
@@ -1220,6 +1258,7 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
       setCashPaymentAmount('');
       await loadCartOrders(session.id);
       await loadSession();
+      await tryAutoPrintReceipts();
     } catch (err) {
       console.error('現金決済エラー:', err);
     }
@@ -1273,6 +1312,7 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
       setStoreCreditCardPaymentAmount('');
       await loadCartOrders(session.id);
       await loadSession();
+      await tryAutoPrintReceipts();
     } catch (err) {
       console.error('店舗用クレジットカード決済エラー:', err);
     }
