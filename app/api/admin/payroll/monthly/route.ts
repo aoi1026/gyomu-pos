@@ -5,6 +5,16 @@ function ymStart(year: number, month: number) {
   return `${year}-${String(month).padStart(2, '0')}-01`;
 }
 
+function addDays(dateStr: string, days: number) {
+  const d = new Date(`${dateStr}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return null;
+  d.setDate(d.getDate() + days);
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
 export async function GET(request: NextRequest) {
   let client;
   try {
@@ -29,17 +39,51 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const now = new Date();
-    const year = Number(searchParams.get('year') || now.getFullYear());
-    const month = Number(searchParams.get('month') || (now.getMonth() + 1));
-    const source = (searchParams.get('source') || '').toLowerCase();
-    if (!year || !month || month < 1 || month > 12) {
-      return NextResponse.json({ success: false, error: 'Invalid year or month' }, { status: 400 });
-    }
-    const start = ymStart(year, month);
-    const endExpr = `$1::date + INTERVAL '1 month'`;
+    const startParam = searchParams.get('start');
+    const endParam = searchParams.get('end');
+    const dateParam = searchParams.get('date');
 
-    const result = await client.query(
-      `
+    let mode: 'month' | 'range' | 'date' = 'month';
+    let rangeStart: string;
+    let rangeEndExclusive: string;
+    let year: number | null = null;
+    let month: number | null = null;
+    let useSalary = true;
+
+    if (dateParam) {
+      mode = 'date';
+      const next = addDays(dateParam, 1);
+      if (!next) return NextResponse.json({ success: false, error: 'Invalid date' }, { status: 400 });
+      rangeStart = dateParam;
+      rangeEndExclusive = next;
+      useSalary = false;
+    } else if (startParam && endParam) {
+      mode = 'range';
+      // inclusive end -> exclusive end+1 day
+      let s = startParam;
+      let e = endParam;
+      if (s > e) [s, e] = [e, s];
+      const next = addDays(e, 1);
+      if (!next) return NextResponse.json({ success: false, error: 'Invalid start/end' }, { status: 400 });
+      rangeStart = s;
+      rangeEndExclusive = next;
+      useSalary = false;
+    } else {
+      // month mode
+      year = Number(searchParams.get('year') || now.getFullYear());
+      month = Number(searchParams.get('month') || (now.getMonth() + 1));
+      if (!year || !month || month < 1 || month > 12) {
+        return NextResponse.json({ success: false, error: 'Invalid year or month' }, { status: 400 });
+      }
+      rangeStart = ymStart(year, month);
+      const nextMonth = month === 12 ? 1 : month + 1;
+      const nextYear = month === 12 ? year + 1 : year;
+      rangeEndExclusive = ymStart(nextYear, nextMonth);
+      useSalary = true;
+    }
+
+    const sql = useSalary
+      ? `
       WITH casts AS (
         SELECT id AS user_id, name, mail AS email, hourly_price, main_nomination, inside_nomination, together_nomination, drink_back, food_back
         FROM "user"
@@ -48,31 +92,36 @@ export async function GET(request: NextRequest) {
       att AS (
         SELECT a.staff_id AS user_id, COALESCE(SUM(a.total_work_hours), 0) AS hours
         FROM attendance a
-        WHERE a.created_at >= $1::date AND a.created_at < ${endExpr}
+         WHERE a.created_at >= $1::date AND a.created_at < $2::date
         GROUP BY a.staff_id
       ),
       nom_main AS (
-        SELECT n.cast_id AS user_id, COALESCE(SUM(n.cost), 0) AS total_cost
+        SELECT n.cast_id AS user_id,
+               COUNT(*) AS cnt,
+               COALESCE(SUM(n.cost_cast), 0) AS sum_fee
         FROM nomination n
         WHERE n.type_id = 'main'
-          AND n.created_at >= $1::date AND n.created_at < ${endExpr}
+          AND n.created_at >= $1::date AND n.created_at < $2::date
         GROUP BY n.cast_id
       ),
       nom_inside AS (
-        SELECT n.cast_id AS user_id, COALESCE(SUM(n.cost), 0) AS total_cost
+        SELECT n.cast_id AS user_id,
+               COUNT(*) AS cnt,
+               COALESCE(SUM(n.cost_cast), 0) AS sum_fee
         FROM nomination n
         WHERE n.type_id = 'inside'
-          AND n.created_at >= $1::date AND n.created_at < ${endExpr}
+          AND n.created_at >= $1::date AND n.created_at < $2::date
         GROUP BY n.cast_id
       ),
       nom_together AS (
         SELECT 
           n.cast_id AS user_id, 
           COUNT(*) AS cnt,
-          COALESCE(SUM(n.cost), 0) AS sum_cost
+          COALESCE(SUM(n.cost), 0) AS sum_cost,
+          COALESCE(SUM(n.cost_cast), 0) AS sum_fee
         FROM nomination n
         WHERE n.type_id = 'together'
-          AND n.created_at >= $1::date AND n.created_at < ${endExpr}
+          AND n.created_at >= $1::date AND n.created_at < $2::date
         GROUP BY n.cast_id
       ),
       ac AS (
@@ -82,7 +131,7 @@ export async function GET(request: NextRequest) {
         LIMIT 1
       ),
       sal AS (
-        SELECT * FROM salary WHERE year = $2 AND month = $3
+        SELECT * FROM salary WHERE year = $3 AND month = $4
       )
       SELECT 
         c.user_id,
@@ -91,19 +140,18 @@ export async function GET(request: NextRequest) {
         COALESCE(att.hours, 0)::DECIMAL(10,2) AS basic_hours,
         c.hourly_price,
         (COALESCE(att.hours, 0) * COALESCE(c.hourly_price, 0))::DECIMAL(12,2) AS base_pay,
-        COALESCE(sal.main_nomination_count, COALESCE(nm.total_cost, 0))::DECIMAL(12,2) AS main_nomination_count,
-        (COALESCE(sal.main_nomination_count, COALESCE(nm.total_cost, 0)) * COALESCE(c.main_nomination, 0))::DECIMAL(12,2) AS main_nomination_fee,
-        COALESCE(sal.inside_nomination_count, COALESCE(ni.total_cost, 0))::DECIMAL(12,2) AS inside_nomination_count,
-        (COALESCE(sal.inside_nomination_count, COALESCE(ni.total_cost, 0)) * COALESCE(c.inside_nomination, 0))::DECIMAL(12,2) AS inside_nomination_fee,
+        COALESCE(nm.cnt, 0)::INT AS main_nomination_count,
+        COALESCE(nm.sum_fee, 0)::DECIMAL(12,2) AS main_nomination_fee,
+        COALESCE(ni.cnt, 0)::INT AS inside_nomination_count,
+        COALESCE(ni.sum_fee, 0)::DECIMAL(12,2) AS inside_nomination_fee,
         COALESCE(sal.together_nomination_cost, COALESCE(nt.sum_cost, 0))::DECIMAL(12,2) AS together_nomination_cost,
         COALESCE(nt.cnt, 0)::INT AS together_nomination_count,
-        (
-          (COALESCE(ac.together_unit, 0) * COALESCE(nt.cnt, 0) * COALESCE(c.together_nomination, 0)) +
-          ((COALESCE(nt.sum_cost, 0) - (COALESCE(ac.together_unit, 0) * COALESCE(nt.cnt, 0))) * COALESCE(c.main_nomination, 0))
-        )::DECIMAL(12,2) AS together_nomination_fee,
+        COALESCE(nt.sum_fee, 0)::DECIMAL(12,2) AS together_nomination_fee,
         COALESCE(sal.sales_back_yen, 0)::DECIMAL(12,2) AS sales_back_yen,
         COALESCE(sal.overtime_wage_yen, 0)::DECIMAL(12,2) AS overtime_wage_yen,
-        COALESCE(sal.deduction_yen, 0)::DECIMAL(12,2) AS deduction_yen
+        COALESCE(sal.deduction_yen, 0)::DECIMAL(12,2) AS deduction_yen,
+        COALESCE(sal.paid_price, 0)::DECIMAL(12,2) AS paid_price,
+        COALESCE(sal.realTotal_price, 0)::DECIMAL(12,2) AS realTotal_price
       FROM casts c
       LEFT JOIN att att ON att.user_id = c.user_id
       LEFT JOIN nom_main nm ON nm.user_id = c.user_id
@@ -112,11 +160,90 @@ export async function GET(request: NextRequest) {
       LEFT JOIN sal sal ON sal.user_id = c.user_id
       LEFT JOIN ac ac ON TRUE
       ORDER BY c.name
-      `,
-      [start, year, month]
-    );
+      `
+      : `
+      WITH casts AS (
+        SELECT id AS user_id, name, mail AS email, hourly_price, main_nomination, inside_nomination, together_nomination, drink_back, food_back
+        FROM "user"
+        WHERE role = 'cast'
+      ),
+      att AS (
+        SELECT a.staff_id AS user_id, COALESCE(SUM(a.total_work_hours), 0) AS hours
+        FROM attendance a
+        WHERE a.created_at >= $1::date AND a.created_at < $2::date
+        GROUP BY a.staff_id
+      ),
+      nom_main AS (
+        SELECT n.cast_id AS user_id,
+               COUNT(*) AS cnt,
+               COALESCE(SUM(n.cost_cast), 0) AS sum_fee
+        FROM nomination n
+        WHERE n.type_id = 'main'
+          AND n.created_at >= $1::date AND n.created_at < $2::date
+        GROUP BY n.cast_id
+      ),
+      nom_inside AS (
+        SELECT n.cast_id AS user_id,
+               COUNT(*) AS cnt,
+               COALESCE(SUM(n.cost_cast), 0) AS sum_fee
+        FROM nomination n
+        WHERE n.type_id = 'inside'
+          AND n.created_at >= $1::date AND n.created_at < $2::date
+        GROUP BY n.cast_id
+      ),
+      nom_together AS (
+        SELECT 
+          n.cast_id AS user_id, 
+          COUNT(*) AS cnt,
+          COALESCE(SUM(n.cost), 0) AS sum_cost,
+          COALESCE(SUM(n.cost_cast), 0) AS sum_fee
+        FROM nomination n
+        WHERE n.type_id = 'together'
+          AND n.created_at >= $1::date AND n.created_at < $2::date
+        GROUP BY n.cast_id
+      ),
+      ac AS (
+        SELECT COALESCE(value, 0) AS together_unit
+        FROM add_charges 
+        WHERE charge_name = 'together'
+        LIMIT 1
+      )
+      SELECT 
+        c.user_id,
+        c.name,
+        c.email,
+        COALESCE(att.hours, 0)::DECIMAL(10,2) AS basic_hours,
+        c.hourly_price,
+        (COALESCE(att.hours, 0) * COALESCE(c.hourly_price, 0))::DECIMAL(12,2) AS base_pay,
+        COALESCE(nm.cnt, 0)::INT AS main_nomination_count,
+        COALESCE(nm.sum_fee, 0)::DECIMAL(12,2) AS main_nomination_fee,
+        COALESCE(ni.cnt, 0)::INT AS inside_nomination_count,
+        COALESCE(ni.sum_fee, 0)::DECIMAL(12,2) AS inside_nomination_fee,
+        COALESCE(nt.sum_cost, 0)::DECIMAL(12,2) AS together_nomination_cost,
+        COALESCE(nt.cnt, 0)::INT AS together_nomination_count,
+        COALESCE(nt.sum_fee, 0)::DECIMAL(12,2) AS together_nomination_fee,
+        0::DECIMAL(12,2) AS sales_back_yen,
+        0::DECIMAL(12,2) AS overtime_wage_yen,
+        0::DECIMAL(12,2) AS deduction_yen,
+        0::DECIMAL(12,2) AS paid_price,
+        0::DECIMAL(12,2) AS realTotal_price
+      FROM casts c
+      LEFT JOIN att att ON att.user_id = c.user_id
+      LEFT JOIN nom_main nm ON nm.user_id = c.user_id
+      LEFT JOIN nom_inside ni ON ni.user_id = c.user_id
+      LEFT JOIN nom_together nt ON nt.user_id = c.user_id
+      LEFT JOIN ac ac ON TRUE
+      ORDER BY c.name
+      `;
+
+    const params = useSalary
+      ? [rangeStart, rangeEndExclusive, year, month]
+      : [rangeStart, rangeEndExclusive];
+
+    const result = await client.query(sql, params);
 
     const rows = result.rows.map((r: any) => {
+      const paid = Number(r.paid_price || 0);
       const total =
         Number(r.base_pay || 0) +
         Number(r.main_nomination_fee || 0) +
@@ -125,10 +252,11 @@ export async function GET(request: NextRequest) {
         Number(r.sales_back_yen || 0) +
         Number(r.overtime_wage_yen || 0) -
         Number(r.deduction_yen || 0);
-      return { ...r, total_pay_yen: total };
+      const realTotal = total - paid;
+      return { ...r, total_pay_yen: total, paid_price: paid, realTotal_price: realTotal };
     });
 
-    return NextResponse.json({ success: true, year, month, rows });
+    return NextResponse.json({ success: true, mode, year, month, start: rangeStart, end_exclusive: rangeEndExclusive, rows });
   } catch (error: any) {
     console.error('月次給与集計エラー:', error);
     const errorMessage = error?.message || '給与集計の取得に失敗しました';
@@ -174,16 +302,27 @@ export async function PUT(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { user_id, year, month, basic_hours, main_nomination_count, inside_nomination_count, together_nomination_cost, together_nomination_count, sales_back_yen, overtime_wage_yen, deduction_yen, base_pay, main_nomination_fee, inside_nomination_fee, together_nomination_fee } = body;
+    const { user_id, year, month, basic_hours, main_nomination_count, inside_nomination_count, together_nomination_cost, together_nomination_count, sales_back_yen, overtime_wage_yen, deduction_yen, base_pay, main_nomination_fee, inside_nomination_fee, together_nomination_fee, paid_price } = body;
     if (!user_id || !year || !month) {
       return NextResponse.json({ success: false, error: 'user_id, year, month は必須です' }, { status: 400 });
     }
 
     await client.query('BEGIN');
+    const totalPay =
+      (Number(base_pay || 0) +
+        Number(main_nomination_fee || 0) +
+        Number(inside_nomination_fee || 0) +
+        Number(together_nomination_fee || 0) +
+        Number(sales_back_yen || 0) +
+        Number(overtime_wage_yen || 0) -
+        Number(deduction_yen || 0));
+    const paid = Number(paid_price || 0);
+    const realTotal = totalPay - paid;
+
     const upsert = await client.query(
       `
-      INSERT INTO salary (user_id, year, month, basic_hours, base_pay, main_nomination_count, main_nomination_fee, inside_nomination_count, inside_nomination_fee, together_nomination_cost, together_nomination_count, together_nomination_fee, sales_back_yen, overtime_wage_yen, deduction_yen, total_pay_yen)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+      INSERT INTO salary (user_id, year, month, basic_hours, base_pay, main_nomination_count, main_nomination_fee, inside_nomination_count, inside_nomination_fee, together_nomination_cost, together_nomination_count, together_nomination_fee, sales_back_yen, overtime_wage_yen, deduction_yen, total_pay_yen, paid_price, realTotal_price)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
       ON CONFLICT (user_id, year, month)
       DO UPDATE SET 
         basic_hours = EXCLUDED.basic_hours,
@@ -199,6 +338,8 @@ export async function PUT(request: NextRequest) {
         overtime_wage_yen = EXCLUDED.overtime_wage_yen,
         deduction_yen = EXCLUDED.deduction_yen,
         total_pay_yen = EXCLUDED.total_pay_yen,
+        paid_price = EXCLUDED.paid_price,
+        realTotal_price = EXCLUDED.realTotal_price,
         updated_at = CURRENT_TIMESTAMP
       `,
       [
@@ -215,7 +356,9 @@ export async function PUT(request: NextRequest) {
         sales_back_yen ?? 0,
         overtime_wage_yen ?? 0,
         deduction_yen ?? 0,
-        (Number(base_pay || 0) + Number(main_nomination_fee || 0) + Number(inside_nomination_fee || 0) + Number(together_nomination_fee || 0) + Number(sales_back_yen || 0) + Number(overtime_wage_yen || 0) - Number(deduction_yen || 0))
+        totalPay,
+        paid,
+        realTotal
       ]
     );
     await client.query('COMMIT');

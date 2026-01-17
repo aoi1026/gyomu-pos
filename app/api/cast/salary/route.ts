@@ -36,7 +36,9 @@ export async function GET(request: NextRequest) {
           sales_back_yen: 0,
           overtime_wage_yen: 0,
           deduction_yen: 0,
-          total_pay_yen: 0
+          total_pay_yen: 0,
+          paid_price: 0,
+          realTotal_price: 0
         }
       });
     }

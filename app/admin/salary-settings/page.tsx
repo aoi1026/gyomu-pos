@@ -1,20 +1,22 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { DollarSign, ArrowLeft, Save, RefreshCw, Plus, Package, Percent, CheckCircle, Trash2, X, Edit, Pencil } from 'lucide-react';
+import { DollarSign, ArrowLeft, Save, RefreshCw, Plus, Package, Percent, CheckCircle, Trash2, X, Edit, Pencil, Users } from 'lucide-react';
 import { getCurrentUser, hasRole } from '@/lib/auth';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import NominationBackRatesPanel from '@/components/admin/NominationBackRatesPanel';
 
 export default function SalarySettingsPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [user, setUser] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
   
@@ -65,6 +67,10 @@ export default function SalarySettingsPage() {
   const [activeMainItem, setActiveMainItem] = useState<string>('hourly-wage');
 
   useEffect(() => {
+    const tab = searchParams?.get('tab');
+    if (tab === 'nomination-back-rates') {
+      setActiveMainItem('nomination-back-rates');
+    }
     // 管理者認証情報を優先
     const adminAuth = typeof window !== 'undefined' ? localStorage.getItem('admin_auth') : null;
     if (adminAuth) {
@@ -97,7 +103,7 @@ export default function SalarySettingsPage() {
     loadBackRateData();
     loadFullReflectData();
     setIsLoading(false);
-  }, [router]);
+  }, [router, searchParams]);
 
   const loadSettings = async () => {
     try {
@@ -664,6 +670,7 @@ export default function SalarySettingsPage() {
                   <Percent className="w-4 h-4 mr-2" />
                   キャストバック率関係
                 </Button>
+                
                 <Button
                   variant={activeMainItem === 'full-reflect' ? 'default' : 'ghost'}
                   className="w-full justify-start"
@@ -674,6 +681,16 @@ export default function SalarySettingsPage() {
                 >
                   <CheckCircle className="w-4 h-4 mr-2" />
                   100%給与反映
+                </Button>
+                <Button
+                  variant={activeMainItem === 'nomination-back-rates' ? 'default' : 'ghost'}
+                  className="w-full justify-start"
+                  onClick={() => {
+                    setActiveMainItem('nomination-back-rates');
+                  }}
+                >
+                  <Users className="w-4 h-4 mr-2" />
+                  指名バック率
                 </Button>
               </div>
             </CardContent>
@@ -982,6 +999,11 @@ export default function SalarySettingsPage() {
                   </div>
                 </CardContent>
               </Card>
+            )}
+
+            {/* 指名バック率（admin/cast-back-rates の統合） */}
+            {activeMainItem === 'nomination-back-rates' && (
+              <NominationBackRatesPanel />
             )}
 
             {/* 100%給与反映 */}

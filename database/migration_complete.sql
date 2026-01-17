@@ -402,6 +402,10 @@ CREATE TABLE IF NOT EXISTS public.salary (
     overtime_wage_yen DECIMAL(12,2) DEFAULT 0.00 CHECK (overtime_wage_yen >= 0),
     deduction_yen DECIMAL(12,2) DEFAULT 0.00,
     total_pay_yen DECIMAL(12,2) DEFAULT 0.00,
+    -- 前払い金額（編集可能）
+    paid_price DECIMAL(12,2) DEFAULT 0.00 CHECK (paid_price >= 0),
+    -- 総額（支給額 - 前払い）
+    realTotal_price DECIMAL(12,2) DEFAULT 0.00,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(user_id, year, month)
@@ -455,6 +459,30 @@ BEGIN
         WHERE table_schema = 'public' AND table_name = 'salary' AND column_name = 'food_back_yen'
     ) THEN
         ALTER TABLE public.salary DROP COLUMN food_back_yen;
+    END IF;
+EXCEPTION WHEN OTHERS THEN
+    NULL;
+END $$;
+
+-- 既存salaryテーブルへの列追加（paid_price, realTotal_price）
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'salary' AND column_name = 'paid_price'
+    ) THEN
+        ALTER TABLE public.salary
+          ADD COLUMN paid_price DECIMAL(12,2) DEFAULT 0.00;
+        ALTER TABLE public.salary
+          ADD CONSTRAINT salary_paid_price_check CHECK (paid_price >= 0);
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'salary' AND column_name = 'realtotal_price'
+    ) THEN
+        ALTER TABLE public.salary
+          ADD COLUMN realTotal_price DECIMAL(12,2) DEFAULT 0.00;
     END IF;
 EXCEPTION WHEN OTHERS THEN
     NULL;

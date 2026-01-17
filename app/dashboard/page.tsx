@@ -66,7 +66,7 @@ export default function Dashboard() {
       
       if (result.success) {
         setPendingOrderCount(result.data.length);
-      }
+      } 
     } catch (err) {
       console.error('売上注文数取得エラー:', err);
     }
@@ -857,15 +857,15 @@ export default function Dashboard() {
                   <span className="text-sm font-medium">ボトル保管管理</span>
                 </Button>
                 
-                <Button 
+                {/*  <Button 
                   variant="outline" 
                   className="h-24 flex-col space-y-2 hover:bg-indigo-50 hover:border-indigo-300"
                   onClick={() => router.push('/admin/cast-back-rates')}
                 >
-                  {/* <DollarSign className="w-6 h-6 text-indigo-600" /> */}
+                 <DollarSign className="w-6 h-6 text-indigo-600" /> 
                   <span className="w-6 h-5 text-indigo-600 text-2xl"><FaPercentage /></span>
                   <span className="text-sm font-medium">バック率設定</span>
-                </Button>
+                </Button> */}
                 
                 <Button 
                   variant="outline" 

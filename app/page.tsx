@@ -21,11 +21,11 @@ export default function Home() {
       title: "会計・決済",
       description: "レジ締め、売上分析、日次・月次レポート、支払い管理"
     },
-    {
-      icon: <Clock className="w-8 h-8 text-blue-600" />,
-      title: "勤怠・給与管理",
-      description: "出退勤管理、バック率設定、指名料計算、給与明細生成"
-    },
+    // {
+    //   icon: <Clock className="w-8 h-8 text-blue-600" />,
+    //   title: "勤怠・給与管理",
+    //   description: "出退勤管理、バック率設定、指名料計算、給与明細生成"
+    // },
     {
       icon: <BarChart3 className="w-8 h-8 text-orange-600" />,
       title: "売上・分析",

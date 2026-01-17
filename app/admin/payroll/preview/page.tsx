@@ -10,13 +10,16 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { 
   ArrowLeft, Calculator, Download, Lock, Unlock, Users,
-  DollarSign, Clock, TrendingUp, FileText
+  DollarSign, Clock, TrendingUp, FileText, Printer as PrinterIcon
 } from 'lucide-react';
 import { 
   mockPayrollRuns, mockPayrollItems, formatCurrency, formatDate,
   PayrollRun, PayrollItem
 } from '@/lib/mock-data';
 import { useNotificationContext } from '@/lib/notification-context';
+import { usePrinter } from '@/lib/printer-context';
+import { buildEscPosRasterReceipt } from '@/lib/printing/escpos-raster';
+import { fetchStoreName } from '@/lib/printing/receipt-builders';
 
 export default function PayrollPreviewPage() {
   const [payrollRun, setPayrollRun] = useState<PayrollRun | null>(null);
@@ -29,19 +32,35 @@ export default function PayrollPreviewPage() {
     const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
   });
+  const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
+  const [dateMode, setDateMode] = useState<'month' | 'range' | 'date'>('month');
+  const [singleDate, setSingleDate] = useState<string>(todayStr);
   const [isCalculating, setIsCalculating] = useState(false);
   const [isConfirming, setIsConfirming] = useState(false);
+  const [isPrinting, setIsPrinting] = useState(false);
+  const [printingRowKey, setPrintingRowKey] = useState<string | null>(null);
   const [monthlyRows, setMonthlyRows] = useState<any[]>([]);
   const [rowUnlocked, setRowUnlocked] = useState<Record<number, boolean>>({});
   const autoSaveTimers = useRef<Record<number, any>>({});
   const rowLockTimers = useRef<Record<number, any>>({});
   const fetchMonthlyRows = async (year: number, month: number, useSessions?: boolean, saveOnLoad?: boolean) => {
     try {
-      const res = await fetch(`/api/admin/payroll/monthly?year=${year}&month=${month}${useSessions ? '&source=sessions' : ''}`);
+      const qs = new URLSearchParams();
+      if (dateMode === 'month') {
+        qs.set('year', String(year));
+        qs.set('month', String(month));
+      } else if (dateMode === 'range') {
+        if (periodStart) qs.set('start', periodStart);
+        if (periodEnd) qs.set('end', periodEnd);
+      } else {
+        if (singleDate) qs.set('date', singleDate);
+      }
+      if (useSessions) qs.set('source', 'sessions');
+      const res = await fetch(`/api/admin/payroll/monthly?${qs.toString()}`);
       const result = await res.json();
       if (result.success) {
         setMonthlyRows(result.rows);
-        if (saveOnLoad) {
+        if (saveOnLoad && dateMode === 'month') {
           // 初期表示時に全行を保存（UPSERT）
           try {
             await Promise.all(
@@ -81,7 +100,9 @@ export default function PayrollPreviewPage() {
         together_nomination_fee: Number(row.together_nomination_fee || 0),
         sales_back_yen: Number(row.sales_back_yen || 0),
         overtime_wage_yen: Number(row.overtime_wage_yen || 0),
-        deduction_yen: Number(row.deduction_yen || 0)
+        deduction_yen: Number(row.deduction_yen || 0),
+        paid_price: Number(row.paid_price || 0),
+        realTotal_price: Number(row.realTotal_price || 0)
       };
       await fetch('/api/admin/payroll/monthly', {
         method: 'PUT',
@@ -270,6 +291,241 @@ export default function PayrollPreviewPage() {
   
   const router = useRouter();
   const { success, error, confirm, info } = useNotificationContext();
+  const printer = usePrinter();
+
+  const searchConditionText = useMemo(() => {
+    if (dateMode === 'date') return `日付: ${singleDate}`;
+    if (dateMode === 'range') return `期間: ${periodStart} 〜 ${periodEnd}`;
+    return `月: ${selectedYear}-${String(selectedMonth).padStart(2, '0')}`;
+  }, [dateMode, singleDate, periodStart, periodEnd, selectedYear, selectedMonth]);
+
+  const ensurePrinterConnected = async () => {
+    if (printer.status === 'connected') return true;
+    return await new Promise<boolean>((resolve) => {
+      confirm(
+        'プリンター未接続',
+        'Bluetoothプリンターを接続しますか？（同じプリンター機能を使用します）',
+        async () => {
+          try {
+            await printer.requestAndConnect();
+            resolve(true);
+          } catch (e: any) {
+            error('接続に失敗しました', e?.message || String(e));
+            resolve(false);
+          }
+        },
+        '接続する',
+        'キャンセル'
+      );
+    });
+  };
+
+  const printReceipt = async (payload: Parameters<typeof buildEscPosRasterReceipt>[0]) => {
+    const ok = await ensurePrinterConnected();
+    if (!ok) return;
+    const data = buildEscPosRasterReceipt(payload);
+    await printer.write(data);
+  };
+
+  const printMonthlyRowCore = async (row: any) => {
+    const storeName = await fetchStoreName();
+    const issuedAt = new Date();
+    await printReceipt({
+      storeName,
+      tableName: '給与計算',
+      title: `キャスト別給与（${row?.name ?? ''}）`,
+      issuedAt,
+      lines: [
+        { left: '検索条件', right: searchConditionText },
+        { left: 'キャスト名', right: String(row?.name ?? '') },
+        { left: '基本時間', right: String(row?.basic_hours ?? 0) },
+        { left: '基本給', right: formatCurrency(Number(row?.base_pay || 0)) },
+        { left: '本指名数', right: String(Number(row?.main_nomination_count || 0)) },
+        { left: '本指名料', right: formatCurrency(Number(row?.main_nomination_fee || 0)) },
+        { left: '場内指名数', right: String(Number(row?.inside_nomination_count || 0)) },
+        { left: '場内指名料', right: formatCurrency(Number(row?.inside_nomination_fee || 0)) },
+        { left: '同伴者', right: String(Number(row?.together_nomination_count || 0)) },
+        { left: '同伴料', right: formatCurrency(Number(row?.together_nomination_fee || 0)) },
+        { left: '売上バック', right: formatCurrency(Number(row?.sales_back_yen || 0)) },
+        { left: '残業代', right: formatCurrency(Number(row?.overtime_wage_yen || 0)) },
+        { left: '控除', right: formatCurrency(Number(row?.deduction_yen || 0)) },
+        { left: '支給額', right: formatCurrency(Number(row?.total_pay_yen || 0)) },
+        { left: '前払い', right: formatCurrency(Number(row?.paid_price || 0)) },
+      ],
+      totalLabel: '総額',
+      totalAmount: Number(row?.realTotal_price ?? (Number(row?.total_pay_yen || 0) - Number(row?.paid_price || 0))),
+    });
+  };
+
+  const handlePrintMonthlyRow = async (row: any) => {
+    if (isPrinting) return;
+    setIsPrinting(true);
+    setPrintingRowKey(`monthly-${row?.user_id ?? ''}`);
+    try {
+      await printMonthlyRowCore(row);
+    } catch (e: any) {
+      error('印刷に失敗しました', e?.message || String(e));
+    } finally {
+      setPrintingRowKey(null);
+      setIsPrinting(false);
+    }
+  };
+
+  const handlePrintMonthlyAll = async () => {
+    if (isPrinting) return;
+    if (!monthlyRows.length) {
+      info('印刷', '印刷するデータがありません');
+      return;
+    }
+    setIsPrinting(true);
+    setPrintingRowKey('monthly-all');
+    try {
+      const storeName = await fetchStoreName();
+      const issuedAt = new Date();
+      // 先頭にサマリー（1枚）
+      await printReceipt({
+        storeName,
+        tableName: '給与計算',
+        title: 'キャスト別給与（一覧）',
+        issuedAt,
+        lines: [
+          { left: '検索条件', right: searchConditionText },
+          { left: '件数', right: String(monthlyRows.length) },
+        ],
+        totalLabel: '総額合計',
+        totalAmount: monthlyRows.reduce((sum, r) => sum + (Number(r?.realTotal_price ?? (Number(r?.total_pay_yen || 0) - Number(r?.paid_price || 0))) || 0), 0),
+      });
+      // 各キャストを1枚ずつ印刷（長大レシート回避）
+      for (const r of monthlyRows) {
+        await printMonthlyRowCore(r);
+      }
+    } finally {
+      setPrintingRowKey(null);
+      setIsPrinting(false);
+    }
+  };
+
+  const handlePrintMonthlyTotals = async () => {
+    if (isPrinting) return;
+    if (!monthlyRows.length) {
+      info('印刷', '印刷するデータがありません');
+      return;
+    }
+    setIsPrinting(true);
+    setPrintingRowKey('monthly-total');
+    try {
+      const sumHours = monthlyRows.reduce((sum, r) => sum + Number(r.basic_hours || 0), 0);
+      const sumBasePay = monthlyRows.reduce((sum, r) => sum + Number(r.base_pay || 0), 0);
+      const sumMainCnt = monthlyRows.reduce((sum, r) => sum + Number(r.main_nomination_count || 0), 0);
+      const sumMainFee = monthlyRows.reduce((sum, r) => sum + Number(r.main_nomination_fee || 0), 0);
+      const sumInsideCnt = monthlyRows.reduce((sum, r) => sum + Number(r.inside_nomination_count || 0), 0);
+      const sumInsideFee = monthlyRows.reduce((sum, r) => sum + Number(r.inside_nomination_fee || 0), 0);
+      const sumTogetherCnt = monthlyRows.reduce((sum, r) => sum + Number(r.together_nomination_count || 0), 0);
+      const sumTogetherFee = monthlyRows.reduce((sum, r) => sum + Number(r.together_nomination_fee || 0), 0);
+      const sumSalesBack = monthlyRows.reduce((sum, r) => sum + Number(r.sales_back_yen || 0), 0);
+      const sumOvertime = monthlyRows.reduce((sum, r) => sum + Number(r.overtime_wage_yen || 0), 0);
+      const sumDeduction = monthlyRows.reduce((sum, r) => sum + Number(r.deduction_yen || 0), 0);
+      const sumTotalPay = monthlyRows.reduce(
+        (sum, r) =>
+          sum +
+          Number(r.base_pay || 0) +
+          Number(r.main_nomination_fee || 0) +
+          Number(r.inside_nomination_fee || 0) +
+          Number(r.together_nomination_fee || 0) +
+          Number(r.sales_back_yen || 0) +
+          Number(r.overtime_wage_yen || 0) -
+          Number(r.deduction_yen || 0),
+        0
+      );
+      const sumPaid = monthlyRows.reduce((sum, r) => sum + Number(r.paid_price || 0), 0);
+      const sumRealTotal = monthlyRows.reduce(
+        (sum, r) =>
+          sum +
+          ((Number(r.base_pay || 0) +
+            Number(r.main_nomination_fee || 0) +
+            Number(r.inside_nomination_fee || 0) +
+            Number(r.together_nomination_fee || 0) +
+            Number(r.sales_back_yen || 0) +
+            Number(r.overtime_wage_yen || 0) -
+            Number(r.deduction_yen || 0)) -
+            Number(r.paid_price || 0)),
+        0
+      );
+
+      const storeName = await fetchStoreName();
+      const issuedAt = new Date();
+      await printReceipt({
+        storeName,
+        tableName: '給与計算',
+        title: 'キャスト別給与（合計）',
+        issuedAt,
+        lines: [
+          { left: '検索条件', right: searchConditionText },
+          { left: '件数', right: String(monthlyRows.length) },
+          { left: '基本時間(合計)', right: formatHours(sumHours) },
+          { left: '基本給(合計)', right: formatCurrency(sumBasePay) },
+          { left: '本指名数(合計)', right: String(sumMainCnt) },
+          { left: '本指名料(合計)', right: formatCurrency(sumMainFee) },
+          { left: '場内指名数(合計)', right: String(sumInsideCnt) },
+          { left: '場内指名料(合計)', right: formatCurrency(sumInsideFee) },
+          { left: '同伴者(合計)', right: String(sumTogetherCnt) },
+          { left: '同伴料(合計)', right: formatCurrency(sumTogetherFee) },
+          { left: '売上バック(合計)', right: formatCurrency(sumSalesBack) },
+          { left: '残業代(合計)', right: formatCurrency(sumOvertime) },
+          { left: '控除(合計)', right: formatCurrency(sumDeduction) },
+          { left: '支給額(合計)', right: formatCurrency(sumTotalPay) },
+          { left: '前払い(合計)', right: formatCurrency(sumPaid) },
+        ],
+        totalLabel: '総額(合計)',
+        totalAmount: sumRealTotal,
+      });
+    } catch (e: any) {
+      error('印刷に失敗しました', e?.message || String(e));
+    } finally {
+      setPrintingRowKey(null);
+      setIsPrinting(false);
+    }
+  };
+
+  const printPayrollItemRowCore = async (item: PayrollItem) => {
+    const storeName = await fetchStoreName();
+    const issuedAt = new Date();
+    await printReceipt({
+      storeName,
+      tableName: '給与計算',
+      title: `給与明細（${item.staff.name}）`,
+      issuedAt,
+      lines: [
+        { left: '検索条件', right: searchConditionText },
+        { left: 'キャスト名', right: item.staff.name },
+        { left: '基本時間', right: `${item.base_hours}h` },
+        { left: '基本給', right: formatCurrency(item.base_wage_yen) },
+        { left: '本指名数', right: `${item.nomination_count}件` },
+        { left: '本指名料', right: formatCurrency(item.nomination_amount_yen) },
+        { left: '場内指名数', right: `${(item as any).field_nomination_count || 0}件` },
+        { left: '場内指名料', right: formatCurrency((item as any).field_nomination_amount_yen || 0) },
+        { left: '売上バック', right: formatCurrency(Number((item as any).sales_back_yen ?? 0)) },
+        { left: '残業代', right: formatCurrency(item.overtime_wage_yen) },
+        { left: '控除', right: formatCurrency(item.deduction_yen) },
+      ],
+      totalLabel: '支給額',
+      totalAmount: item.total_yen,
+    });
+  };
+
+  const handlePrintPayrollItemRow = async (item: PayrollItem) => {
+    if (isPrinting) return;
+    setIsPrinting(true);
+    setPrintingRowKey(`detail-${item?.id ?? ''}`);
+    try {
+      await printPayrollItemRowCore(item);
+    } catch (e: any) {
+      error('印刷に失敗しました', e?.message || String(e));
+    } finally {
+      setPrintingRowKey(null);
+      setIsPrinting(false);
+    }
+  };
 
   useEffect(() => {
     const year = selectedYear;
@@ -277,9 +533,18 @@ export default function PayrollPreviewPage() {
     const start = `${year}-${String(month).padStart(2, '0')}-01`;
     const lastDay = new Date(year, month, 0).getDate();
     const end = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
-    setPeriodStart(start);
-    setPeriodEnd(end);
-  }, [selectedYear, selectedMonth]);
+    if (dateMode === 'month') {
+      setPeriodStart(start);
+      setPeriodEnd(end);
+    }
+  }, [selectedYear, selectedMonth, dateMode]);
+
+  useEffect(() => {
+    if (dateMode === 'date') {
+      setPeriodStart(singleDate);
+      setPeriodEnd(singleDate);
+    }
+  }, [dateMode, singleDate]);
 
   useEffect(() => {
     // 既存の給与計算があるかチェック
@@ -295,7 +560,8 @@ export default function PayrollPreviewPage() {
 
   useEffect(() => {
     fetchMonthlyRows(selectedYear, selectedMonth, false, true);
-  }, [selectedYear, selectedMonth]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedYear, selectedMonth, dateMode, periodStart, periodEnd, singleDate]);
 
   const calculatePayroll = async () => {
     setIsCalculating(true);
@@ -449,47 +715,112 @@ export default function PayrollPreviewPage() {
         </header>
 
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          {/* 期間選択（年月指定） */}
+          {/* 期間選択（検索条件） */}
           <Card className="mb-8">
             <CardContent className="p-6 flex justify-center">
-              <div className="flex flex-col sm:flex-row items-center sm:items-end space-y-4 sm:space-y-0 sm:space-x-4">
-                <div className="flex items-center space-x-4">
-                  <div>
-                  期間選択
+              <div className="w-full max-w-4xl">
+                <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+                  <div className="space-y-2">
+                    <div className="text-sm font-medium text-gray-700">検索条件</div>
+                    <div className="inline-flex rounded-md border bg-white overflow-hidden">
+                      <button
+                        type="button"
+                        onClick={() => setDateMode('month')}
+                        className={`px-3 py-2 text-sm ${dateMode === 'month' ? 'bg-purple-600 text-white' : 'bg-white text-gray-700'}`}
+                      >
+                        月
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDateMode('range')}
+                        className={`px-3 py-2 text-sm border-l ${dateMode === 'range' ? 'bg-purple-600 text-white' : 'bg-white text-gray-700'}`}
+                      >
+                        期間
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDateMode('date')}
+                        className={`px-3 py-2 text-sm border-l ${dateMode === 'date' ? 'bg-purple-600 text-white' : 'bg-white text-gray-700'}`}
+                      >
+                        日付
+                      </button>
+                    </div>
+                    <div className="text-xs text-gray-500">※ 三項目は同時選択できません</div>
                   </div>
-                  <div className="flex flex-col space-y-2">
-                    {/* <Label htmlFor="year">年</Label> */}
-                    <select
-                      id="year"
-                      value={selectedYear}
-                      onChange={(e) => setSelectedYear(Number(e.target.value))}
-                      className="w-24 h-10 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white cursor-pointer"
-                      disabled={payrollRun?.status === 'confirmed'}
-                    >
-                      {Array.from({ length: 16 }, (_, i) => {
-                        const year = 2020 + i;
-                        return (
-                          <option key={year} value={year}>
-                            {year}年
-                          </option>
-                        );
-                      })}
-                    </select>
-                  </div>
-                  <div className="flex flex-col space-y-2">
-                    {/* <Label htmlFor="month">月</Label> */}
-                    <select
-                      id="month"
-                      value={selectedMonth}
-                      onChange={(e) => setSelectedMonth(Number(e.target.value))}
-                      className="w-24 h-10 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
-                      disabled={payrollRun?.status === 'confirmed'}
-                    >
-                      {Array.from({ length: 12 }, (_, i) => (
-                        <option key={i + 1} value={i + 1}>{i + 1}月</option>
-                      ))}
-                    </select>
-                  </div>
+
+                  {dateMode === 'month' && (
+                    <div className="flex items-center space-x-4">
+                      <div className="flex flex-col space-y-2">
+                        <select
+                          id="year"
+                          value={selectedYear}
+                          onChange={(e) => setSelectedYear(Number(e.target.value))}
+                          className="w-24 h-10 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white cursor-pointer"
+                          disabled={payrollRun?.status === 'confirmed'}
+                        >
+                          {Array.from({ length: 16 }, (_, i) => {
+                            const year = 2020 + i;
+                            return (
+                              <option key={year} value={year}>
+                                {year}年
+                              </option>
+                            );
+                          })}
+                        </select>
+                      </div>
+                      <div className="flex flex-col space-y-2">
+                        <select
+                          id="month"
+                          value={selectedMonth}
+                          onChange={(e) => setSelectedMonth(Number(e.target.value))}
+                          className="w-24 h-10 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
+                          disabled={payrollRun?.status === 'confirmed'}
+                        >
+                          {Array.from({ length: 12 }, (_, i) => (
+                            <option key={i + 1} value={i + 1}>{i + 1}月</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  )}
+
+                  {dateMode === 'range' && (
+                    <div className="flex flex-col sm:flex-row sm:items-end gap-3">
+                      <div className="space-y-1">
+                        <Label htmlFor="range-start">開始日</Label>
+                        <Input
+                          id="range-start"
+                          type="date"
+                          value={periodStart}
+                          onChange={(e) => setPeriodStart(e.target.value)}
+                          className="w-44"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label htmlFor="range-end">終了日</Label>
+                        <Input
+                          id="range-end"
+                          type="date"
+                          value={periodEnd}
+                          onChange={(e) => setPeriodEnd(e.target.value)}
+                          className="w-44"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {dateMode === 'date' && (
+                    <div className="space-y-1">
+                      <Label htmlFor="single-date">日付</Label>
+                      <Input
+                        id="single-date"
+                        type="date"
+                        value={singleDate}
+                        onChange={(e) => setSingleDate(e.target.value)}
+                        className="w-44"
+                      />
+                    </div>
+                  )}
                 </div>
                 {/* <Button 
                   onClick={calculatePayroll}
@@ -585,6 +916,14 @@ export default function PayrollPreviewPage() {
                 <Button
                   variant="outline"
                   size="sm"
+                  onClick={handlePrintMonthlyAll}
+                  disabled={isPrinting}
+                >
+                  <PrinterIcon className="w-4 h-4 mr-1" /> 印刷
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
                   onClick={downloadCsv}
                 >
                   <Download className="w-4 h-4 mr-1" /> CSVダウンロード
@@ -597,6 +936,7 @@ export default function PayrollPreviewPage() {
                     autoSaveTimers.current = {};
                     await fetchMonthlyRows(selectedYear, selectedMonth, true);
                   }}
+                  disabled={dateMode !== 'month'}
                 >
                   初期値に戻す
                 </Button>
@@ -609,6 +949,7 @@ export default function PayrollPreviewPage() {
                 <thead>
                   <tr className="text-left text-gray-600">
                     <th className="p-2">キャスト</th>
+                    
                     <th className="p-2 text-center">基本時間</th>
                     <th className="p-2 text-center">基本給</th>
                     <th className="p-2 text-center">本指名数</th>
@@ -621,6 +962,9 @@ export default function PayrollPreviewPage() {
                     <th className="p-2 text-center">残業代</th>
                     <th className="p-2 text-center">控除</th>
                     <th className="p-2 text-center min-w-[6rem]">支給額</th>
+                    <th className="p-2 text-center min-w-[7rem]">前払い</th>
+                    <th className="p-2 text-center min-w-[7rem]">総額</th>
+                    <th className="p-2 text-center">印刷</th>
                     {/* <th className="p-2">変更</th> */}
                   </tr>
                 </thead>
@@ -641,27 +985,34 @@ export default function PayrollPreviewPage() {
                         Number(next.deduction_yen || 0);
                       next.base_pay = base_pay;
                       next.total_pay_yen = total;
+                      const paid = Number(next.paid_price || 0);
+                      next.realTotal_price = total - paid;
                       rows[idx] = next;
                       setMonthlyRows(rows);
-                      scheduleAutoSave(next);
+                      if (dateMode === 'month') {
+                        scheduleAutoSave(next);
+                      }
                     };
-                    const isUnlocked = !!rowUnlocked[row.user_id];
+                    const isUnlocked = dateMode === 'month' ? !!rowUnlocked[row.user_id] : false;
                     return (
                       <tr key={row.user_id} className="border-t">
                         <td className="p-2 whitespace-nowrap">
                           <div className="flex flex-col items-start space-y-1">
                             <div className="font-medium">{row.name}</div>
-                            <button
-                              type="button"
-                              className={`inline-flex items-center text-xs px-2 py-1 rounded border ${isUnlocked ? 'text-green-700 border-green-300' : 'text-gray-600 border-gray-300'}`}
-                              onClick={() => toggleRowLock(row.user_id)}
-                              title={isUnlocked ? 'ロック（編集不可）' : 'ロック解除（編集可）'}
-                            >
-                              {isUnlocked ? <Unlock className="w-3 h-3 mr-1" /> : <Lock className="w-3 h-3 mr-1" />}
-                              {/* {isUnlocked ? '解除中' : 'ロック中'} */}
-                            </button>
+                            {dateMode === 'month' && (
+                              <button
+                                type="button"
+                                className={`inline-flex items-center text-xs px-2 py-1 rounded border ${isUnlocked ? 'text-green-700 border-green-300' : 'text-gray-600 border-gray-300'}`}
+                                onClick={() => toggleRowLock(row.user_id)}
+                                title={isUnlocked ? 'ロック（編集不可）' : 'ロック解除（編集可）'}
+                              >
+                                {isUnlocked ? <Unlock className="w-3 h-3 mr-1" /> : <Lock className="w-3 h-3 mr-1" />}
+                                {/* {isUnlocked ? '解除中' : 'ロック中'} */}
+                              </button>
+                            )}
                           </div>
                         </td>
+                        
                         <td className="p-2 text-center">
                           <div className="space-y-1">
                             {/* <Input type="text" value={row.basic_hours ?? 0}
@@ -674,39 +1025,15 @@ export default function PayrollPreviewPage() {
                         </td>
                         <td className="p-2 text-center">{formatCurrency(row.base_pay || 0)}</td>
                         <td className="p-2 text-center">
-                          <Input
-                            type="text"
-                            value={row.main_nomination_count ?? 0}
-                            inputMode="decimal"
-                            pattern="[0-9]*[.,]?[0-9]*"
-                            onChange={(e) => { if (!isUnlocked) return; updateField('main_nomination_count', Number((e.target.value || '').replace(',', '.'))); ensureAutoRelock(row.user_id); }}
-                            className="w-20 text-center mx-auto px-0.5"
-                            disabled={!isUnlocked}
-                          />
+                          {Number(row.main_nomination_count || 0)}
                         </td>
                         <td className="p-2 text-center">{formatCurrency(row.main_nomination_fee || 0)}</td>
                         <td className="p-2 text-center">
-                          <Input
-                            type="text"
-                            value={row.inside_nomination_count ?? 0}
-                            inputMode="decimal"
-                            pattern="[0-9]*[.,]?[0-9]*"
-                            onChange={(e) => { if (!isUnlocked) return; updateField('inside_nomination_count', Number((e.target.value || '').replace(',', '.'))); ensureAutoRelock(row.user_id); }}
-                            className="w-20 text-center mx-auto px-0.5"
-                            disabled={!isUnlocked}
-                          />
+                          {Number(row.inside_nomination_count || 0)}
                         </td>
                         <td className="p-2 text-center">{formatCurrency(row.inside_nomination_fee || 0)}</td>
                         <td className="p-2 text-center">
-                          <Input
-                            type="text"
-                            value={row.together_nomination_cost ?? 0}
-                            inputMode="decimal"
-                            pattern="[0-9]*[.,]?[0-9]*"
-                            onChange={(e) => { if (!isUnlocked) return; updateField('together_nomination_cost', Number((e.target.value || '').replace(',', '.'))); ensureAutoRelock(row.user_id); }}
-                            className="w-20 text-center mx-auto px-0.5"
-                            disabled={!isUnlocked}
-                          />
+                          {Number(row.together_nomination_count || 0)}
                         </td>
                         <td className="p-2 text-center">{formatCurrency(row.together_nomination_fee || 0)}</td>
                         <td className="p-2 text-center min-w-[6rem]">
@@ -752,6 +1079,41 @@ export default function PayrollPreviewPage() {
                             Number(row.deduction_yen || 0)
                           )}
                         </td>
+                        <td className="p-2 text-center min-w-[7rem]">
+                          <Input
+                            type="text"
+                            value={row.paid_price ?? 0}
+                            inputMode="decimal"
+                            pattern="[0-9]*[.,]?[0-9]*"
+                            onChange={(e) => { if (!isUnlocked) return; updateField('paid_price', Number((e.target.value || '').replace(',', '.'))); ensureAutoRelock(row.user_id); }}
+                            className="px-1 text-center"
+                            disabled={!isUnlocked}
+                          />
+                        </td>
+                        <td className="text-center font-semibold min-w-[7rem]">
+                          {formatCurrency(
+                            (Number(row.base_pay || 0) +
+                              Number(row.main_nomination_fee || 0) +
+                              Number(row.inside_nomination_fee || 0) +
+                              Number(row.together_nomination_fee || 0) +
+                              Number(row.sales_back_yen || 0) +
+                              Number(row.overtime_wage_yen || 0) -
+                              Number(row.deduction_yen || 0)) -
+                              Number(row.paid_price || 0)
+                          )}
+                        </td>
+                        {/* 追加: 行印刷（キャスト別） */}
+                        <td className="p-2 text-center">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handlePrintMonthlyRow(row)}
+                            disabled={isPrinting}
+                          >
+                            <PrinterIcon className="w-4 h-4 mr-1" />
+                            印刷
+                          </Button>
+                        </td>
                         {/* <td className="p-2">
                           <Button size="sm" variant="outline" onClick={saveRow}>保存</Button>
                         </td> */}
@@ -762,6 +1124,7 @@ export default function PayrollPreviewPage() {
                 <tfoot className="bg-gray-50 sticky bottom-0">
                   <tr className="border-t font-semibold">
                     <td className="p-2">合計</td>
+                    {/* <td className="p-2" /> */}
                     <td className="p-2 text-center">
                       {formatHours(monthlyRows.reduce((sum, r) => sum + Number(r.basic_hours || 0), 0))}
                     </td>
@@ -781,7 +1144,7 @@ export default function PayrollPreviewPage() {
                       {formatCurrency(monthlyRows.reduce((sum, r) => sum + Number(r.inside_nomination_fee || 0), 0))}
                     </td>
                     <td className="p-2 text-center">
-                      {formatCurrency(monthlyRows.reduce((sum, r) => sum + Number(r.together_nomination_cost || 0), 0))}
+                      {monthlyRows.reduce((sum, r) => sum + Number(r.together_nomination_count || 0), 0)}
                     </td>
                     <td className="p-2 text-center">
                       {formatCurrency(monthlyRows.reduce((sum, r) => sum + Number(r.together_nomination_fee || 0), 0))}
@@ -808,6 +1171,35 @@ export default function PayrollPreviewPage() {
                           Number(r.deduction_yen || 0)
                         ), 0)
                       )}
+                    </td>
+                    <td className="p-2 text-center min-w-[7rem]">
+                      {formatCurrency(monthlyRows.reduce((sum, r) => sum + Number(r.paid_price || 0), 0))}
+                    </td>
+                    <td className="text-center font-semibold min-w-[7rem]">
+                      {formatCurrency(
+                        monthlyRows.reduce((sum, r) => (
+                          sum +
+                          (Number(r.base_pay || 0) +
+                            Number(r.main_nomination_fee || 0) +
+                            Number(r.inside_nomination_fee || 0) +
+                            Number(r.together_nomination_fee || 0) +
+                            Number(r.sales_back_yen || 0) +
+                            Number(r.overtime_wage_yen || 0) -
+                            Number(r.deduction_yen || 0)) -
+                            Number(r.paid_price || 0)
+                        ), 0)
+                      )}
+                    </td>
+                    <td className="p-2 text-center">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={handlePrintMonthlyTotals}
+                        disabled={isPrinting}
+                      >
+                        <PrinterIcon className="w-4 h-4 mr-1" />
+                        印刷
+                      </Button>
                     </td>
                   </tr>
                 </tfoot>
@@ -905,6 +1297,7 @@ export default function PayrollPreviewPage() {
                           <th className="text-center p-3">残業代</th>
                           <th className="text-center p-3">控除</th>
                           <th className="text-center p-3 font-bold">支給額</th>
+                          <th className="text-center p-3">印刷</th>
                           <th className="text-center p-3">操作</th>
                         </tr>
                       </thead>
@@ -991,6 +1384,17 @@ export default function PayrollPreviewPage() {
                             <td className="p-3 text-center font-bold text-purple-600">
                               {formatCurrency(item.total_yen)}
                             </td>
+                            <td className="p-3 text-center">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handlePrintPayrollItemRow(item)}
+                                disabled={isPrinting}
+                              >
+                                <PrinterIcon className="w-4 h-4 mr-1" />
+                                印刷
+                              </Button>
+                            </td>
                             <td className="p-3">
                               {editingItem?.id === item.id ? (
                                 <div className="flex space-x-2">
@@ -1044,6 +1448,7 @@ export default function PayrollPreviewPage() {
                           <td className="p-3 text-center text-xl text-purple-600">
                             {formatCurrency(totalAmount)}
                           </td>
+                          <td className="p-3"></td>
                           <td className="p-3"></td>
                         </tr>
                       </tfoot>

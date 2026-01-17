@@ -70,6 +70,9 @@ CREATE TABLE IF NOT EXISTS nomination (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
+-- 給与テーブル（salary）
+-- ※ migration_complete.sql と合わせて paid_price / realTotal_price を含める
+
 CREATE INDEX IF NOT EXISTS idx_nomination_cast_id ON nomination(cast_id);
 CREATE INDEX IF NOT EXISTS idx_nomination_table_id ON nomination(table_id);
 CREATE INDEX IF NOT EXISTS idx_nomination_session_id ON nomination(session_id);
@@ -225,6 +228,10 @@ CREATE TABLE IF NOT EXISTS salary (
     overtime_wage_yen DECIMAL(12,2) DEFAULT 0.00 CHECK (overtime_wage_yen >= 0),
     deduction_yen DECIMAL(12,2) DEFAULT 0.00,
     total_pay_yen DECIMAL(12,2) DEFAULT 0.00,
+    -- 前払い金額（編集可能）
+    paid_price DECIMAL(12,2) DEFAULT 0.00 CHECK (paid_price >= 0),
+    -- 総額（支給額 - 前払い）
+    realTotal_price DECIMAL(12,2) DEFAULT 0.00,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(user_id, year, month)
