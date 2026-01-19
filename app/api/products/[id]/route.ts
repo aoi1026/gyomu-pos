@@ -6,7 +6,7 @@ export async function PUT(
   { params }: { params: { id: string } }
 ) {
   try {
-    const { name, sku, sale_price, amount, other, category_id } = await request.json();
+    const { name, sku, sale_price, amount, other, category_id, image } = await request.json();
     const productId = parseInt(params.id);
 
     if (!name || name.trim() === '') {
@@ -95,8 +95,8 @@ export async function PUT(
 
       // 商品を更新
       const result = await client.query(
-        'UPDATE product SET name = $1, sku = $2, sale_price = $3, amount = $4, other = $5, category_id = $6, updated_at = CURRENT_TIMESTAMP WHERE id = $7 RETURNING id, name, sku, sale_price, amount, other, category_id, created_at, updated_at',
-        [name.trim(), sku.trim(), sale_price, amount, other || '', category_id, productId]
+        'UPDATE product SET name = $1, sku = $2, sale_price = $3, amount = $4, image = $5, other = $6, category_id = $7, updated_at = CURRENT_TIMESTAMP WHERE id = $8 RETURNING id, name, sku, sale_price, amount, image, other, category_id, created_at, updated_at',
+        [name.trim(), sku.trim(), sale_price, amount, image || null, other || '', category_id, productId]
       );
 
       // カテゴリ名も取得
@@ -111,6 +111,7 @@ export async function PUT(
         sku: result.rows[0].sku,
         sale_price: parseFloat(result.rows[0].sale_price),
         amount: result.rows[0].amount,
+        image: result.rows[0].image ?? null,
         other: result.rows[0].other || '',
         category_id: result.rows[0].category_id,
         category_name: categoryResult.rows[0].name,

@@ -17,6 +17,7 @@ import {
   AlertCircle, CheckCircle, Package, Tag, DollarSign, Hash
 } from 'lucide-react';
 import { useNotificationContext } from '@/lib/notification-context';
+import { compressImageFileToDataUrl } from '@/lib/image/compress';
 
 interface Category {
   id: number;
@@ -29,6 +30,7 @@ interface Product {
   sku: string;
   sale_price: number;
   amount: number;
+  image?: string | null;
   other: string;
   category_id: number;
   category_name: string;
@@ -41,6 +43,7 @@ interface ProductForm {
   sku: string;
   sale_price: number;
   amount: number;
+  image?: string | null;
   other: string;
   category_id: number;
 }
@@ -58,6 +61,7 @@ export default function ProductManagementPage() {
     sku: '',
     sale_price: 0,
     amount: 0,
+    image: null,
     other: '',
     category_id: 0
   });
@@ -127,6 +131,7 @@ export default function ProductManagementPage() {
       sku: '',
       sale_price: 0,
       amount: 0,
+      image: null,
       other: '',
       category_id: selectedCategoryId
     });
@@ -141,6 +146,7 @@ export default function ProductManagementPage() {
       sku: product.sku,
       sale_price: product.sale_price,
       amount: product.amount,
+      image: product.image ?? null,
       other: product.other,
       category_id: product.category_id
     });
@@ -244,10 +250,28 @@ export default function ProductManagementPage() {
       sku: '',
       sale_price: 0,
       amount: 0,
+      image: null,
       other: '',
       category_id: 0
     });
     setValidationErrors([]);
+  };
+
+  const handleImageFile = async (file: File | null) => {
+    if (!file) {
+      setForm((prev) => ({ ...prev, image: null }));
+      return;
+    }
+    if (!file.type.startsWith('image/')) {
+      error('エラー', '画像ファイルを選択してください');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      error('エラー', '画像サイズが大きすぎます（5MB以下にしてください）');
+      return;
+    }
+    const dataUrl = await compressImageFileToDataUrl(file, { maxDimension: 1280, preferFormat: 'image/webp', quality: 0.82 });
+    setForm((prev) => ({ ...prev, image: dataUrl }));
   };
 
   const getSelectedCategoryName = () => {
@@ -399,6 +423,7 @@ export default function ProductManagementPage() {
                       <TableHeader>
                         <TableRow>
                           {selectedCategoryId === null && <TableHead>カテゴリ名</TableHead>}
+                          <TableHead>画像</TableHead>
                           <TableHead>商品名</TableHead>
                           <TableHead>SKU</TableHead>
                           <TableHead className="text-right">価格</TableHead>
@@ -418,6 +443,17 @@ export default function ProductManagementPage() {
                                 </div>
                               </TableCell>
                             )}
+                            <TableCell>
+                              {product.image ? (
+                                <img
+                                  src={product.image}
+                                  alt={`${product.name}画像`}
+                                  className="w-10 h-10 object-cover rounded border"
+                                />
+                              ) : (
+                                <span className="text-sm text-gray-400">-</span>
+                              )}
+                            </TableCell>
                             <TableCell>
                               <div className="flex items-center space-x-3">
                                 <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
@@ -545,6 +581,30 @@ export default function ProductManagementPage() {
                       onChange={(e) => setForm(prev => ({ ...prev, sku: e.target.value }))}
                       placeholder="商品コードを入力"
                     />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="image">画像</Label>
+                    <Input
+                      id="image"
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => handleImageFile(e.target.files?.[0] || null)}
+                    />
+                    {form.image && (
+                      <div className="flex items-center gap-3">
+                        <img src={form.image} alt="プレビュー" className="w-16 h-16 object-cover rounded border" />
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setForm((prev) => ({ ...prev, image: null }))}
+                        >
+                          画像を削除
+                        </Button>
+                      </div>
+                    )}
+                    <p className="text-xs text-gray-500">※ 最大5MB（保存時に圧縮します）</p>
                   </div>
                   
                   <div className="space-y-2">

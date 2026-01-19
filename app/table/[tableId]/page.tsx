@@ -1,4 +1,9 @@
 'use client';
+import { MdHomeRepairService } from "react-icons/md"; 
+import { BiUserPin } from "react-icons/bi"; 
+import { SiBuymeacoffee } from "react-icons/si"; 
+import { FaHome } from "react-icons/fa"; 
+import { AiFillHome } from "react-icons/ai"; 
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -9,8 +14,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { 
-  Wine, Users, ShoppingCart, DollarSign, Clock, 
+  Wine, Users, ShoppingCart, DollarSign, Clock, Package,
   ArrowLeft, Plus, Minus, Trash2, CheckCircle,
   AlertCircle, User, CreditCard, X, Bell, Utensils, Coffee, XCircle, AlertTriangle, Pause, Play, Edit2, Save
 } from 'lucide-react';
@@ -63,6 +69,8 @@ export default function TableDashboard({ params }: { params: { tableId: string }
   const [menuItems, setMenuItems] = useState<any[]>([]);
   const [isMenuLoading, setIsMenuLoading] = useState(true);
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>('all');
+  const [leftMode, setLeftMode] = useState<'order' | 'nomination' | 'service'>('order');
+  const [isOrderCartOpen, setIsOrderCartOpen] = useState(false);
   const [showOrderDialog, setShowOrderDialog] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<any>(null);
   const [orderQuantity, setOrderQuantity] = useState<number>(1);
@@ -2868,10 +2876,11 @@ export default function TableDashboard({ params }: { params: { tableId: string }
         </div>
       </header>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* メニュー選択 */}
-          <div className="lg:col-span-2 space-y-6">
+      <div className="w-full px-4 sm:px-6 lg:px-8 pt-4 pb-0">
+        <div className="flex gap-4 h-[calc(100vh-96px)]">
+          {/* 左側（全幅の5/6） */}
+          <div className="w-5/6 relative">
+            <div className="absolute inset-0 pb-20 overflow-y-auto space-y-6">
             {/* セッション管理 */}
             {!isSessionActive && (
               <Card className="bg-blue-50 border-blue-200 col-span-10">
@@ -2945,192 +2954,334 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                   </div>
                 ) : (
                   <div className="space-y-4">
-                    {/* 製品リスト（カード＋カテゴリ選択＋表） */}
-                    <Card>
-                      <CardHeader className="pb-3">
-                        <CardTitle className="flex items-center">
-                          <Wine className="w-5 h-5 mr-2" />
-                          メニュー
-                        </CardTitle>
-                        <CardDescription>
-                          カテゴリを選択して製品一覧を表示
-                        </CardDescription>
-                      </CardHeader>
-                      <CardContent>
+                    {/* 注文 */}
+                    {leftMode === 'order' && (
                         <div className={isTimeExpired ? 'pointer-events-none opacity-50' : ''}>
-                        <div className="flex items-center gap-3 mb-3">
-                          <Label className="text-sm text-gray-600">カテゴリ</Label>
-                          <Select value={selectedCategoryId} onValueChange={setSelectedCategoryId}>
-                            <SelectTrigger className="w-56">
-                              <SelectValue placeholder="カテゴリを選択" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="all">すべて</SelectItem>
+                        <div className="flex items-center gap-2 overflow-x-auto pb-2">
+                          <Button
+                            size="sm"
+                            variant={selectedCategoryId === 'all' ? 'default' : 'outline'}
+                            onClick={() => setSelectedCategoryId('all')}
+                          >
+                            すべて
+                          </Button>
                               {menuCategories.filter((c) => c.id !== 4).map((c) => (
-                                <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                            <Button
+                              key={c.id}
+                              size="sm"
+                              variant={selectedCategoryId === String(c.id) ? 'default' : 'outline'}
+                              onClick={() => setSelectedCategoryId(String(c.id))}
+                            >
+                              {c.name}
+                            </Button>
+                          ))}
                         </div>
-                        <ScrollArea className="h-[40vh] pr-1">
-                          <Table>
-                            <TableHeader>
-                              <TableRow>
-                                <TableHead className="w-[40%]">商品名</TableHead>
-                                <TableHead className="w-[20%]">価格</TableHead>
-                                <TableHead className="w-[20%]">SKU</TableHead>
-                                <TableHead className="w-[20%] text-right">アクション</TableHead>
-                              </TableRow>
-                            </TableHeader>
-                            <TableBody>
+
+                        <div className="grid grid-cols-3 lg:grid-cols-4 gap-3">
                               {(() => {
                                 const items = selectedCategoryId === 'all'
                                   ? menuItems
                                   : menuItems.filter((it: any) => Number(it.category_id) === Number(selectedCategoryId));
                                 if (!items || items.length === 0) {
                                   return (
-                                    <TableRow>
-                                      <TableCell colSpan={4} className="text-center text-sm text-gray-500">
+                                <div className="col-span-3 lg:col-span-4 text-center text-sm text-gray-500 py-10">
                                         該当する商品がありません
-                                      </TableCell>
-                                    </TableRow>
+                                </div>
                                   );
                                 }
                                 return items.map((item: any) => (
-                                  <TableRow key={item.id}>
-                                    <TableCell>
-                                      <div className="flex flex-col">
-                                        <span className="font-medium">{item.name}</span>
-                                  {item.other && (
-                                          <span className="text-xs text-gray-500 truncate">{item.other}</span>
+                              <button
+                                key={item.id}
+                                type="button"
+                                onClick={() => { if (!isOrderingLocked && !isTimeExpired) addToCart(item); }}
+                                className={`text-left rounded-lg border bg-white overflow-hidden shadow-sm hover:shadow-md transition-shadow ${isOrderingDisabled ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50'}`}
+                                disabled={isOrderingDisabled}
+                              >
+                                <div className="relative aspect-square bg-gray-100">
+                                  {item.image ? (
+                                    <img src={item.image} alt={item.name} className="w-full h-full object-cover" />
+                                  ) : (
+                                    <div className="w-full h-full flex items-center justify-center text-gray-400">
+                                      <Package className="w-8 h-8" />
+                                    </div>
                                   )}
+                                  <div className="absolute right-1 bottom-1 bg-black/70 text-white text-[11px] px-2 py-1 rounded">
+                                    {formatCurrency(item.sale_price)}
                                 </div>
-                                    </TableCell>
-                                    <TableCell className="whitespace-nowrap">{formatCurrency(item.sale_price)}</TableCell>
-                                    <TableCell>
-                                      {item.sku ? (
-                                        <Badge variant="outline" className="text-[10px] py-0 px-1">{item.sku}</Badge>
-                                      ) : (
-                                        <span className="text-gray-300 text-xs">-</span>
-                                      )}
-                                    </TableCell>
-                                    <TableCell className="text-right">
+                                </div>
+                                <div className="p-1.5">
+                                  <div className="text-[13px] font-semibold leading-tight line-clamp-2">{item.name}</div>
+                                  <div className="text-[11px] text-gray-500 mt-1">
+                                    SKU: {item.sku ? item.sku : '-'}
+                                  </div>
+                                </div>
+                              </button>
+                            ));
+                          })()}
+                        </div>
+
+                        {/* 左下：注文カートボタン（押すと横からモーダル表示） */}
+                        <div className="fixed left-5 bottom-[132px] z-40">
+                          {(() => {
+                            const hasRequested = cartOrders.some((order: any) => {
+                              const st = (orderRequestStatus as any)[order.id] || order.status;
+                              return st === 'pending' || st === 'sent';
+                            });
+                            return (
+                              <Button
+                                onClick={() => setIsOrderCartOpen(true)}
+                                className="h-16 w-16 rounded-full bg-gradient-to-r from-pink-500 to-fuchsia-500 text-white shadow-lg hover:from-pink-600 hover:to-fuchsia-600 relative border-0"
+                                variant="outline"
+                              >
+                                <ShoppingCart className="w-6 h-6" />
+                                
+                                {hasRequested && (
+                                  <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-red-500 rounded-full ring-2 ring-white" />
+                                )}
+                              </Button>
+                            );
+                          })()}
+                        </div>
+
+                        <Sheet open={isOrderCartOpen} onOpenChange={setIsOrderCartOpen}>
+                          <SheetContent side="right" className="w-[420px] sm:max-w-md p-0">
+                            <div className="p-6 pb-4 border-b">
+                              <SheetHeader>
+                                <SheetTitle className="flex items-center">
+                                  <ShoppingCart className="w-5 h-5 mr-2" />
+                                  注文カート
+                                </SheetTitle>
+                              </SheetHeader>
+                              <div className="text-sm text-gray-500 mt-1">
+                                {cartOrders.length}個の商品
+                              </div>
+                            </div>
+
+                            <div className="p-6 pt-4">
+                              {cartOrders.length === 0 ? (
+                                <div className="text-center py-10 text-gray-500">
+                                  <ShoppingCart className="w-12 h-12 mx-auto mb-3 text-gray-400" />
+                                  <p>カートが空です</p>
+                                </div>
+                              ) : (
+                                <ScrollArea className="h-[70vh] pr-1">
+                                  <div className="space-y-3">
+                                    {cartOrders.map((order: any) => (
+                                      <div key={order.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border">
+                                        <div className="flex-1">
+                                          <h4 className="font-medium text-sm">{order.product_name}</h4>
+                                          <p className="text-xs text-gray-500">
+                                            ¥{order.unit_price?.toLocaleString()} × {order.amount}個
+                                            {order.cast_name ? (
+                                              <span className="ml-2 text-blue-600">(担当: {order.cast_name})</span>
+                                            ) : (
+                                              <span className="ml-2 text-gray-500">(お客様直接注文)</span>
+                                            )}
+                                          </p>
+                                          <div className="flex items-center mt-1">
+                                            <span className="text-sm font-bold text-blue-600">
+                                              合計: ¥{order.total_price?.toLocaleString()}
+                                            </span>
+                                            {orderRequestStatus[order.id] === 'sent' && (
+                                              <span className="ml-2 text-xs text-blue-600 font-medium">
+                                                (管理者に送信済み)
+                                              </span>
+                                            )}
+                                            {orderRequestStatus[order.id] === 'accepted' && (
+                                              <span className="ml-2 text-xs text-green-600 font-medium">
+                                                (管理者が受付済み)
+                                              </span>
+                                            )}
+                                            {(orderRequestStatus[order.id] as string) === 'rejected' && (
+                                              <span className="ml-2 text-xs text-red-600 font-medium">
+                                                (管理者が拒否)
+                                              </span>
+                                            )}
+                                          </div>
+                                        </div>
+                                        <div className="flex items-center space-x-2">
+                                          <div className="relative">
+                                            {orderRequestStatus[order.id] === 'pending' && (
+                                              <div className="w-6 h-6 flex items-center justify-center">
+                                                <Clock className="w-4 h-4 text-orange-500 animate-pulse" />
+                                              </div>
+                                            )}
+                                            {orderRequestStatus[order.id] === 'sent' && (
+                                              <div className="w-6 h-6 flex items-center justify-center">
+                                                <Bell className="w-4 h-4 text-blue-500 animate-bounce" />
+                                              </div>
+                                            )}
+                                            {orderRequestStatus[order.id] === 'accepted' && (
+                                              <div className="w-6 h-6 flex items-center justify-center">
+                                                <CheckCircle className="w-4 h-4 text-green-500" />
+                                              </div>
+                                            )}
+                                            {(orderRequestStatus[order.id] as string) === 'rejected' && (
+                                              <div className="w-6 h-6 flex items-center justify-center">
+                                                <X className="w-4 h-4 text-red-500" />
+                                              </div>
+                                            )}
+                                          </div>
+                                          {(() => {
+                                            const st = (orderRequestStatus as any)[order.id] || order.status;
+                                            const canDelete = st === 'pending' || st === 'sent';
+                                            return canDelete ? (
                                 <Button 
                                   size="sm"
-                                          onClick={() => { if (!isOrderingLocked && !isTimeExpired) addToCart(item); }}
-                                          disabled={isOrderingDisabled}
-                                          className={`${isOrderingDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
-                                >
-                                        <Plus className="w-4 h-4 mr-1" /> 追加
+                                                variant="outline"
+                                                onClick={() => removeFromCart(order.id.toString(), st)}
+                                                className="text-red-600 hover:text-red-700"
+                                              >
+                                                <Trash2 className="w-3 h-3" />
                                 </Button>
-                                    </TableCell>
-                                  </TableRow>
-                                ));
+                                            ) : null;
                               })()}
-                            </TableBody>
-                          </Table>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
                         </ScrollArea>
+                              )}
                         </div>
-                      </CardContent>
-                    </Card>
+                          </SheetContent>
+                        </Sheet>
+                      </div>
+                    )}
 
-                    {/* サービス・呼び出し、指名、サービス・予約を横並び */}
-                    {isSessionActive && (
-                      <div className="grid grid-cols-3 gap-3">
-                        {/* サービス・呼び出し */}
+                    {/* 指定 */}
+                    {leftMode === 'nomination' && (
+                      <div className="grid grid-cols-3 gap-16">
+                        <div className="ml-24 col-span-1 space-y-10">
+                          <Button
+                            size="lg"
+                            className="w-full h-72 text-lg bg-purple-600 hover:bg-purple-700 relative overflow-hidden p-0"
+                            disabled={isOrderingDisabled}
+                            onClick={() => {
+                              setCurrentNominationType('main');
+                              localStorage.setItem('nomination_type', 'main');
+                              setShowNominationCastDialog(true);
+                            }}
+                          >
+                            <div className="absolute inset-0">
+                              <img
+                                src="/assets/nomination/1.jpeg"
+                                alt="本指名"
+                                className="w-full h-full object-cover opacity-80"
+                              />
+                              <div className="absolute inset-0 bg-black/25" />
+                            </div>
+                            <div className="relative z-10 w-full h-full flex items-center justify-center font-bold tracking-wide">
+                              本 指 名
+                            </div>
+                          </Button>
+                          <Button
+                            size="lg"
+                            className="w-full h-72 text-lg bg-blue-600 hover:bg-blue-700 relative overflow-hidden p-0"
+                            disabled={isOrderingDisabled}
+                            onClick={() => {
+                              setCurrentNominationType('inside');
+                              localStorage.setItem('nomination_type', 'inside');
+                              setShowNominationCastDialog(true);
+                            }}
+                          >
+                            <div className="absolute inset-0">
+                              <img
+                                src="/assets/nomination/2.jpeg"
+                                alt="場内指名"
+                                className="w-full h-full object-cover opacity-80"
+                              />
+                              <div className="absolute inset-0 bg-black/25" />
+                            </div>
+                            <div className="relative z-10 w-full h-full flex items-center justify-center font-bold tracking-wide">
+                              場 内 指 名
+                            </div>
+                          </Button>
+                        </div>
+                        <div className="col-span-2">
                       <Card>
-                          <CardHeader className="pb-2">
-                            <CardTitle className="flex items-center text-sm">
-                              <Bell className="w-4 h-4 mr-1" />
-                            サービス・呼び出し
+                            <CardHeader className="pb-3">
+                              <CardTitle className="flex items-center">
+                                <Users className="w-5 h-5 mr-2" />
+                                指名リスト
                           </CardTitle>
                           </CardHeader>
                           <CardContent>
-                            {isServicesLoading ? (
-                              <div className="flex items-center justify-center py-4">
-                                <div className="w-4 h-4 border-2 border-purple-600 border-t-transparent rounded-full animate-spin" />
+                              {isNominationsLoading ? (
+                                <div className="text-sm text-gray-500">読み込み中...</div>
+                              ) : nominations.length === 0 ? (
+                                <div className="text-sm text-gray-500">指名はありません</div>
+                              ) : (
+                                <div className="space-y-3">
+                                  {nominations.map((nomination: any) => (
+                                    <div key={nomination.id} className="flex items-center justify-between border border-gray-200 bg-white px-3 py-2">
+                                      <div>
+                                        <div className="font-medium text-gray-900">{nomination.cast_name}</div>
+                                        <div className="text-xs text-gray-500">
+                                          {new Date(nomination.created_at).toLocaleString('ja-JP')}
                               </div>
-                            ) : services.length === 0 ? (
-                              <div className="text-center py-4 text-sm text-gray-500">
-                                サービスがありません
                               </div>
-                            ) : (
-                              <div className={`grid grid-cols-2 gap-2 ${isTimeExpired ? 'pointer-events-none opacity-50' : ''}`}>
-                                {services.map((service: any, index: number) => {
-                                  // 色の配列を定義
-                                  const colorClasses = [
-                                    'text-green-700 border-green-300 hover:bg-green-50',
-                                    'text-orange-700 border-orange-300 hover:bg-orange-50',
-                                    'text-blue-700 border-blue-300 hover:bg-blue-50',
-                                    'text-purple-700 border-purple-300 hover:bg-purple-50',
-                                    'text-pink-700 border-pink-300 hover:bg-pink-50',
-                                    'text-red-700 border-red-300 hover:bg-red-50',
-                                    'text-cyan-700 border-cyan-300 hover:bg-cyan-50',
-                                    'text-amber-700 border-amber-300 hover:bg-amber-50',
-                                    'text-indigo-700 border-indigo-300 hover:bg-indigo-50',
-                                    'text-teal-700 border-teal-300 hover:bg-teal-50',
-                                  ];
-                                  const colorClass = colorClasses[index % colorClasses.length];
-                                  
-                                  return (
+                                      <div className="flex items-center space-x-2">
+                                        <Badge className={`${nominationBadgeStyle[nomination.type_id as 'main' | 'inside' | 'together'] || 'bg-gray-100 text-gray-700'}`}>
+                                          {getNominationTypeLabel(nomination.type_id)}
+                                        </Badge>
                                     <Button 
-                                      key={service.id}
+                                          size="sm"
                                       variant="outline"
-                                      onClick={() => handleServiceOrder(service)}
-                                      disabled={isOrderingDisabled}
-                                      className={`h-12 flex-col space-y-0.5 ${colorClass} ${isOrderingDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                          className="text-red-600 border-red-300 hover:bg-red-50"
+                                          onClick={() => deleteNominationRecord(nomination.id)}
                                     >
-                                      <Utensils className="w-4 h-4" />
-                                      <span className="text-xs">{service.name}</span>
+                                          <Trash2 className="w-3 h-3" />
                                     </Button>
-                                  );
-                                })}
+                                      </div>
+                                    </div>
+                                  ))}
                               </div>
                             )}
                           </CardContent>
                         </Card>
+                        </div>
+                      </div>
+                    )}
 
-                        {/* 指名 */}
+                    {/* サービス */}
+                    {leftMode === 'service' && (
+                      <div className="grid grid-cols-3 gap-4">
+                        <div className="col-span-2 space-y-4">
                         <Card>
                           <CardHeader className="pb-2">
                             <CardTitle className="flex items-center text-sm">
-                              <Users className="w-4 h-4 mr-1" />
-                              指名
+                                <Bell className="w-4 h-4 mr-1" />
+                                サービス・呼び出し
                             </CardTitle>
                           </CardHeader>
                           <CardContent>
-                            <div className={`grid grid-cols-1 gap-2 ${isTimeExpired ? 'pointer-events-none opacity-50' : ''}`}>
+                              {isServicesLoading ? (
+                                <div className="flex items-center justify-center py-6">
+                                  <div className="w-6 h-6 border-2 border-purple-600 border-t-transparent rounded-full animate-spin" />
+                                </div>
+                              ) : services.length === 0 ? (
+                                <div className="text-center py-4 text-sm text-gray-500">
+                                  サービスがありません
+                                </div>
+                              ) : (
+                                <div className="space-y-2">
+                                  {services.map((service: any) => (
                               <Button 
+                                      key={service.id}
                                 variant="outline"
-                                onClick={() => {
-                                  setCurrentNominationType('main');
-                                  localStorage.setItem('nomination_type', 'main');
-                                  setShowNominationCastDialog(true);
-                                }}
+                                      onClick={() => handleServiceOrder(service)}
                                 disabled={isOrderingDisabled}
-                                className={`h-10 flex items-center justify-start px-3 text-purple-700 border-purple-300 hover:bg-purple-50 relative ${isOrderingDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                      className={`w-full h-14 justify-between ${isOrderingDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
                               >
-                                <Users className="w-4 h-4 mr-2" />
-                                <span className="text-xs">本指名</span>
+                                      <span className="text-base">{service.name}</span>
+                                      <Utensils className="w-5 h-5" />
                               </Button>
-                              <Button 
-                                variant="outline"
-                                onClick={() => {
-                                  setCurrentNominationType('inside');
-                                  localStorage.setItem('nomination_type', 'inside');
-                                  setShowNominationCastDialog(true);
-                                }}
-                                disabled={isOrderingDisabled}
-                                className={`h-10 flex items-center justify-start px-3 text-blue-700 border-blue-300 hover:bg-blue-50 relative ${isOrderingDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
-                              >
-                                <Users className="w-4 h-4 mr-2" />
-                                <span className="text-xs">場内指名</span>
-                              </Button>
+                                  ))}
                             </div>
+                              )}
                           </CardContent>
                         </Card>
 
-                        {/* サービス・予約 */}
                         <Card>
                           <CardHeader className="pb-2">
                             <CardTitle className="flex items-center text-sm">
@@ -3139,45 +3290,42 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                             </CardTitle>
                           </CardHeader>
                           <CardContent>
-                            <div className={`grid grid-cols-1 gap-2 ${isTimeExpired ? 'pointer-events-none opacity-50' : ''}`}>
+                              <div className="space-y-2">
                               <Button 
                                 variant="outline"
                                 onClick={() => setShowBottleKeepDialog(true)}
                                 disabled={isTimeExpired}
-                                className="h-10 flex items-center justify-start px-3 text-amber-700 border-amber-300 hover:bg-amber-50"
+                                  className="w-full h-14 justify-between"
                               >
-                                <Wine className="w-4 h-4 mr-2" />
-                                <span className="text-xs">ボトルキープ</span>
+                                  <span className="text-base">ボトルキープ</span>
+                                  <Wine className="w-5 h-5" />
                               </Button>
                               <Button 
                                 variant="outline"
                                 onClick={() => setShowVipRoomDialog(true)}
                                 disabled={isTimeExpired}
-                                className="h-10 flex items-center justify-start px-3 text-purple-700 border-purple-300 hover:bg-purple-50"
+                                  className="w-full h-14 justify-between"
                               >
-                                <Users className="w-4 h-4 mr-2" />
-                                <span className="text-xs">VIPルーム</span>
+                                  <span className="text-base">VIPルーム</span>
+                                  <Users className="w-5 h-5" />
                               </Button>
                               <Button 
                                 variant="outline"
                                 onClick={() => setShowKaraokeDialog(true)}
                                 disabled={isTimeExpired}
-                                className="h-10 flex items-center justify-start px-3 text-pink-700 border-pink-300 hover:bg-pink-50"
+                                  className="w-full h-14 justify-between"
                               >
-                                <Users className="w-4 h-4 mr-2" />
-                                <span className="text-xs">カラオケ利用</span>
+                                  <span className="text-base">カラオケ利用</span>
+                                  <Users className="w-5 h-5" />
                               </Button>
                             </div>
                           </CardContent>
                         </Card>
                       </div>
-                    )}
 
-                    {/* サービス注文カートと指名リストをflexで配置 */}
-                    {isSessionActive && (
-                      <div className="flex gap-3">
-                        {/* サービス注文カート */}
-                        <Card className="flex-1">
+                        {/* 右側：サービス注文カート */}
+                        <div className="col-span-1">
+                          <Card>
                           <CardHeader>
                             <CardTitle className="flex items-center">
                               <Utensils className="w-5 h-5 mr-2" />
@@ -3189,12 +3337,12 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                         </CardHeader>
                         <CardContent>
                             {serviceOrders.length === 0 ? (
-                              <div className="text-center py-8 text-gray-500">
-                                <Utensils className="w-12 h-12 mx-auto mb-3 text-gray-400" />
+                                <div className="text-center py-6 text-gray-500">
+                                  <Utensils className="w-10 h-10 mx-auto mb-2 text-gray-400" />
                                 <p>サービス注文がありません</p>
                               </div>
                               ) : (
-                              <ScrollArea className="h-[24vh] pr-1">
+                                <ScrollArea className="h-[55vh] pr-1">
                               <div className="space-y-3">
                                 {serviceOrders.map((order) => (
                                   <div key={order.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border">
@@ -3203,59 +3351,13 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                                       <p className="text-xs text-gray-500">
                                         数量: {order.amount}個
                                         {order.cast_name ? (
-                                          <span className="ml-2 text-blue-600">
-                                            (担当: {order.cast_name})
-                                          </span>
+                                              <span className="ml-2 text-blue-600">(担当: {order.cast_name})</span>
                                         ) : (
-                                          <span className="ml-2 text-gray-500">
-                                            (お客様直接注文)
-                                          </span>
+                                              <span className="ml-2 text-gray-500">(お客様直接注文)</span>
                                         )}
                                       </p>
-                                      <div className="flex items-center mt-1">
-                                        {serviceRequestStatus[order.id] === 'sent' && (
-                                          <span className="ml-2 text-xs text-blue-600 font-medium">
-                                            (管理者に送信済み)
-                                          </span>
-                                        )}
-                                        {serviceRequestStatus[order.id] === 'accepted' && (
-                                          <span className="ml-2 text-xs text-green-600 font-medium">
-                                            (管理者が受付済み)
-                                          </span>
-                                        )}
-                                        {(serviceRequestStatus[order.id] as string) === 'rejected' && (
-                                          <span className="ml-2 text-xs text-red-600 font-medium">
-                                            (管理者が拒否)
-                                          </span>
-                                        )}
-                                      </div>
                                     </div>
                                     <div className="flex items-center space-x-2">
-                                      {/* サービス注文リクエスト状態アイコン */}
-                                      <div className="relative">
-                                        {serviceRequestStatus[order.id] === 'pending' && (
-                                          <div className="w-6 h-6 flex items-center justify-center">
-                                            <Bell className="w-4 h-4 text-blue-500 animate-bounce" />
-                                          </div>
-                                        )}
-                                        {serviceRequestStatus[order.id] === 'sent' && (
-                                          <div className="w-6 h-6 flex items-center justify-center">
-                                            <Bell className="w-4 h-4 text-blue-500 animate-bounce" />
-                                          </div>
-                                        )}
-                                        {serviceRequestStatus[order.id] === 'accepted' && (
-                                          <div className="w-6 h-6 flex items-center justify-center">
-                                            <CheckCircle className="w-4 h-4 text-green-500" />
-                                          </div>
-                                        )}
-                                        {(serviceRequestStatus[order.id] as string) === 'rejected' && (
-                                          <div className="w-6 h-6 flex items-center justify-center">
-                                            <X className="w-4 h-4 text-red-500" />
-                                          </div>
-                                        )}
-                                      </div>
-                                      
-                                      {/* 削除ボタン */}
                                       <Button 
                                         size="sm"
                                         variant="outline"
@@ -3272,61 +3374,53 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                             )}
                           </CardContent>
                         </Card>
-
-                        {/* 指名リスト */}
-                        <Card className="flex-1">
-                          <CardHeader className="pb-3">
-                            <CardTitle className="flex items-center">
-                              <Users className="w-5 h-5 mr-2" />
-                              指名リスト
-                            </CardTitle>
-                          </CardHeader>
-                          <CardContent>
-                            {isNominationsLoading ? (
-                              <div className="text-sm text-gray-500">読み込み中...</div>
-                            ) : nominations.length === 0 ? (
-                              <div className="text-sm text-gray-500">指名はありません</div>
-                            ) : (
-                              <div className="space-y-3">
-                                {nominations.map((nomination: any) => (
-                                  <div key={nomination.id} className="flex items-center justify-between border border-gray-200 bg-white px-3 py-2">
-                            <div>
-                                      <div className="font-medium text-gray-900">{nomination.cast_name}</div>
-                                      <div className="text-xs text-gray-500">
-                                        {new Date(nomination.created_at).toLocaleString('ja-JP')}
                                       </div>
                                     </div>
-                                    <div className="flex items-center space-x-2">
-                                      <Badge className={`${nominationBadgeStyle[nomination.type_id as 'main' | 'inside' | 'together'] || 'bg-gray-100 text-gray-700'}`}>
-                                        {getNominationTypeLabel(nomination.type_id)}
-                                      </Badge>
-                              <Button 
-                                        size="sm"
-                                variant="outline"
-                                        className="text-red-600 border-red-300 hover:bg-red-50"
-                                        onClick={() => deleteNominationRecord(nomination.id)}
-                                      >
-                                        <Trash2 className="w-3 h-3" />
-                              </Button>
-                            </div>
-                        </div>
-                                ))}
+                    )}
                               </div>
                             )}
-                      </CardContent>
-                    </Card>
                       </div>
                     )}
+            </div>
 
-                  </div>
-                )}
+            {/* 左下ナビ（黒帯 約80px） */}
+            {isSessionActive && (
+              <div className="absolute left-0 right-0 bottom-0 h-20 bg-[#303030] text-white flex items-center justify-around px-4">
+                <Button
+                  variant="ghost"
+                  className="text-white text-[18px] hover:bg-white/10 gap-2"
+                  onClick={() => router.push('/')}
+                >
+                  <FaHome /> 最初のページ
+                </Button>
+                <Button
+                  variant="ghost"
+                  className={`text-white text-[18px] gap-2 hover:bg-white/10 ${leftMode === 'order' ? 'bg-white/10' : ''}`}
+                  onClick={() => setLeftMode('order')}
+                >
+                 <SiBuymeacoffee /> 注文
+                </Button>
+                <Button
+                  variant="ghost"
+                  className={`text-white text-[18px] gap-2 hover:bg-white/10 ${leftMode === 'nomination' ? 'bg-white/10' : ''}`}
+                  onClick={() => setLeftMode('nomination')}
+                >
+                 <BiUserPin /> 指定
+                </Button>
+                <Button
+                  variant="ghost"
+                  className={`text-white text-[18px] gap-2 hover:bg-white/10 ${leftMode === 'service' ? 'bg-white/10' : ''}`}
+                  onClick={() => setLeftMode('service')}
+                >
+                 <MdHomeRepairService /> サービス
+                </Button>
               </div>
             )}
           </div>
 
           {/* カート・注文 */}
           {isSessionActive && (
-            <div className="space-y-6">
+            <div className="w-1/6 min-w-[260px] space-y-4">
             {/* セット延長 */}
             <Card className="bg-gradient-to-r from-purple-50 to-pink-50 border-purple-200">
               <CardHeader className="pb-3">
@@ -3336,8 +3430,15 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-x-2 flex">
-                <div className="w-1/2 bg-white rounded-md p-3 border border-purple-200 text-center">
+                <div className="w-1/2 bg-white rounded-md p-3 border border-purple-200 text-center relative">
                   <div className="text-[11px] text-gray-500 mb-1">残り時間</div>
+                  {session?.is_paused && (
+                    <div className="absolute top-1 right-1">
+                      <span className="inline-flex items-center text-orange-700 border border-orange-200 px-2 py-0.5 text-[10px] font-semibold leading-none">
+                        停止中
+                      </span>
+                    </div>
+                  )}
                   {session?.is_paused && isEditingRemainingTime ? (
                     <div className="space-y-2">
                       <div className="flex items-center justify-center gap-1">
@@ -3394,7 +3495,6 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                       </div>
                       {session?.is_paused && (
                         <>
-                          <div className="text-xs text-orange-600 mt-1 font-semibold">停止中</div>
                           <Button
                             size="sm"
                             variant="outline"
@@ -3456,111 +3556,6 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                     )}
                   </Button>
                 </div>
-              </CardContent>
-            </Card>
-
-            {/* 注文カート */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center">
-                  <ShoppingCart className="w-5 h-5 mr-2" />
-                  注文カート
-                </CardTitle>
-                <CardDescription>
-                  {cartOrders.length}個の商品
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                {cartOrders.length === 0 ? (
-                  <div className="text-center py-8 text-gray-500">
-                    <ShoppingCart className="w-12 h-12 mx-auto mb-3 text-gray-400" />
-                    <p>カートが空です</p>
-                  </div>
-                ) : (
-                  <ScrollArea className="h-[30vh] pr-1">
-                  <div className="space-y-3">
-                    {cartOrders.map((order) => (
-                      <div key={order.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border">
-                        <div className="flex-1">
-                          <h4 className="font-medium text-sm">{order.product_name}</h4>
-                          <p className="text-xs text-gray-500">
-                            ¥{order.unit_price?.toLocaleString()} × {order.amount}個
-                            {order.cast_name ? (
-                              <span className="ml-2 text-blue-600">
-                                (担当: {order.cast_name})
-                              </span>
-                            ) : (
-                              <span className="ml-2 text-gray-500">
-                                (お客様直接注文)
-                              </span>
-                            )}
-                          </p>
-                          <div className="flex items-center mt-1">
-                            <span className="text-sm font-bold text-blue-600">
-                              合計: ¥{order.total_price?.toLocaleString()}
-                            </span>
-                            {orderRequestStatus[order.id] === 'sent' && (
-                              <span className="ml-2 text-xs text-blue-600 font-medium">
-                                (管理者に送信済み)
-                              </span>
-                            )}
-                            {orderRequestStatus[order.id] === 'accepted' && (
-                              <span className="ml-2 text-xs text-green-600 font-medium">
-                                (管理者が受付済み)
-                              </span>
-                            )}
-                            {(orderRequestStatus[order.id] as string) === 'rejected' && (
-                              <span className="ml-2 text-xs text-red-600 font-medium">
-                                (管理者が拒否)
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                        <div className="flex items-center space-x-2">
-                          {/* 注文リクエスト状態アイコン */}
-                          <div className="relative">
-                            {orderRequestStatus[order.id] === 'pending' && (
-                              <div className="w-6 h-6 flex items-center justify-center">
-                                <Clock className="w-4 h-4 text-orange-500 animate-pulse" />
-                              </div>
-                            )}
-                            {orderRequestStatus[order.id] === 'sent' && (
-                              <div className="w-6 h-6 flex items-center justify-center">
-                                <Bell className="w-4 h-4 text-blue-500 animate-bounce" />
-                              </div>
-                            )}
-                            {orderRequestStatus[order.id] === 'accepted' && (
-                              <div className="w-6 h-6 flex items-center justify-center">
-                                <CheckCircle className="w-4 h-4 text-green-500" />
-                              </div>
-                            )}
-                            {(orderRequestStatus[order.id] as string) === 'rejected' && (
-                              <div className="w-6 h-6 flex items-center justify-center">
-                                <X className="w-4 h-4 text-red-500" />
-                              </div>
-                            )}
-                          </div>
-                            {/* 削除ボタン（承認待ちのみ表示） */}
-                            {(() => {
-                              const st = (orderRequestStatus as any)[order.id] || order.status;
-                              const canDelete = st === 'pending' || st === 'sent';
-                              return canDelete ? (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                                  onClick={() => removeFromCart(order.id.toString(), st)}
-                            className="text-red-600 hover:text-red-700"
-                          >
-                            <Trash2 className="w-3 h-3" />
-                          </Button>
-                              ) : null;
-                            })()}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  </ScrollArea>
-                )}
               </CardContent>
             </Card>
 

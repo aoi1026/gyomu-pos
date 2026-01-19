@@ -7,12 +7,13 @@ export async function GET(request: NextRequest) {
     
     try {
       const result = await client.query(
-        'SELECT id, name, other, created_at, updated_at FROM category ORDER BY name'
+        'SELECT id, name, image, other, created_at, updated_at FROM category ORDER BY name'
       );
 
       const categories = result.rows.map(row => ({
         id: row.id,
         name: row.name,
+        image: row.image ?? null,
         other: row.other || '',
         created_at: row.created_at,
         updated_at: row.updated_at
@@ -35,7 +36,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const { name, other } = await request.json();
+    const { name, other, image } = await request.json();
 
     if (!name || name.trim() === '') {
       return NextResponse.json(
@@ -62,13 +63,14 @@ export async function POST(request: NextRequest) {
 
       // カテゴリを追加
       const result = await client.query(
-        'INSERT INTO category (name, other) VALUES ($1, $2) RETURNING id, name, other, created_at, updated_at',
-        [name.trim(), other || '']
+        'INSERT INTO category (name, image, other) VALUES ($1, $2, $3) RETURNING id, name, image, other, created_at, updated_at',
+        [name.trim(), image || null, other || '']
       );
 
       const newCategory = {
         id: result.rows[0].id,
         name: result.rows[0].name,
+        image: result.rows[0].image ?? null,
         other: result.rows[0].other || '',
         created_at: result.rows[0].created_at,
         updated_at: result.rows[0].updated_at

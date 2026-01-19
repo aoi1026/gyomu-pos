@@ -10,7 +10,7 @@ export async function GET(request: NextRequest) {
     
     try {
       let query = `
-        SELECT p.id, p.name, p.sku, p.sale_price, p.amount, p.other, p.created_at, p.updated_at,
+        SELECT p.id, p.name, p.sku, p.sale_price, p.amount, p.image, p.other, p.created_at, p.updated_at,
                c.name as category_name, c.id as category_id
         FROM product p
         JOIN category c ON p.category_id = c.id
@@ -32,6 +32,7 @@ export async function GET(request: NextRequest) {
         sku: row.sku,
         sale_price: parseFloat(row.sale_price),
         amount: row.amount,
+        image: row.image ?? null,
         other: row.other || '',
         category_id: row.category_id,
         category_name: row.category_name,
@@ -56,7 +57,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const { name, sku, sale_price, amount, other, category_id } = await request.json();
+    const { name, sku, sale_price, amount, other, category_id, image } = await request.json();
 
     if (!name || name.trim() === '') {
       return NextResponse.json(
@@ -124,8 +125,8 @@ export async function POST(request: NextRequest) {
 
       // 商品を追加
       const result = await client.query(
-        'INSERT INTO product (name, sku, sale_price, amount, other, category_id) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, name, sku, sale_price, amount, other, category_id, created_at, updated_at',
-        [name.trim(), sku.trim(), sale_price, amount, other || '', category_id]
+        'INSERT INTO product (name, sku, sale_price, amount, image, other, category_id) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id, name, sku, sale_price, amount, image, other, category_id, created_at, updated_at',
+        [name.trim(), sku.trim(), sale_price, amount, image || null, other || '', category_id]
       );
 
       // カテゴリ名も取得
@@ -140,6 +141,7 @@ export async function POST(request: NextRequest) {
         sku: result.rows[0].sku,
         sale_price: parseFloat(result.rows[0].sale_price),
         amount: result.rows[0].amount,
+        image: result.rows[0].image ?? null,
         other: result.rows[0].other || '',
         category_id: result.rows[0].category_id,
         category_name: categoryResult.rows[0].name,

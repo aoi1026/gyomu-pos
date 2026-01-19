@@ -18,10 +18,68 @@ export default function BluetoothPrinterButton() {
   const [selectedId, setSelectedId] = useState<string>('');
   const [isBusy, setIsBusy] = useState(false);
 
+  const webBluetoothSupported = useMemo(() => {
+    // Safari / Firefox: usually not supported.
+    // Chrome / Edge: supported (secure context required).
+    if (typeof window === 'undefined') return false;
+    const bt = (navigator as any)?.bluetooth;
+    return !!bt && typeof bt.requestDevice === 'function';
+  }, []);
+
+  const openOsPrintDialog = () => {
+    try {
+      const w = window.open('', 'pos_os_print', 'width=420,height=680');
+      if (!w) {
+        error('エラー', 'ポップアップがブロックされました。ポップアップ許可後に再度お試しください。');
+        return;
+      }
+      const now = new Date();
+      const issued = `${now.getFullYear()}/${String(now.getMonth() + 1).padStart(2, '0')}/${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+      w.document.open();
+      w.document.write(`
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>印刷</title>
+    <style>
+      @page { size: 80mm auto; margin: 0; }
+      body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+      .paper { width: 72mm; padding: 4mm; }
+      .center { text-align: center; }
+      .small { font-size: 12px; color: #111; }
+      .line { border-top: 1px solid #000; margin: 8px 0; }
+      .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; font-size: 11px; }
+    </style>
+  </head>
+  <body>
+    <div class="paper">
+      <div class="center"><strong>プリンター接続テスト</strong></div>
+      <div class="center small">OSの印刷ダイアログからプリンターを選択してください</div>
+      <div class="line"></div>
+      <div class="small">発行: ${issued}</div>
+      <div class="small">ブラウザ: ${navigator.userAgent}</div>
+      <div class="line"></div>
+      <div class="mono">※ Safari/FirefoxではブラウザからBluetooth機器を直接検索できないため、OSの印刷機能を利用します。</div>
+    </div>
+    <script>
+      setTimeout(() => { window.print(); }, 150);
+    </script>
+  </body>
+</html>
+      `);
+      w.document.close();
+    } catch (e: any) {
+      error('エラー', e?.message || '印刷ダイアログを開けませんでした');
+    }
+  };
+
   useEffect(() => {
     if (!open) return;
     setSelectedId(printer.deviceId || '');
-    printer.refreshPairedDevices().catch(() => {});
+    if (webBluetoothSupported) {
+      printer.refreshPairedDevices().catch(() => {});
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
@@ -52,8 +110,17 @@ export default function BluetoothPrinterButton() {
               Bluetoothプリンター接続
             </DialogTitle>
             <DialogDescription>
-              ブラウザ仕様上、周辺デバイスの一覧表示は「検索（ブラウザのデバイス選択画面）」で行います。
-              一度許可したデバイスは、この画面に「許可済みデバイス」として表示されます。
+              {webBluetoothSupported ? (
+                <>
+                  ブラウザ仕様上、周辺デバイスの一覧表示は「検索（ブラウザのデバイス選択画面）」で行います。
+                  一度許可したデバイスは、この画面に「許可済みデバイス」として表示されます。
+                </>
+              ) : (
+                <>
+                  このブラウザは Web Bluetooth に対応していないため、ブラウザからBluetooth機器を直接検索できません。
+                  OSの印刷ダイアログ（プリンター一覧）を利用してください。
+                </>
+              )}
             </DialogDescription>
           </DialogHeader>
 
@@ -69,7 +136,7 @@ export default function BluetoothPrinterButton() {
                 <Button
                   variant="outline"
                   size="sm"
-                  disabled={isBusy}
+                  disabled={isBusy || !webBluetoothSupported}
                   onClick={async () => {
                     try {
                       setIsBusy(true);
@@ -120,7 +187,7 @@ export default function BluetoothPrinterButton() {
                 </Select>
                 <Button
                   size="sm"
-                  disabled={isBusy || !selectedId || selectedId === '__none'}
+                  disabled={isBusy || !webBluetoothSupported || !selectedId || selectedId === '__none'}
                   onClick={async () => {
                     try {
                       setIsBusy(true);
@@ -144,7 +211,7 @@ export default function BluetoothPrinterButton() {
               <Label>周辺のBluetoothデバイスを検索</Label>
               <Button
                 className="w-full"
-                disabled={isBusy}
+                disabled={isBusy || !webBluetoothSupported}
                 onClick={async () => {
                   try {
                     setIsBusy(true);
@@ -162,6 +229,16 @@ export default function BluetoothPrinterButton() {
                 検索して接続（デバイス選択）
               </Button>
             </div>
+
+            {!webBluetoothSupported && (
+              <div className="space-y-2">
+                <Label>Safari / Firefox 向け（OSの印刷機能）</Label>
+                <Button className="w-full" variant="outline" onClick={openOsPrintDialog} disabled={isBusy}>
+                  <Printer className="w-4 h-4 mr-2" />
+                  OSの印刷ダイアログを開く（テスト印刷）
+                </Button>
+              </div>
+            )}
           </div>
         </DialogContent>
       </Dialog>

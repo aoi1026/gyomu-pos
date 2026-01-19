@@ -16,10 +16,12 @@ import {
   AlertCircle, CheckCircle, Package
 } from 'lucide-react';
 import { useNotificationContext } from '@/lib/notification-context';
+import { compressImageFileToDataUrl } from '@/lib/image/compress';
 
 interface Category {
   id: number;
   name: string;
+  image?: string | null;
   other: string;
   created_at: string;
   updated_at: string;
@@ -27,6 +29,7 @@ interface Category {
 
 interface CategoryForm {
   name: string;
+  image?: string | null;
   other: string;
 }
 
@@ -38,6 +41,7 @@ export default function CategoryManagementPage() {
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [form, setForm] = useState<CategoryForm>({
     name: '',
+    image: null,
     other: ''
   });
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
@@ -70,7 +74,7 @@ export default function CategoryManagementPage() {
 
   const handleAdd = () => {
     setEditingCategory(null);
-    setForm({ name: '', other: '' });
+    setForm({ name: '', image: null, other: '' });
     setValidationErrors([]);
     setIsDialogOpen(true);
   };
@@ -79,6 +83,7 @@ export default function CategoryManagementPage() {
     setEditingCategory(category);
     setForm({
       name: category.name,
+      image: category.image ?? null,
       other: category.other
     });
     setValidationErrors([]);
@@ -173,8 +178,26 @@ export default function CategoryManagementPage() {
   const handleCancel = () => {
     setIsDialogOpen(false);
     setEditingCategory(null);
-    setForm({ name: '', other: '' });
+    setForm({ name: '', image: null, other: '' });
     setValidationErrors([]);
+  };
+
+  const handleImageFile = async (file: File | null) => {
+    if (!file) {
+      setForm((prev) => ({ ...prev, image: null }));
+      return;
+    }
+    if (!file.type.startsWith('image/')) {
+      error('エラー', '画像ファイルを選択してください');
+      return;
+    }
+    // サイズ制限（最大5MB）
+    if (file.size > 5 * 1024 * 1024) {
+      error('エラー', '画像サイズが大きすぎます（5MB以下にしてください）');
+      return;
+    }
+    const dataUrl = await compressImageFileToDataUrl(file, { maxDimension: 1024, preferFormat: 'image/webp', quality: 0.82 });
+    setForm((prev) => ({ ...prev, image: dataUrl }));
   };
 
   if (isLoading) {
@@ -267,6 +290,7 @@ export default function CategoryManagementPage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
+                      <TableHead>画像</TableHead>
                       <TableHead>カテゴリ名</TableHead>
                       <TableHead>備考</TableHead>
                       <TableHead>作成日</TableHead>
@@ -277,6 +301,17 @@ export default function CategoryManagementPage() {
                   <TableBody>
                     {sortedCategories.map((category) => (
                       <TableRow key={category.id}>
+                        <TableCell>
+                          {category.image ? (
+                            <img
+                              src={category.image}
+                              alt={`${category.name}画像`}
+                              className="w-10 h-10 object-cover rounded border"
+                            />
+                          ) : (
+                            <span className="text-sm text-gray-400">-</span>
+                          )}
+                        </TableCell>
                         <TableCell>
                           <div className="flex items-center space-x-3">
                             <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
@@ -387,6 +422,30 @@ export default function CategoryManagementPage() {
                     onChange={(e) => setForm(prev => ({ ...prev, name: e.target.value }))}
                     placeholder="例：飲み物、食べ物、デザート"
                   />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="image">画像</Label>
+                  <Input
+                    id="image"
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => handleImageFile(e.target.files?.[0] || null)}
+                  />
+                  {form.image && (
+                    <div className="flex items-center gap-3">
+                      <img src={form.image} alt="プレビュー" className="w-16 h-16 object-cover rounded border" />
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setForm((prev) => ({ ...prev, image: null }))}
+                      >
+                        画像を削除
+                      </Button>
+                    </div>
+                  )}
+                  <p className="text-xs text-gray-500">※ 最大5MB（保存時に圧縮します）</p>
                 </div>
                 
                 <div className="space-y-2">

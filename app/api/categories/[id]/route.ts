@@ -6,7 +6,7 @@ export async function PUT(
   { params }: { params: { id: string } }
 ) {
   try {
-    const { name, other } = await request.json();
+    const { name, other, image } = await request.json();
     const categoryId = parseInt(params.id);
 
     if (!name || name.trim() === '') {
@@ -54,13 +54,14 @@ export async function PUT(
 
       // カテゴリを更新
       const result = await client.query(
-        'UPDATE category SET name = $1, other = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $3 RETURNING id, name, other, created_at, updated_at',
-        [name.trim(), other || '', categoryId]
+        'UPDATE category SET name = $1, image = $2, other = $3, updated_at = CURRENT_TIMESTAMP WHERE id = $4 RETURNING id, name, image, other, created_at, updated_at',
+        [name.trim(), image || null, other || '', categoryId]
       );
 
       const updatedCategory = {
         id: result.rows[0].id,
         name: result.rows[0].name,
+        image: result.rows[0].image ?? null,
         other: result.rows[0].other || '',
         created_at: result.rows[0].created_at,
         updated_at: result.rows[0].updated_at

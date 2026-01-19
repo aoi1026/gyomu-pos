@@ -108,6 +108,7 @@ END $$;
 CREATE TABLE IF NOT EXISTS public.category (
     id SERIAL PRIMARY KEY,
     name VARCHAR(100) NOT NULL,
+    image TEXT,
     other TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
@@ -121,10 +122,31 @@ CREATE TABLE IF NOT EXISTS public.product (
     sku VARCHAR(50) UNIQUE NOT NULL,
     sale_price DECIMAL(10,2) NOT NULL CHECK (sale_price >= 0),
     amount INTEGER DEFAULT 0 CHECK (amount >= 0),
+    image TEXT,
     other TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
+
+-- 既存category/productテーブルへの画像カラム追加（存在しない場合のみ）
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'category' AND column_name = 'image'
+    ) THEN
+        ALTER TABLE public.category ADD COLUMN image TEXT;
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'product' AND column_name = 'image'
+    ) THEN
+        ALTER TABLE public.product ADD COLUMN image TEXT;
+    END IF;
+EXCEPTION WHEN OTHERS THEN
+    NULL;
+END $$;
 
 -- セッション管理テーブル
 CREATE TABLE IF NOT EXISTS public.sessions (
