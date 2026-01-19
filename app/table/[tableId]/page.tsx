@@ -2957,24 +2957,36 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                     {/* 注文 */}
                     {leftMode === 'order' && (
                         <div className={isTimeExpired ? 'pointer-events-none opacity-50' : ''}>
-                        <div className="flex items-center gap-2 overflow-x-auto pb-2">
-                          <Button
-                            size="sm"
-                            variant={selectedCategoryId === 'all' ? 'default' : 'outline'}
-                            onClick={() => setSelectedCategoryId('all')}
-                          >
-                            すべて
-                          </Button>
-                              {menuCategories.filter((c) => c.id !== 4).map((c) => (
-                            <Button
-                              key={c.id}
-                              size="sm"
-                              variant={selectedCategoryId === String(c.id) ? 'default' : 'outline'}
-                              onClick={() => setSelectedCategoryId(String(c.id))}
-                            >
-                              {c.name}
-                            </Button>
-                          ))}
+                        {/* カテゴリタブ（スクロール時に固定 / 連続した平行四辺形） */}
+                        <div className="sticky top-0 z-40 bg-gradient-to-br from-purple-50 via-pink-50 to-blue-50 pt-2 pb-2">
+                          <div className="pl-5 flex items-center overflow-x-auto">
+                            {[
+                              { id: 'all', name: 'すべて' },
+                              ...menuCategories.filter((c) => c.id !== 4).map((c) => ({ id: String(c.id), name: c.name })),
+                            ].map((tab, idx) => {
+                              const active = selectedCategoryId === tab.id;
+                              return (
+                                <button
+                                  key={tab.id}
+                                  type="button"
+                                  onClick={() => setSelectedCategoryId(tab.id)}
+                                  className={[
+                                    'relative h-10 px-5 text-sm font-semibold select-none whitespace-nowrap',
+                                    'skew-x-12',
+                                    idx === 0 ? '' : '-ml-3',
+                                    active
+                                      ? 'bg-purple-600 text-white shadow-md z-20'
+                                      : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50 z-10',
+                                    'rounded-none',
+                                  ].join(' ')}
+                                >
+                                  <span className="inline-block -skew-x-12">
+                                    {tab.name}
+                                  </span>
+                                </button>
+                              );
+                            })}
+                          </div>
                         </div>
 
                         <div className="grid grid-cols-3 lg:grid-cols-4 gap-3">
@@ -3264,20 +3276,20 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                                   サービスがありません
                                 </div>
                               ) : (
-                                <div className="space-y-2">
+                                <div className={`grid grid-cols-3 gap-2 ${isTimeExpired ? 'pointer-events-none opacity-50' : ''}`}>
                                   {services.map((service: any) => (
-                              <Button 
+                                    <Button
                                       key={service.id}
-                                variant="outline"
+                                      variant="outline"
                                       onClick={() => handleServiceOrder(service)}
-                                disabled={isOrderingDisabled}
-                                      className={`w-full h-14 justify-between ${isOrderingDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
-                              >
-                                      <span className="text-base">{service.name}</span>
+                                      disabled={isOrderingDisabled}
+                                      className={`h-14 px-2 flex-col justify-center gap-1 ${isOrderingDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                    >
                                       <Utensils className="w-5 h-5" />
-                              </Button>
+                                      <span className="text-[13px] leading-tight line-clamp-1">{service.name}</span>
+                                    </Button>
                                   ))}
-                            </div>
+                                </div>
                               )}
                           </CardContent>
                         </Card>
@@ -3290,33 +3302,33 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                             </CardTitle>
                           </CardHeader>
                           <CardContent>
-                              <div className="space-y-2">
-                              <Button 
+                            <div className={`grid grid-cols-3 gap-2 ${isTimeExpired ? 'pointer-events-none opacity-50' : ''}`}>
+                              <Button
                                 variant="outline"
                                 onClick={() => setShowBottleKeepDialog(true)}
                                 disabled={isTimeExpired}
-                                  className="w-full h-14 justify-between"
+                                className="h-14 px-2 flex-col justify-center gap-1"
                               >
-                                  <span className="text-base">ボトルキープ</span>
-                                  <Wine className="w-5 h-5" />
+                                <Wine className="w-5 h-5" />
+                                <span className="text-[13px] leading-tight">ボトルキープ</span>
                               </Button>
-                              <Button 
+                              <Button
                                 variant="outline"
                                 onClick={() => setShowVipRoomDialog(true)}
                                 disabled={isTimeExpired}
-                                  className="w-full h-14 justify-between"
+                                className="h-14 px-2 flex-col justify-center gap-1"
                               >
-                                  <span className="text-base">VIPルーム</span>
-                                  <Users className="w-5 h-5" />
+                                <Users className="w-5 h-5" />
+                                <span className="text-[13px] leading-tight">VIPルーム</span>
                               </Button>
-                              <Button 
+                              <Button
                                 variant="outline"
                                 onClick={() => setShowKaraokeDialog(true)}
                                 disabled={isTimeExpired}
-                                  className="w-full h-14 justify-between"
+                                className="h-14 px-2 flex-col justify-center gap-1"
                               >
-                                  <span className="text-base">カラオケ利用</span>
-                                  <Users className="w-5 h-5" />
+                                <Users className="w-5 h-5" />
+                                <span className="text-[13px] leading-tight">カラオケ利用</span>
                               </Button>
                             </div>
                           </CardContent>
@@ -3431,14 +3443,14 @@ export default function TableDashboard({ params }: { params: { tableId: string }
               </CardHeader>
               <CardContent className="space-x-2 flex">
                 <div className="w-1/2 bg-white rounded-md p-3 border border-purple-200 text-center relative">
-                  <div className="text-[11px] text-gray-500 mb-1">残り時間</div>
-                  {session?.is_paused && (
+                  <div className="text-[11px] text-gray-500 mb-1"> </div>
+                  {/* {session?.is_paused && (
                     <div className="absolute top-1 right-1">
                       <span className="inline-flex items-center text-orange-700 border border-orange-200 px-2 py-0.5 text-[10px] font-semibold leading-none">
                         停止中
                       </span>
                     </div>
-                  )}
+                  )} */}
                   {session?.is_paused && isEditingRemainingTime ? (
                     <div className="space-y-2">
                       <div className="flex items-center justify-center gap-1">

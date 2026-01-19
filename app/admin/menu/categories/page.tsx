@@ -13,7 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { 
   ArrowLeft, Tag, Plus, Edit, Trash2, Save, X, 
-  AlertCircle, CheckCircle, Package
+  AlertCircle, CheckCircle, Package, Upload
 } from 'lucide-react';
 import { useNotificationContext } from '@/lib/notification-context';
 import { compressImageFileToDataUrl } from '@/lib/image/compress';
@@ -44,6 +44,7 @@ export default function CategoryManagementPage() {
     image: null,
     other: ''
   });
+  const [imageFileName, setImageFileName] = useState<string>('');
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
   const [deleteCategoryId, setDeleteCategoryId] = useState<number | null>(null);
 
@@ -185,6 +186,7 @@ export default function CategoryManagementPage() {
   const handleImageFile = async (file: File | null) => {
     if (!file) {
       setForm((prev) => ({ ...prev, image: null }));
+      setImageFileName('');
       return;
     }
     if (!file.type.startsWith('image/')) {
@@ -196,6 +198,7 @@ export default function CategoryManagementPage() {
       error('エラー', '画像サイズが大きすぎます（5MB以下にしてください）');
       return;
     }
+    setImageFileName(file.name);
     const dataUrl = await compressImageFileToDataUrl(file, { maxDimension: 1024, preferFormat: 'image/webp', quality: 0.82 });
     setForm((prev) => ({ ...prev, image: dataUrl }));
   };
@@ -425,21 +428,39 @@ export default function CategoryManagementPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="image">画像</Label>
-                  <Input
-                    id="image"
+                  <Label>画像</Label>
+                  <input
+                    id="category-image"
                     type="file"
                     accept="image/*"
+                    className="hidden"
                     onChange={(e) => handleImageFile(e.target.files?.[0] || null)}
                   />
+                  <label
+                    htmlFor="category-image"
+                    className="h-12 w-full rounded-md border-2 border-dashed border-gray-300 bg-white hover:bg-gray-50 cursor-pointer flex items-center justify-center gap-2 text-sm text-gray-700"
+                  >
+                    <Upload className="w-4 h-4" />
+                    <span className="font-medium">
+                      {form.image ? '画像を変更（ファイル追加）' : '画像ファイルを追加'}
+                    </span>
+                  </label>
                   {form.image && (
                     <div className="flex items-center gap-3">
                       <img src={form.image} alt="プレビュー" className="w-16 h-16 object-cover rounded border" />
+                      <div className="flex-1">
+                        <div className="text-xs text-gray-600 truncate">
+                          {imageFileName ? `選択中: ${imageFileName}` : '選択済み'}
+                        </div>
+                      </div>
                       <Button
                         type="button"
                         size="sm"
                         variant="outline"
-                        onClick={() => setForm((prev) => ({ ...prev, image: null }))}
+                        onClick={() => {
+                          setForm((prev) => ({ ...prev, image: null }));
+                          setImageFileName('');
+                        }}
                       >
                         画像を削除
                       </Button>
