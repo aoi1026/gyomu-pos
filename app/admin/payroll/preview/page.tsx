@@ -534,8 +534,8 @@ export default function PayrollPreviewPage() {
     const lastDay = new Date(year, month, 0).getDate();
     const end = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
     if (dateMode === 'month') {
-      setPeriodStart(start);
-      setPeriodEnd(end);
+    setPeriodStart(start);
+    setPeriodEnd(end);
     }
   }, [selectedYear, selectedMonth, dateMode]);
 
@@ -744,43 +744,43 @@ export default function PayrollPreviewPage() {
                       >
                         日付
                       </button>
-                    </div>
+                  </div>
                     <div className="text-xs text-gray-500">※ 三項目は同時選択できません</div>
                   </div>
 
                   {dateMode === 'month' && (
                     <div className="flex items-center space-x-4">
-                      <div className="flex flex-col space-y-2">
-                        <select
-                          id="year"
-                          value={selectedYear}
-                          onChange={(e) => setSelectedYear(Number(e.target.value))}
-                          className="w-24 h-10 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white cursor-pointer"
-                          disabled={payrollRun?.status === 'confirmed'}
-                        >
-                          {Array.from({ length: 16 }, (_, i) => {
-                            const year = 2020 + i;
-                            return (
-                              <option key={year} value={year}>
-                                {year}年
-                              </option>
-                            );
-                          })}
-                        </select>
-                      </div>
-                      <div className="flex flex-col space-y-2">
-                        <select
-                          id="month"
-                          value={selectedMonth}
-                          onChange={(e) => setSelectedMonth(Number(e.target.value))}
-                          className="w-24 h-10 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
-                          disabled={payrollRun?.status === 'confirmed'}
-                        >
-                          {Array.from({ length: 12 }, (_, i) => (
-                            <option key={i + 1} value={i + 1}>{i + 1}月</option>
-                          ))}
-                        </select>
-                      </div>
+                  <div className="flex flex-col space-y-2">
+                    <select
+                      id="year"
+                      value={selectedYear}
+                      onChange={(e) => setSelectedYear(Number(e.target.value))}
+                      className="w-24 h-10 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white cursor-pointer"
+                      disabled={payrollRun?.status === 'confirmed'}
+                    >
+                      {Array.from({ length: 16 }, (_, i) => {
+                        const year = 2020 + i;
+                        return (
+                          <option key={year} value={year}>
+                            {year}年
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </div>
+                  <div className="flex flex-col space-y-2">
+                    <select
+                      id="month"
+                      value={selectedMonth}
+                      onChange={(e) => setSelectedMonth(Number(e.target.value))}
+                      className="w-24 h-10 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
+                      disabled={payrollRun?.status === 'confirmed'}
+                    >
+                      {Array.from({ length: 12 }, (_, i) => (
+                        <option key={i + 1} value={i + 1}>{i + 1}月</option>
+                      ))}
+                    </select>
+                  </div>
                     </div>
                   )}
 
@@ -990,7 +990,7 @@ export default function PayrollPreviewPage() {
                       rows[idx] = next;
                       setMonthlyRows(rows);
                       if (dateMode === 'month') {
-                        scheduleAutoSave(next);
+                      scheduleAutoSave(next);
                       }
                     };
                     const isUnlocked = dateMode === 'month' ? !!rowUnlocked[row.user_id] : false;
@@ -1000,15 +1000,15 @@ export default function PayrollPreviewPage() {
                           <div className="flex flex-col items-start space-y-1">
                             <div className="font-medium">{row.name}</div>
                             {dateMode === 'month' && (
-                              <button
-                                type="button"
-                                className={`inline-flex items-center text-xs px-2 py-1 rounded border ${isUnlocked ? 'text-green-700 border-green-300' : 'text-gray-600 border-gray-300'}`}
-                                onClick={() => toggleRowLock(row.user_id)}
-                                title={isUnlocked ? 'ロック（編集不可）' : 'ロック解除（編集可）'}
-                              >
-                                {isUnlocked ? <Unlock className="w-3 h-3 mr-1" /> : <Lock className="w-3 h-3 mr-1" />}
-                                {/* {isUnlocked ? '解除中' : 'ロック中'} */}
-                              </button>
+                            <button
+                              type="button"
+                              className={`inline-flex items-center text-xs px-2 py-1 rounded border ${isUnlocked ? 'text-green-700 border-green-300' : 'text-gray-600 border-gray-300'}`}
+                              onClick={() => toggleRowLock(row.user_id)}
+                              title={isUnlocked ? 'ロック（編集不可）' : 'ロック解除（編集可）'}
+                            >
+                              {isUnlocked ? <Unlock className="w-3 h-3 mr-1" /> : <Lock className="w-3 h-3 mr-1" />}
+                              {/* {isUnlocked ? '解除中' : 'ロック中'} */}
+                            </button>
                             )}
                           </div>
                         </td>

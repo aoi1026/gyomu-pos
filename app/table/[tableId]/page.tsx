@@ -2876,11 +2876,11 @@ export default function TableDashboard({ params }: { params: { tableId: string }
         </div>
       </header>
 
-      <div className="w-full px-4 sm:px-6 lg:px-8 pt-4 pb-0">
-        <div className="flex gap-4 h-[calc(100vh-96px)]">
+      <div className="w-full px-2 sm:px-4 md:px-6 lg:px-8 pt-4 pb-0">
+        <div className="flex flex-col lg:flex-row gap-4 min-h-screen lg:h-[calc(100vh-96px)]">
           {/* 左側（全幅の5/6） */}
-          <div className="w-5/6 relative">
-            <div className="absolute inset-0 pb-20 overflow-y-auto space-y-6">
+          <div className="w-full lg:w-5/6 relative flex-1 flex flex-col min-h-0">
+            <div className="flex-1 overflow-y-auto space-y-4 sm:space-y-6 pb-20">
             {/* セッション管理 */}
             {!isSessionActive && (
               <Card className="bg-blue-50 border-blue-200 col-span-10">
@@ -2958,8 +2958,8 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                     {leftMode === 'order' && (
                         <div className={isTimeExpired ? 'pointer-events-none opacity-50' : ''}>
                         {/* カテゴリタブ（スクロール時に固定 / 連続した平行四辺形） */}
-                        <div className="sticky top-0 z-40 bg-gradient-to-br from-purple-50 via-pink-50 to-blue-50 pt-2 pb-2">
-                          <div className="pl-5 flex items-center overflow-x-auto">
+                        <div className="sticky top-[0px] sm:top-[0px] bg-gradient-to-br from-purple-50 via-pink-50 to-blue-50 pt-2 pb-2 z-30">
+                          <div className="pl-2 sm:pl-5 flex items-center overflow-x-auto">
                             {[
                               { id: 'all', name: 'すべて' },
                               ...menuCategories.filter((c) => c.id !== 4).map((c) => ({ id: String(c.id), name: c.name })),
@@ -2971,9 +2971,9 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                                   type="button"
                                   onClick={() => setSelectedCategoryId(tab.id)}
                                   className={[
-                                    'relative h-10 px-5 text-sm font-semibold select-none whitespace-nowrap',
+                                    'relative h-8 sm:h-10 px-3 sm:px-5 text-xs sm:text-sm font-semibold select-none whitespace-nowrap',
                                     'skew-x-12',
-                                    idx === 0 ? '' : '-ml-3',
+                                    idx === 0 ? '' : '-ml-2 sm:-ml-3',
                                     active
                                       ? 'bg-purple-600 text-white shadow-md z-20'
                                       : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50 z-10',
@@ -2986,17 +2986,17 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                                 </button>
                               );
                             })}
-                          </div>
+                        </div>
                         </div>
 
-                        <div className="grid grid-cols-3 lg:grid-cols-4 gap-3">
+                        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-3">
                               {(() => {
                                 const items = selectedCategoryId === 'all'
                                   ? menuItems
                                   : menuItems.filter((it: any) => Number(it.category_id) === Number(selectedCategoryId));
                                 if (!items || items.length === 0) {
                                   return (
-                                <div className="col-span-3 lg:col-span-4 text-center text-sm text-gray-500 py-10">
+                                <div className="col-span-2 sm:col-span-3 lg:col-span-4 text-center text-sm text-gray-500 py-10">
                                         該当する商品がありません
                                 </div>
                                   );
@@ -3017,13 +3017,13 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                                       <Package className="w-8 h-8" />
                                     </div>
                                   )}
-                                  <div className="absolute right-1 bottom-1 bg-black/70 text-white text-[11px] px-2 py-1 rounded">
+                                  <div className="absolute right-1 bottom-1 bg-black/70 text-white text-[9px] sm:text-[11px] px-1.5 sm:px-2 py-0.5 sm:py-1 rounded">
                                     {formatCurrency(item.sale_price)}
                                 </div>
                                 </div>
-                                <div className="p-1.5">
-                                  <div className="text-[13px] font-semibold leading-tight line-clamp-2">{item.name}</div>
-                                  <div className="text-[11px] text-gray-500 mt-1">
+                                <div className="p-1 sm:p-1.5">
+                                  <div className="text-[11px] sm:text-[13px] font-semibold leading-tight line-clamp-2">{item.name}</div>
+                                  <div className="text-[9px] sm:text-[11px] text-gray-500 mt-0.5 sm:mt-1">
                                     SKU: {item.sku ? item.sku : '-'}
                                   </div>
                                 </div>
@@ -3033,7 +3033,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                         </div>
 
                         {/* 左下：注文カートボタン（押すと横からモーダル表示） */}
-                        <div className="fixed left-5 bottom-[132px] z-40">
+                        <div className="fixed left-2 sm:left-5 bottom-[100px] sm:bottom-[100px] z-40">
                           {(() => {
                             const hasRequested = cartOrders.some((order: any) => {
                               const st = (orderRequestStatus as any)[order.id] || order.status;
@@ -3042,10 +3042,10 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                             return (
                               <Button
                                 onClick={() => setIsOrderCartOpen(true)}
-                                className="h-16 w-16 rounded-full bg-gradient-to-r from-pink-500 to-fuchsia-500 text-white shadow-lg hover:from-pink-600 hover:to-fuchsia-600 relative border-0"
+                                className="h-12 w-12 sm:h-16 sm:w-16 rounded-full bg-gradient-to-r from-pink-500 to-fuchsia-500 text-white shadow-lg hover:from-pink-600 hover:to-fuchsia-600 relative border-0"
                                 variant="outline"
                               >
-                                <ShoppingCart className="w-6 h-6" />
+                                <ShoppingCart className="w-5 h-5 sm:w-6 sm:h-6" />
                                 
                                 {hasRequested && (
                                   <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-red-500 rounded-full ring-2 ring-white" />
@@ -3056,7 +3056,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                         </div>
 
                         <Sheet open={isOrderCartOpen} onOpenChange={setIsOrderCartOpen}>
-                          <SheetContent side="right" className="w-[420px] sm:max-w-md p-0">
+                          <SheetContent side="right" className="w-full sm:w-[420px] sm:max-w-md p-0">
                             <div className="p-6 pb-4 border-b">
                               <SheetHeader>
                                 <SheetTitle className="flex items-center">
@@ -3076,42 +3076,42 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                                   <p>カートが空です</p>
                                 </div>
                               ) : (
-                                <ScrollArea className="h-[70vh] pr-1">
+                                <ScrollArea className="h-[60vh] sm:h-[70vh] pr-1">
                                   <div className="space-y-3">
                                     {cartOrders.map((order: any) => (
-                                      <div key={order.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border">
-                                        <div className="flex-1">
-                                          <h4 className="font-medium text-sm">{order.product_name}</h4>
-                                          <p className="text-xs text-gray-500">
+                                      <div key={order.id} className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-2 sm:p-3 bg-gray-50 rounded-lg border gap-2 sm:gap-0">
+                                        <div className="flex-1 min-w-0 w-full sm:w-auto">
+                                          <h4 className="font-medium text-xs sm:text-sm truncate">{order.product_name}</h4>
+                                          <p className="text-[10px] sm:text-xs text-gray-500">
                                             ¥{order.unit_price?.toLocaleString()} × {order.amount}個
                                             {order.cast_name ? (
-                                              <span className="ml-2 text-blue-600">(担当: {order.cast_name})</span>
+                                              <span className="ml-1 sm:ml-2 text-blue-600">(担当: {order.cast_name})</span>
                                             ) : (
-                                              <span className="ml-2 text-gray-500">(お客様直接注文)</span>
+                                              <span className="ml-1 sm:ml-2 text-gray-500">(お客様直接注文)</span>
                                             )}
                                           </p>
-                                          <div className="flex items-center mt-1">
-                                            <span className="text-sm font-bold text-blue-600">
+                                          <div className="flex flex-col sm:flex-row items-start sm:items-center mt-1 gap-1 sm:gap-0">
+                                            <span className="text-xs sm:text-sm font-bold text-blue-600">
                                               合計: ¥{order.total_price?.toLocaleString()}
                                             </span>
                                             {orderRequestStatus[order.id] === 'sent' && (
-                                              <span className="ml-2 text-xs text-blue-600 font-medium">
+                                              <span className="text-[9px] sm:text-xs text-blue-600 font-medium">
                                                 (管理者に送信済み)
                                               </span>
                                             )}
                                             {orderRequestStatus[order.id] === 'accepted' && (
-                                              <span className="ml-2 text-xs text-green-600 font-medium">
+                                              <span className="text-[9px] sm:text-xs text-green-600 font-medium">
                                                 (管理者が受付済み)
                                               </span>
                                             )}
                                             {(orderRequestStatus[order.id] as string) === 'rejected' && (
-                                              <span className="ml-2 text-xs text-red-600 font-medium">
+                                              <span className="text-[9px] sm:text-xs text-red-600 font-medium">
                                                 (管理者が拒否)
                                               </span>
-                                            )}
+                                      )}
                                           </div>
                                         </div>
-                                        <div className="flex items-center space-x-2">
+                                        <div className="flex items-center space-x-1 sm:space-x-2 w-full sm:w-auto justify-end">
                                           <div className="relative">
                                             {orderRequestStatus[order.id] === 'pending' && (
                                               <div className="w-6 h-6 flex items-center justify-center">
@@ -3143,7 +3143,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                                                 variant="outline"
                                                 onClick={() => removeFromCart(order.id.toString(), st)}
                                                 className="text-red-600 hover:text-red-700"
-                                              >
+                                >
                                                 <Trash2 className="w-3 h-3" />
                                 </Button>
                                             ) : null;
@@ -3162,11 +3162,11 @@ export default function TableDashboard({ params }: { params: { tableId: string }
 
                     {/* 指定 */}
                     {leftMode === 'nomination' && (
-                      <div className="grid grid-cols-3 gap-16">
-                        <div className="ml-24 col-span-1 space-y-10">
+                      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-16">
+                        <div className="lg:ml-24 col-span-1 space-y-4 lg:space-y-10">
                           <Button
                             size="lg"
-                            className="w-full h-72 text-lg bg-purple-600 hover:bg-purple-700 relative overflow-hidden p-0"
+                            className="w-full h-48 sm:h-32 lg:h-48 text-base sm:text-lg bg-purple-600 hover:bg-purple-700 relative overflow-hidden p-0"
                             disabled={isOrderingDisabled}
                             onClick={() => {
                               setCurrentNominationType('main');
@@ -3188,7 +3188,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                           </Button>
                           <Button
                             size="lg"
-                            className="w-full h-72 text-lg bg-blue-600 hover:bg-blue-700 relative overflow-hidden p-0"
+                            className="w-full h-48 sm:h-32 lg:h-48 text-base sm:text-lg bg-blue-600 hover:bg-blue-700 relative overflow-hidden p-0"
                             disabled={isOrderingDisabled}
                             onClick={() => {
                               setCurrentNominationType('inside');
@@ -3209,7 +3209,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                             </div>
                           </Button>
                         </div>
-                        <div className="col-span-2">
+                        <div className="col-span-1 lg:col-span-2">
                       <Card>
                             <CardHeader className="pb-3">
                               <CardTitle className="flex items-center">
@@ -3225,14 +3225,14 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                               ) : (
                                 <div className="space-y-3">
                                   {nominations.map((nomination: any) => (
-                                    <div key={nomination.id} className="flex items-center justify-between border border-gray-200 bg-white px-3 py-2">
-                                      <div>
-                                        <div className="font-medium text-gray-900">{nomination.cast_name}</div>
-                                        <div className="text-xs text-gray-500">
+                                    <div key={nomination.id} className="flex flex-col sm:flex-row items-start sm:items-center justify-between border border-gray-200 bg-white px-2 sm:px-3 py-2 gap-2 sm:gap-0">
+                                      <div className="flex-1 min-w-0">
+                                        <div className="font-medium text-sm sm:text-base text-gray-900 truncate">{nomination.cast_name}</div>
+                                        <div className="text-[10px] sm:text-xs text-gray-500">
                                           {new Date(nomination.created_at).toLocaleString('ja-JP')}
                               </div>
                               </div>
-                                      <div className="flex items-center space-x-2">
+                                      <div className="flex items-center space-x-1 sm:space-x-2 w-full sm:w-auto">
                                         <Badge className={`${nominationBadgeStyle[nomination.type_id as 'main' | 'inside' | 'together'] || 'bg-gray-100 text-gray-700'}`}>
                                           {getNominationTypeLabel(nomination.type_id)}
                                         </Badge>
@@ -3257,12 +3257,12 @@ export default function TableDashboard({ params }: { params: { tableId: string }
 
                     {/* サービス */}
                     {leftMode === 'service' && (
-                      <div className="grid grid-cols-3 gap-4">
-                        <div className="col-span-2 space-y-4">
+                      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                        <div className="col-span-1 lg:col-span-2 space-y-4">
                         <Card>
                           <CardHeader className="pb-2">
-                            <CardTitle className="flex items-center text-sm">
-                                <Bell className="w-4 h-4 mr-1" />
+                            <CardTitle className="flex items-center text-xs sm:text-sm">
+                                <Bell className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
                                 サービス・呼び出し
                             </CardTitle>
                           </CardHeader>
@@ -3276,59 +3276,59 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                                   サービスがありません
                                 </div>
                               ) : (
-                                <div className={`grid grid-cols-3 gap-2 ${isTimeExpired ? 'pointer-events-none opacity-50' : ''}`}>
+                                <div className={`grid grid-cols-2 sm:grid-cols-3 gap-2 ${isTimeExpired ? 'pointer-events-none opacity-50' : ''}`}>
                                   {services.map((service: any) => (
-                                    <Button
+                              <Button 
                                       key={service.id}
-                                      variant="outline"
+                                variant="outline"
                                       onClick={() => handleServiceOrder(service)}
-                                      disabled={isOrderingDisabled}
-                                      className={`h-14 px-2 flex-col justify-center gap-1 ${isOrderingDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
-                                    >
-                                      <Utensils className="w-5 h-5" />
-                                      <span className="text-[13px] leading-tight line-clamp-1">{service.name}</span>
-                                    </Button>
+                                disabled={isOrderingDisabled}
+                                      className={`h-12 sm:h-14 px-1 sm:px-2 flex-col justify-center gap-0.5 sm:gap-1 ${isOrderingDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+                              >
+                                      <Utensils className="w-4 h-4 sm:w-5 sm:h-5" />
+                                      <span className="text-[10px] sm:text-[13px] leading-tight line-clamp-1">{service.name}</span>
+                              </Button>
                                   ))}
-                                </div>
+                            </div>
                               )}
                           </CardContent>
                         </Card>
 
                         <Card>
                           <CardHeader className="pb-2">
-                            <CardTitle className="flex items-center text-sm">
-                              <Coffee className="w-4 h-4 mr-1" />
+                            <CardTitle className="flex items-center text-xs sm:text-sm">
+                              <Coffee className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
                               追加注文
                             </CardTitle>
                           </CardHeader>
                           <CardContent>
                             <div className={`grid grid-cols-3 gap-2 ${isTimeExpired ? 'pointer-events-none opacity-50' : ''}`}>
-                              <Button
+                              <Button 
                                 variant="outline"
                                 onClick={() => setShowBottleKeepDialog(true)}
                                 disabled={isTimeExpired}
-                                className="h-14 px-2 flex-col justify-center gap-1"
+                                className="h-12 sm:h-14 px-1 sm:px-2 flex-col justify-center gap-0.5 sm:gap-1"
                               >
-                                <Wine className="w-5 h-5" />
-                                <span className="text-[13px] leading-tight">ボトルキープ</span>
+                                <Wine className="w-4 h-4 sm:w-5 sm:h-5" />
+                                <span className="text-[10px] sm:text-[13px] leading-tight">ボトルキープ</span>
                               </Button>
-                              <Button
+                              <Button 
                                 variant="outline"
                                 onClick={() => setShowVipRoomDialog(true)}
                                 disabled={isTimeExpired}
                                 className="h-14 px-2 flex-col justify-center gap-1"
                               >
                                 <Users className="w-5 h-5" />
-                                <span className="text-[13px] leading-tight">VIPルーム</span>
+                                <span className="text-[10px] sm:text-[13px] leading-tight">VIPルーム</span>
                               </Button>
-                              <Button
+                              <Button 
                                 variant="outline"
                                 onClick={() => setShowKaraokeDialog(true)}
                                 disabled={isTimeExpired}
                                 className="h-14 px-2 flex-col justify-center gap-1"
                               >
                                 <Users className="w-5 h-5" />
-                                <span className="text-[13px] leading-tight">カラオケ利用</span>
+                                <span className="text-[10px] sm:text-[13px] leading-tight">カラオケ利用</span>
                               </Button>
                             </div>
                           </CardContent>
@@ -3354,22 +3354,22 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                                 <p>サービス注文がありません</p>
                               </div>
                               ) : (
-                                <ScrollArea className="h-[55vh] pr-1">
+                                <ScrollArea className="h-[45vh] sm:h-[55vh] pr-1">
                               <div className="space-y-3">
                                 {serviceOrders.map((order) => (
-                                  <div key={order.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border">
-                                    <div className="flex-1">
-                                      <h4 className="font-medium text-sm">{order.service_name}</h4>
-                                      <p className="text-xs text-gray-500">
+                                  <div key={order.id} className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-2 sm:p-3 bg-gray-50 rounded-lg border gap-2 sm:gap-0">
+                                    <div className="flex-1 min-w-0 w-full sm:w-auto">
+                                      <h4 className="font-medium text-xs sm:text-sm truncate">{order.service_name}</h4>
+                                      <p className="text-[10px] sm:text-xs text-gray-500">
                                         数量: {order.amount}個
                                         {order.cast_name ? (
-                                              <span className="ml-2 text-blue-600">(担当: {order.cast_name})</span>
+                                              <span className="ml-1 sm:ml-2 text-blue-600">(担当: {order.cast_name})</span>
                                         ) : (
-                                              <span className="ml-2 text-gray-500">(お客様直接注文)</span>
+                                              <span className="ml-1 sm:ml-2 text-gray-500">(お客様直接注文)</span>
                                         )}
                                       </p>
-                                    </div>
-                                    <div className="flex items-center space-x-2">
+                                      </div>
+                                    <div className="flex items-center space-x-1 sm:space-x-2 w-full sm:w-auto justify-end">
                                       <Button 
                                         size="sm"
                                         variant="outline"
@@ -3397,34 +3397,42 @@ export default function TableDashboard({ params }: { params: { tableId: string }
 
             {/* 左下ナビ（黒帯 約80px） */}
             {isSessionActive && (
-              <div className="absolute left-0 right-0 bottom-0 h-20 bg-[#303030] text-white flex items-center justify-around px-4">
+              <div className="fixed left-0 right-0 bottom-0 h-20 bg-[#303030] text-white flex items-center justify-around px-4 z-50">
                 <Button
                   variant="ghost"
-                  className="text-white text-[18px] hover:bg-white/10 gap-2"
+                  className="text-white text-xs sm:text-sm md:text-base lg:text-[18px] hover:bg-white/10 gap-1 sm:gap-2 flex-col sm:flex-row h-auto py-2 sm:py-0"
                   onClick={() => router.push('/')}
                 >
-                  <FaHome /> 最初のページ
+                  <FaHome className="w-4 h-4 sm:w-5 sm:h-5" /> 
+                  <span className="hidden sm:inline">最初のページ</span>
+                  <span className="sm:hidden text-[10px]">最初</span>
                 </Button>
                 <Button
                   variant="ghost"
-                  className={`text-white text-[18px] gap-2 hover:bg-white/10 ${leftMode === 'order' ? 'bg-white/10' : ''}`}
+                  className={`text-white text-xs sm:text-sm md:text-base lg:text-[18px] gap-1 sm:gap-2 hover:bg-white/10 ${leftMode === 'order' ? 'bg-white/10' : ''} flex-col sm:flex-row h-auto py-2 sm:py-0`}
                   onClick={() => setLeftMode('order')}
                 >
-                 <SiBuymeacoffee /> 注文
+                 <SiBuymeacoffee className="w-4 h-4 sm:w-5 sm:h-5" /> 
+                 <span className="hidden sm:inline">注文</span>
+                 <span className="sm:hidden text-[10px]">注文</span>
                 </Button>
                 <Button
                   variant="ghost"
-                  className={`text-white text-[18px] gap-2 hover:bg-white/10 ${leftMode === 'nomination' ? 'bg-white/10' : ''}`}
+                  className={`text-white text-xs sm:text-sm md:text-base lg:text-[18px] gap-1 sm:gap-2 hover:bg-white/10 ${leftMode === 'nomination' ? 'bg-white/10' : ''} flex-col sm:flex-row h-auto py-2 sm:py-0`}
                   onClick={() => setLeftMode('nomination')}
                 >
-                 <BiUserPin /> 指定
+                 <BiUserPin className="w-4 h-4 sm:w-5 sm:h-5" /> 
+                 <span className="hidden sm:inline">指定</span>
+                 <span className="sm:hidden text-[10px]">指定</span>
                 </Button>
                 <Button
                   variant="ghost"
-                  className={`text-white text-[18px] gap-2 hover:bg-white/10 ${leftMode === 'service' ? 'bg-white/10' : ''}`}
+                  className={`text-white text-xs sm:text-sm md:text-base lg:text-[18px] gap-1 sm:gap-2 hover:bg-white/10 ${leftMode === 'service' ? 'bg-white/10' : ''} flex-col sm:flex-row h-auto py-2 sm:py-0`}
                   onClick={() => setLeftMode('service')}
                 >
-                 <MdHomeRepairService /> サービス
+                 <MdHomeRepairService className="w-4 h-4 sm:w-5 sm:h-5" /> 
+                 <span className="hidden sm:inline">サービス</span>
+                 <span className="sm:hidden text-[10px]">サービス</span>
                 </Button>
               </div>
             )}
@@ -3432,17 +3440,18 @@ export default function TableDashboard({ params }: { params: { tableId: string }
 
           {/* カート・注文 */}
           {isSessionActive && (
-            <div className="w-1/6 min-w-[260px] space-y-4">
+            <div className="w-full lg:w-1/6 lg:min-w-[260px] flex flex-col min-h-0 order-first lg:order-last">
+              <div className="flex-1 overflow-y-auto space-y-4">
             {/* セット延長 */}
             <Card className="bg-gradient-to-r from-purple-50 to-pink-50 border-purple-200">
-              <CardHeader className="pb-3">
-                <CardTitle className="flex items-center text-sm font-semibold text-purple-800">
-                  <Clock className="w-4 h-4 mr-2" />
+              <CardHeader className="pb-2 sm:pb-3">
+                <CardTitle className="flex items-center text-xs sm:text-sm font-semibold text-purple-800">
+                  <Clock className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
                   セット延長
                 </CardTitle>
               </CardHeader>
-              <CardContent className="space-x-2 flex">
-                <div className="w-1/2 bg-white rounded-md p-3 border border-purple-200 text-center relative">
+              <CardContent className="space-x-2 flex flex-col sm:flex-row">
+                <div className="w-full sm:w-1/2 bg-white rounded-md p-2 sm:p-3 border border-purple-200 text-center relative mb-2 sm:mb-0">
                   <div className="text-[11px] text-gray-500 mb-1"> </div>
                   {/* {session?.is_paused && (
                     <div className="absolute top-1 right-1">
@@ -3499,10 +3508,10 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                     </div>
                   ) : (
                     <>
-                      <div className={`text-2xl font-bold leading-none ${session?.is_paused ? 'text-gray-400' : 'text-purple-600'}`}>
+                      <div className={`text-xl sm:text-2xl font-bold leading-none ${session?.is_paused ? 'text-gray-400' : 'text-purple-600'}`}>
                         {Math.floor(setExtensionCountdown / 60)}:{(setExtensionCountdown % 60).toString().padStart(2, '0')}
                       </div>
-                      <div className="text-[11px] text-gray-500 mt-1">
+                      <div className="text-[9px] sm:text-[11px] text-gray-500 mt-1">
                         {Math.floor(setExtensionCountdown / 60)}分 {setExtensionCountdown % 60}秒
                       </div>
                       {session?.is_paused && (
@@ -3526,44 +3535,44 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                   )}
                 </div>
 
-                <div className="w-1/2 flex flex-col space-y-2">
-                  <div className="text-sm text-gray-700">
+                <div className="w-full sm:w-1/2 flex flex-col space-y-2">
+                  <div className="text-xs sm:text-sm text-gray-700">
                     <div>セット数: {localStorage.getItem('set_count') || 1}</div>
                     {/* <div>人数: {guestCount}名</div> */}
                   </div>
                   <Button
                     onClick={handleSetExtension}
                     size="sm"
-                    className="flex-1 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
+                    className="flex-1 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-xs sm:text-sm"
                   >
-                    <Clock className="w-4 h-4 mr-1" />
-                    <span className="text-xs font-semibold">セット延長</span>
+                    <Clock className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
+                    <span className="text-[10px] sm:text-xs font-semibold">セット延長</span>
                   </Button>
                   <Button
                     onClick={handleCancelSet}
                     size="sm"
                     disabled={setExtensionCountdown < 3600 || setExtensions.length === 0}
                     variant="outline"
-                    className="flex-1 border-red-300 text-red-600 hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="flex-1 border-red-300 text-red-600 hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed text-xs sm:text-sm"
                   >
-                    <X className="w-4 h-4 mr-1" />
-                    <span className="text-xs font-semibold">1セットキャンセル</span>
+                    <X className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
+                    <span className="text-[10px] sm:text-xs font-semibold">1セットキャンセル</span>
                   </Button>
                   <Button
                     onClick={handlePauseResume}
                     size="sm"
                     variant={session?.is_paused ? "default" : "outline"}
-                    className={session?.is_paused ? "flex-1 bg-green-600 hover:bg-green-700 text-white" : "flex-1 border-purple-300 text-purple-700 hover:bg-purple-50"}
+                    className={session?.is_paused ? "flex-1 bg-green-600 hover:bg-green-700 text-white text-xs sm:text-sm" : "flex-1 border-purple-300 text-purple-700 hover:bg-purple-50 text-xs sm:text-sm"}
                   >
                     {session?.is_paused ? (
                       <>
-                        <Play className="w-4 h-4 mr-1" />
-                        <span className="text-xs font-semibold">再開</span>
+                        <Play className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
+                        <span className="text-[10px] sm:text-xs font-semibold">再開</span>
                       </>
                     ) : (
                       <>
-                        <Pause className="w-4 h-4 mr-1" />
-                        <span className="text-xs font-semibold">停止</span>
+                        <Pause className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
+                        <span className="text-[10px] sm:text-xs font-semibold">停止</span>
                       </>
                     )}
                   </Button>
@@ -3574,8 +3583,8 @@ export default function TableDashboard({ params }: { params: { tableId: string }
             {/* 合計・注文 */}
               <Card>
                 <CardHeader>
-                  <CardTitle className="flex items-center">
-                    <DollarSign className="w-5 h-5 mr-2" />
+                  <CardTitle className="flex items-center text-sm sm:text-base">
+                    <DollarSign className="w-4 h-4 sm:w-5 sm:h-5 mr-1 sm:mr-2" />
                     注文合計
                   </CardTitle>
                 {/* <CardDescription>
@@ -3595,7 +3604,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                     });
                     
                     return (
-                      <div className="bg-blue-50 rounded-lg p-3 text-sm">
+                      <div className="bg-blue-50 rounded-lg p-2 sm:p-3 text-xs sm:text-sm">
                         <div className="space-y-1">
                           <div className="flex justify-between">
                             <span className="text-blue-700">承認済み商品:</span>
@@ -3611,7 +3620,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                   })()}
                 
                 {cartOrders.length === 0 && (!guestCount || guestCount.trim() === '') && setExtensions.length === 0 && (
-                  <div className="rounded-lg border border-dashed border-gray-300 p-4 text-sm text-gray-500">
+                  <div className="rounded-lg border border-dashed border-gray-300 p-3 sm:p-4 text-xs sm:text-sm text-gray-500">
                     現在、表示できる料金情報がありません。商品追加または人数入力を行ってください。
                   </div>
                 )}
@@ -3630,7 +3639,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                     }, 0);
                     if (productTotal > 0) {
                       return (
-                        <div className="flex justify-between text-sm">
+                        <div className="flex justify-between text-xs sm:text-sm">
                           <span>商品合計</span>
                           <span>{formatCurrency(productTotal)}</span>
                     </div>
@@ -3646,7 +3655,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                       if (!isNaN(initialGuestCount) && initialGuestCount > 0) {
                         const sessionFee = (addCharges['set_price'] || 0) * initialGuestCount;
                         return (
-                          <div className="flex justify-between text-sm">
+                          <div className="flex justify-between text-xs sm:text-sm">
                             <span>セッション料金 ({guestCount}名)</span>
                             <span>{formatCurrency(sessionFee)}</span>
                           </div>
@@ -3658,7 +3667,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                   
                   {/* セット延長料金 */}
                   {setExtensions.length > 0 && setExtensions.map((extension, index) => (
-                    <div key={index} className="flex justify-between text-sm">
+                    <div key={index} className="flex justify-between text-xs sm:text-sm">
                       <span>セット延長 ({extension.count}名)</span>
                       <span>{formatCurrency(extension.price ?? ((addCharges['extension_price'] || 0) * extension.count))}</span>
                     </div>
@@ -3667,7 +3676,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                   {/* 指名料金の明細 */}
                   {nominations.length > 0 && (
                     <div className="border-t pt-2 space-y-1">
-                      <div className="text-xs font-semibold text-gray-600 mb-1">指名料金</div>
+                      <div className="text-[10px] sm:text-xs font-semibold text-gray-600 mb-1">指名料金</div>
                       {nominations.map((nomination, index) => {
                         let chargeLabel = '';
                         
@@ -3681,9 +3690,9 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                         }
                         
                         return (
-                          <div key={nomination.id} className="flex justify-between text-sm pl-3">
-                            <span className="text-gray-700">{chargeLabel}</span>
-                            <span>{formatCurrency(Number((nomination as any).cost) || 0)}</span>
+                          <div key={nomination.id} className="flex justify-between text-xs sm:text-sm pl-2 sm:pl-3">
+                            <span className="text-gray-700 truncate pr-2">{chargeLabel}</span>
+                            <span className="flex-shrink-0">{formatCurrency(Number((nomination as any).cost) || 0)}</span>
                           </div>
                         );
                       })}
@@ -3693,7 +3702,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                   {/* 追加サービス料金の明細 */}
                   {additionalServices.length > 0 && (
                     <div className="border-t pt-2 space-y-1">
-                      <div className="text-xs font-semibold text-gray-600 mb-1">追加サービス</div>
+                      <div className="text-[10px] sm:text-xs font-semibold text-gray-600 mb-1">追加サービス</div>
                       {additionalServices.map((service, index) => {
                         let serviceLabel = '';
                         if (service.type === 'bottle_keep') {
@@ -3705,9 +3714,9 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                         }
                         
                         return (
-                          <div key={index} className="flex justify-between text-sm pl-3">
-                            <span className="text-gray-700">{serviceLabel}</span>
-                            <span>{formatCurrency(service.charge)}</span>
+                          <div key={index} className="flex justify-between text-xs sm:text-sm pl-2 sm:pl-3">
+                            <span className="text-gray-700 truncate pr-2">{serviceLabel}</span>
+                            <span className="flex-shrink-0">{formatCurrency(service.charge)}</span>
                           </div>
                         );
                       })}
@@ -3763,11 +3772,11 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                     if (subtotal > 0) {
                       return (
                         <>
-                          <div className="border-t pt-2 flex justify-between text-sm">
+                          <div className="border-t pt-2 flex justify-between text-xs sm:text-sm">
                             <span>小計</span>
                             <span>{formatCurrency(subtotal)}</span>
                           </div>
-                          <div className="flex justify-between text-sm">
+                          <div className="flex justify-between text-xs sm:text-sm">
                             <span>サービス手数料 (10%)</span>
                             <span>{formatCurrency(serviceFee)}</span>
                           </div>
@@ -3777,7 +3786,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                     return null;
                   })()}
                   
-                    <div className="border-t pt-2 flex justify-between font-bold text-lg">
+                    <div className="border-t pt-2 flex justify-between font-bold text-sm sm:text-lg">
                       <span>合計</span>
                       <span>{formatCurrency(calculateTotal())}</span>
                     </div>
@@ -3785,15 +3794,15 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                   
                   <div className="space-y-3">
                     {isPaymentCompleted ? (
-                      <div className="w-full bg-green-50 border-2 border-green-200 rounded-lg p-4 text-center">
+                      <div className="w-full bg-green-50 border-2 border-green-200 rounded-lg p-3 sm:p-4 text-center">
                         <div className="flex items-center justify-center space-x-2 text-green-700">
-                          <CheckCircle className="w-6 h-6" />
-                          <span className="font-bold text-lg">決済成功</span>
+                          <CheckCircle className="w-5 h-5 sm:w-6 sm:h-6" />
+                          <span className="font-bold text-sm sm:text-lg">決済成功</span>
                         </div>
-                        <div className="text-sm text-green-600 mt-1">
+                        <div className="text-xs sm:text-sm text-green-600 mt-1">
                           支払いが完了しました
                         </div>
-                        <div className="text-lg font-bold text-green-700 mt-2">
+                        <div className="text-sm sm:text-lg font-bold text-green-700 mt-2">
                           {formatCurrency(parseInt(localStorage.getItem('paid_amount') || '0'))}
                         </div>
                       </div>
@@ -3805,6 +3814,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
               </Card>
 
 
+                        </div>
                         </div>
           )}
         </div>

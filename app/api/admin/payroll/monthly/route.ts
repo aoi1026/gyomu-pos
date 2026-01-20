@@ -72,9 +72,9 @@ export async function GET(request: NextRequest) {
       // month mode
       year = Number(searchParams.get('year') || now.getFullYear());
       month = Number(searchParams.get('month') || (now.getMonth() + 1));
-      if (!year || !month || month < 1 || month > 12) {
-        return NextResponse.json({ success: false, error: 'Invalid year or month' }, { status: 400 });
-      }
+    if (!year || !month || month < 1 || month > 12) {
+      return NextResponse.json({ success: false, error: 'Invalid year or month' }, { status: 400 });
+    }
       rangeStart = ymStart(year, month);
       const nextMonth = month === 12 ? 1 : month + 1;
       const nextYear = month === 12 ? year + 1 : year;
