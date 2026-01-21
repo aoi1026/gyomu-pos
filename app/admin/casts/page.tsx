@@ -83,6 +83,7 @@ export default function CastsPage() {
 
   const router = useRouter();
   const { success, error } = useNotificationContext();
+  const isSuperAdmin = adminUser?.role === 'super_admin' || adminUser?.role === 'superadmin';
 
   useEffect(() => {
     // 管理者認証情報を確認
@@ -178,8 +179,11 @@ export default function CastsPage() {
   };
 
   const handleAddForActiveTab = () => {
-    if (activeTab === 'staff') handleAdd();
-    else handleAddAdmin();
+    if (activeTab === 'staff' || !isSuperAdmin) {
+      handleAdd();
+    } else {
+      handleAddAdmin();
+    }
   };
 
   const handleSaveAdd = async () => {
@@ -444,10 +448,19 @@ export default function CastsPage() {
           </CardContent>
         </Card>
 
-        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'staff' | 'admins')}>
+        <Tabs
+          value={isSuperAdmin ? activeTab : 'staff'}
+          onValueChange={(v) => {
+            if (v === 'admins' && !isSuperAdmin) {
+              error('権限エラー', '管理者登録表にアクセスできるのはスーパー管理者のみです');
+              return;
+            }
+            setActiveTab(v as 'staff' | 'admins');
+          }}
+        >
           <TabsList className="mb-4">
             <TabsTrigger value="staff">スタッフ</TabsTrigger>
-            <TabsTrigger value="admins">管理者</TabsTrigger>
+            {isSuperAdmin && <TabsTrigger value="admins">管理者</TabsTrigger>}
           </TabsList>
 
           <TabsContent value="staff">
@@ -549,88 +562,90 @@ export default function CastsPage() {
             </Card>
           </TabsContent>
 
-          <TabsContent value="admins">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center justify-between">
-                  <span className="flex items-center">
-                    <Users className="w-5 h-5 mr-2" />
-                    管理者登録表
-                  </span>
-                  <Badge variant="outline" className="text-sm">
-                    {admins.length}名
-                  </Badge>
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {admins.length === 0 ? (
-                  <div className="text-center py-8">
-                    <Users className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                    <p className="text-gray-500">管理者が登録されていません</p>
-                    <Button onClick={handleAddAdmin} className="mt-4">
-                      <Plus className="w-4 h-4 mr-2" />
-                      管理者を登録
-                    </Button>
-                  </div>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>番号</TableHead>
-                          <TableHead>管理者名</TableHead>
-                          <TableHead>管理者メール</TableHead>
-                          <TableHead>備考</TableHead>
-                          <TableHead className="text-center">操作</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {admins.map((admin, index) => (
-                          <TableRow key={admin.id}>
-                            <TableCell>{index + 1}</TableCell>
-                            <TableCell className="font-medium">{admin.name}</TableCell>
-                            <TableCell>
-                              <div className="flex items-center space-x-2">
-                                <Mail className="w-4 h-4 text-gray-400" />
-                                <span className="text-sm">{admin.mail}</span>
-                              </div>
-                            </TableCell>
-                            <TableCell>
-                              {admin.other ? (
-                                <div className="flex items-center space-x-2">
-                                  <FileText className="w-4 h-4 text-gray-400" />
-                                  <span className="text-sm">{admin.other}</span>
-                                </div>
-                              ) : (
-                                <span className="text-gray-400 text-sm">-</span>
-                              )}
-                            </TableCell>
-                            <TableCell className="text-center">
-                              <div className="flex space-x-2 justify-center">
-                                <Button size="sm" variant="outline" onClick={() => handleEditAdmin(admin)}>
-                                  <Edit className="w-4 h-4 mr-1" />
-                                  変更
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => handleDeleteAdmin(admin.id)}
-                                  className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                                >
-                                  <Trash2 className="w-4 h-4 mr-1" />
-                                  削除
-                                </Button>
-                              </div>
-                            </TableCell>
+          {isSuperAdmin && (
+            <TabsContent value="admins">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center justify-between">
+                    <span className="flex items-center">
+                      <Users className="w-5 h-5 mr-2" />
+                      管理者登録表
+                    </span>
+                    <Badge variant="outline" className="text-sm">
+                      {admins.length}名
+                    </Badge>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {admins.length === 0 ? (
+                    <div className="text-center py-8">
+                      <Users className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                      <p className="text-gray-500">管理者が登録されていません</p>
+                      <Button onClick={handleAddAdmin} className="mt-4">
+                        <Plus className="w-4 h-4 mr-2" />
+                        管理者を登録
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>番号</TableHead>
+                            <TableHead>管理者名</TableHead>
+                            <TableHead>管理者メール</TableHead>
+                            <TableHead>備考</TableHead>
+                            <TableHead className="text-center">操作</TableHead>
                           </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
+                        </TableHeader>
+                        <TableBody>
+                          {admins.map((admin, index) => (
+                            <TableRow key={admin.id}>
+                              <TableCell>{index + 1}</TableCell>
+                              <TableCell className="font-medium">{admin.name}</TableCell>
+                              <TableCell>
+                                <div className="flex items-center space-x-2">
+                                  <Mail className="w-4 h-4 text-gray-400" />
+                                  <span className="text-sm">{admin.mail}</span>
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                {admin.other ? (
+                                  <div className="flex items-center space-x-2">
+                                    <FileText className="w-4 h-4 text-gray-400" />
+                                    <span className="text-sm">{admin.other}</span>
+                                  </div>
+                                ) : (
+                                  <span className="text-gray-400 text-sm">-</span>
+                                )}
+                              </TableCell>
+                              <TableCell className="text-center">
+                                <div className="flex space-x-2 justify-center">
+                                  <Button size="sm" variant="outline" onClick={() => handleEditAdmin(admin)}>
+                                    <Edit className="w-4 h-4 mr-1" />
+                                    変更
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => handleDeleteAdmin(admin.id)}
+                                    className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                  >
+                                    <Trash2 className="w-4 h-4 mr-1" />
+                                    削除
+                                  </Button>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+          )}
         </Tabs>
       </div>
 

@@ -111,6 +111,7 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
   const [storeCreditCardPaymentAmount, setStoreCreditCardPaymentAmount] = useState<string>('');
   const [isPaymentCompleted, setIsPaymentCompleted] = useState<boolean>(false);
   const [paidAmount, setPaidAmount] = useState<number>(0);
+  const [isSuperAdmin, setIsSuperAdmin] = useState<boolean>(false);
 
   const tryAutoPrintReceipts = async () => {
     // Only auto-print when a printer is already connected from the dashboard button.
@@ -164,6 +165,15 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
       [tableId]: value
     }));
   };
+
+  // 合計編集の権限制御（super_admin のみ許可）
+  const ensureSuperAdminForTotalEdit = (): boolean => {
+    if (!isSuperAdmin) {
+      error('権限エラー', '注文合計の変更はスーパー管理者のみが実行できます');
+      return false;
+    }
+    return true;
+  };
   
   // 注文無効化フラグ（isPaymentCompletedの宣言後に定義）
   const isTimeExpired = setExtensionCountdown <= 0;
@@ -192,6 +202,22 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
         return '指名';
     }
   };
+
+  // 管理者ロール（super_admin）の判定
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const raw = localStorage.getItem('admin_auth');
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      const role = parsed?.role;
+      if (role === 'super_admin' || role === 'superadmin') {
+        setIsSuperAdmin(true);
+      }
+    } catch {
+      // パースエラー時は何もしない（権限なし扱い）
+    }
+  }, []);
 
   // テーブル情報を取得
   const loadTableData = async () => {
@@ -1382,6 +1408,7 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
 
   // 合計値の編集を開始
   const handleStartEditTotal = () => {
+    if (!ensureSuperAdminForTotalEdit()) return;
     const currentTotal = calculateTotal();
     setEditingTotalValue(currentTotal.toString());
     setIsEditingTotal(true);
@@ -1389,6 +1416,7 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
 
   // 合計値の編集を保存
   const handleSaveTotal = () => {
+    if (!ensureSuperAdminForTotalEdit()) return;
     const value = parseFloat(editingTotalValue);
     if (isNaN(value) || value < 0) {
       error('エラー', '有効な金額を入力してください');
@@ -1401,12 +1429,14 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
 
   // 合計値の編集をキャンセル
   const handleCancelEditTotal = () => {
+    if (!ensureSuperAdminForTotalEdit()) return;
     setIsEditingTotal(false);
     setEditingTotalValue('');
   };
 
   // 合計値を自動計算に戻す
   const handleResetTotal = () => {
+    if (!ensureSuperAdminForTotalEdit()) return;
     setManualTotal(null);
     success('合計値リセット', '合計値を自動計算に戻しました');
   };
@@ -2203,25 +2233,29 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
                                     (手動設定)
                                   </span>
                                 )}
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  onClick={handleStartEditTotal}
-                                  className="h-8 w-8 p-0"
-                                  title="合計値を編集"
-                                >
-                                  <Edit2 className="w-4 h-4" />
-                                </Button>
-                                {getManualTotal() !== null && (
-                                  <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    onClick={handleResetTotal}
-                                    className="h-8 w-8 p-0 text-xs"
-                                    title="自動計算に戻す"
-                                  >
-                                    リセット
-                                  </Button>
+                                {isSuperAdmin && (
+                                  <>
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      onClick={handleStartEditTotal}
+                                      className="h-8 w-8 p-0"
+                                      title="合計値を編集"
+                                    >
+                                      <Edit2 className="w-4 h-4" />
+                                    </Button>
+                                    {getManualTotal() !== null && (
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        onClick={handleResetTotal}
+                                        className="h-8 w-8 p-0 text-xs"
+                                        title="自動計算に戻す"
+                                      >
+                                        リセット
+                                      </Button>
+                                    )}
+                                  </>
                                 )}
                               </div>
                             )}
