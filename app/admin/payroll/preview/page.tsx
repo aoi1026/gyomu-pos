@@ -1277,7 +1277,7 @@ export default function PayrollPreviewPage() {
               </div> */}
 
               {/* 給与明細一覧 */}
-              <Card className="mb-8">
+              {/* <Card className="mb-8">
                 <CardHeader>
                   <CardTitle>給与明細一覧</CardTitle>
                 </CardHeader>
@@ -1455,10 +1455,10 @@ export default function PayrollPreviewPage() {
                     </table>
                   </div>
                 </CardContent>
-              </Card>
+              </Card> */}
 
               {/* アクションボタン */}
-              <div className="flex justify-center space-x-4">
+              {/* <div className="flex justify-center space-x-4">
                 <Button 
                   variant="outline"
                   onClick={exportPayroll}
@@ -1486,7 +1486,7 @@ export default function PayrollPreviewPage() {
                     )}
                   </Button>
                 )}
-              </div>
+              </div> */}
 
               {payrollRun?.status === 'confirmed' && (
                 <div className="bg-green-50 border border-green-200 rounded-lg p-4 mt-6">

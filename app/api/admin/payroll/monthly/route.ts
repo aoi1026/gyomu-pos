@@ -207,6 +207,29 @@ export async function GET(request: NextRequest) {
         FROM add_charges 
         WHERE charge_name = 'together'
         LIMIT 1
+      ),
+      sales_back AS (
+        SELECT 
+          so.cast_id AS user_id,
+          COALESCE(SUM(
+            CASE 
+              -- castsalary_priceが既に計算されている場合はそれを使用
+              WHEN so.castsalary_price IS NOT NULL AND so.castsalary_price > 0 THEN so.castsalary_price
+              -- カテゴリに応じてバック率を適用
+              WHEN p.category_id IN (1, 2) THEN so.total_price * COALESCE(u.drink_back, 0) / 100.0
+              WHEN p.category_id = 3 THEN so.total_price * COALESCE(u.food_back, 0) / 100.0
+              ELSE 0
+            END
+          ), 0) AS sales_back_yen
+        FROM salesorder so
+        INNER JOIN "user" u ON u.id = so.cast_id AND u.role = 'cast'
+        LEFT JOIN product p ON p.id = so.product_id
+        WHERE so.status = 'accepted'
+          AND so.for_cast = 1
+          AND so.cast_id IS NOT NULL
+          AND so.accepted_at >= $1::date 
+          AND so.accepted_at < $2::date
+        GROUP BY so.cast_id
       )
       SELECT 
         c.user_id,
@@ -222,7 +245,7 @@ export async function GET(request: NextRequest) {
         COALESCE(nt.sum_cost, 0)::DECIMAL(12,2) AS together_nomination_cost,
         COALESCE(nt.cnt, 0)::INT AS together_nomination_count,
         COALESCE(nt.sum_fee, 0)::DECIMAL(12,2) AS together_nomination_fee,
-        0::DECIMAL(12,2) AS sales_back_yen,
+        COALESCE(sb.sales_back_yen, 0)::DECIMAL(12,2) AS sales_back_yen,
         0::DECIMAL(12,2) AS overtime_wage_yen,
         0::DECIMAL(12,2) AS deduction_yen,
         0::DECIMAL(12,2) AS paid_price,
@@ -232,6 +255,7 @@ export async function GET(request: NextRequest) {
       LEFT JOIN nom_main nm ON nm.user_id = c.user_id
       LEFT JOIN nom_inside ni ON ni.user_id = c.user_id
       LEFT JOIN nom_together nt ON nt.user_id = c.user_id
+      LEFT JOIN sales_back sb ON sb.user_id = c.user_id
       LEFT JOIN ac ac ON TRUE
       ORDER BY c.name
       `;
