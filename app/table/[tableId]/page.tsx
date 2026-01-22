@@ -3162,11 +3162,12 @@ export default function TableDashboard({ params }: { params: { tableId: string }
 
                     {/* 指定 */}
                     {leftMode === 'nomination' && (
-                      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-16">
-                        <div className="lg:ml-24 col-span-1 space-y-4 lg:space-y-10">
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6 lg:gap-8 xl:gap-12">
+                        {/* 指名ボタンエリア */}
+                        <div className="col-span-1 md:col-span-1 lg:col-span-1 space-y-4 md:space-y-6 lg:space-y-8 md:pr-4 lg:pr-0">
                           <Button
                             size="lg"
-                            className="w-full h-48 sm:h-32 lg:h-48 text-base sm:text-lg bg-purple-600 hover:bg-purple-700 relative overflow-hidden p-0"
+                            className="w-full h-40 sm:h-44 md:h-48 lg:h-52 xl:h-56 text-base sm:text-lg md:text-xl lg:text-2xl bg-purple-600 hover:bg-purple-700 relative overflow-hidden p-0 shadow-lg hover:shadow-xl transition-shadow"
                             disabled={isOrderingDisabled}
                             onClick={() => {
                               setCurrentNominationType('main');
@@ -3182,13 +3183,13 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                               />
                               <div className="absolute inset-0 bg-black/25" />
                             </div>
-                            <div className="relative z-10 w-full h-full flex items-center justify-center font-bold tracking-wide">
+                            <div className="relative z-10 w-full h-full flex items-center justify-center font-bold tracking-wide text-white drop-shadow-lg">
                               本 指 名
                             </div>
                           </Button>
                           <Button
                             size="lg"
-                            className="w-full h-48 sm:h-32 lg:h-48 text-base sm:text-lg bg-blue-600 hover:bg-blue-700 relative overflow-hidden p-0"
+                            className="w-full h-40 sm:h-44 md:h-48 lg:h-52 xl:h-56 text-base sm:text-lg md:text-xl lg:text-2xl bg-blue-600 hover:bg-blue-700 relative overflow-hidden p-0 shadow-lg hover:shadow-xl transition-shadow"
                             disabled={isOrderingDisabled}
                             onClick={() => {
                               setCurrentNominationType('inside');
@@ -3204,53 +3205,74 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                               />
                               <div className="absolute inset-0 bg-black/25" />
                             </div>
-                            <div className="relative z-10 w-full h-full flex items-center justify-center font-bold tracking-wide">
+                            <div className="relative z-10 w-full h-full flex items-center justify-center font-bold tracking-wide text-white drop-shadow-lg">
                               場 内 指 名
                             </div>
                           </Button>
                         </div>
-                        <div className="col-span-1 lg:col-span-2">
-                      <Card>
+                        {/* 指名リストエリア */}
+                        <div className="col-span-1 md:col-span-1 lg:col-span-2">
+                          <Card className="h-full">
                             <CardHeader className="pb-3">
-                              <CardTitle className="flex items-center">
-                                <Users className="w-5 h-5 mr-2" />
+                              <CardTitle className="flex items-center text-base sm:text-lg md:text-xl">
+                                <Users className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 mr-2" />
                                 指名リスト
-                          </CardTitle>
-                          </CardHeader>
-                          <CardContent>
+                              </CardTitle>
+                            </CardHeader>
+                            <CardContent>
                               {isNominationsLoading ? (
-                                <div className="text-sm text-gray-500">読み込み中...</div>
+                                <div className="flex items-center justify-center py-8">
+                                  <div className="w-6 h-6 border-2 border-purple-600 border-t-transparent rounded-full animate-spin" />
+                                </div>
                               ) : nominations.length === 0 ? (
-                                <div className="text-sm text-gray-500">指名はありません</div>
+                                <div className="text-center py-8 text-sm sm:text-base text-gray-500">
+                                  <Users className="w-12 h-12 mx-auto mb-2 text-gray-400" />
+                                  <p>指名はありません</p>
+                                </div>
                               ) : (
-                                <div className="space-y-3">
-                                  {nominations.map((nomination: any) => (
-                                    <div key={nomination.id} className="flex flex-col sm:flex-row items-start sm:items-center justify-between border border-gray-200 bg-white px-2 sm:px-3 py-2 gap-2 sm:gap-0">
-                                      <div className="flex-1 min-w-0">
-                                        <div className="font-medium text-sm sm:text-base text-gray-900 truncate">{nomination.cast_name}</div>
-                                        <div className="text-[10px] sm:text-xs text-gray-500">
-                                          {new Date(nomination.created_at).toLocaleString('ja-JP')}
-                              </div>
-                              </div>
-                                      <div className="flex items-center space-x-1 sm:space-x-2 w-full sm:w-auto">
-                                        <Badge className={`${nominationBadgeStyle[nomination.type_id as 'main' | 'inside' | 'together'] || 'bg-gray-100 text-gray-700'}`}>
-                                          {getNominationTypeLabel(nomination.type_id)}
-                                        </Badge>
-                                    <Button 
-                                          size="sm"
-                                      variant="outline"
-                                          className="text-red-600 border-red-300 hover:bg-red-50"
-                                          onClick={() => deleteNominationRecord(nomination.id)}
-                                    >
-                                          <Trash2 className="w-3 h-3" />
-                                    </Button>
+                                <ScrollArea className="h-[calc(100vh-280px)] sm:h-[calc(100vh-320px)] md:h-[calc(100vh-360px)] lg:h-[calc(100vh-400px)] pr-2">
+                                  <div className="space-y-2 sm:space-y-3">
+                                    {nominations.map((nomination: any) => (
+                                      <div 
+                                        key={nomination.id} 
+                                        className="flex flex-col sm:flex-row items-start sm:items-center justify-between border border-gray-200 rounded-lg bg-white px-3 sm:px-4 md:px-5 py-2.5 sm:py-3 gap-2 sm:gap-3 hover:bg-gray-50 transition-colors"
+                                      >
+                                        <div className="flex-1 min-w-0 w-full sm:w-auto">
+                                          <div className="font-medium text-sm sm:text-base md:text-lg text-gray-900 truncate mb-1">
+                                            {nomination.cast_name}
+                                          </div>
+                                          <div className="text-xs sm:text-sm text-gray-500">
+                                            {new Date(nomination.created_at).toLocaleString('ja-JP', {
+                                              year: 'numeric',
+                                              month: '2-digit',
+                                              day: '2-digit',
+                                              hour: '2-digit',
+                                              minute: '2-digit'
+                                            })}
+                                          </div>
+                                        </div>
+                                        <div className="flex items-center space-x-2 sm:space-x-3 w-full sm:w-auto justify-end sm:justify-start">
+                                          <Badge 
+                                            className={`text-xs sm:text-sm px-2 sm:px-3 py-1 ${nominationBadgeStyle[nomination.type_id as 'main' | 'inside' | 'together'] || 'bg-gray-100 text-gray-700'}`}
+                                          >
+                                            {getNominationTypeLabel(nomination.type_id)}
+                                          </Badge>
+                                          <Button 
+                                            size="sm"
+                                            variant="outline"
+                                            className="text-red-600 border-red-300 hover:bg-red-50 h-8 sm:h-9 w-8 sm:w-9 p-0"
+                                            onClick={() => deleteNominationRecord(nomination.id)}
+                                          >
+                                            <Trash2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                                          </Button>
+                                        </div>
                                       </div>
-                                    </div>
-                                  ))}
-                              </div>
-                            )}
-                          </CardContent>
-                        </Card>
+                                    ))}
+                                  </div>
+                                </ScrollArea>
+                              )}
+                            </CardContent>
+                          </Card>
                         </div>
                       </div>
                     )}
