@@ -1,4 +1,6 @@
 'use client';
+import { FaPowerOff } from "react-icons/fa"; 
+import { AiOutlinePoweroff } from "react-icons/ai"; 
 import { MdHomeRepairService } from "react-icons/md"; 
 import { BiUserPin } from "react-icons/bi"; 
 import { SiBuymeacoffee } from "react-icons/si"; 
@@ -2855,20 +2857,20 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                   )}
                 </Button>
               )}
-              <Badge 
+              {/* <Badge 
                 variant={isSessionActive ? 'default' : 'outline'}
                 className={`${isSessionActive ? 'bg-green-100 text-green-800' : ''} text-xs sm:text-sm`}
               >
-                {isSessionActive ? 'セッション中' : '待機中'}
-              </Badge>
+                {isSessionActive ? <FaPowerOff /> : '待機中'}
+              </Badge> */}
               {isSessionActive && (
                 <Button 
                   variant="outline" 
                   size="sm"
                   onClick={endSession}
-                  className="flex-1 sm:flex-none text-xs sm:text-sm"
+                  className={`${isSessionActive ? 'bg-green-100 text-green-800' : ''} text-xs sm:text-sm`}
                 >
-                  セッション終了
+                  <FaPowerOff />
                 </Button>
               )}
             </div>
