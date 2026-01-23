@@ -1,4 +1,4 @@
-# 🍷 NightWork POS - キャバクラ特化統合POSシステム
+# 🍷 LNXS - キャバクラ特化統合POSシステム
 
 A comprehensive Point of Sale (POS) system specifically designed for cabaret clubs, featuring table-based ordering, cast nomination management, back rate calculations, attendance tracking, and comprehensive business management.
 
@@ -24,7 +24,7 @@ A comprehensive Point of Sale (POS) system specifically designed for cabaret clu
 
 ## 🎯 システム概要
 
-NightWork POSは、キャバクラ業界に特化した統合POSシステムです。Next.js 14とTypeScriptで構築され、テーブルファースト設計により、キャストがテーブルで注文を管理し、指名・バック率計算まで効率的に処理できます。
+LNXSは、キャバクラ業界に特化した統合POSシステムです。Next.js 14とTypeScriptで構築され、テーブルファースト設計により、キャストがテーブルで注文を管理し、指名・バック率計算まで効率的に処理できます。
 
 ### 主要特徴
 - **テーブルファースト設計**: キャストがテーブルで注文を管理
@@ -527,7 +527,7 @@ npm start
 ### 環境変数
 ```env
 NEXT_PUBLIC_API_URL=your-api-url
-NEXT_PUBLIC_APP_NAME=NightWork POS
+NEXT_PUBLIC_APP_NAME=LNXS
 ```
 
 ### デプロイプラットフォーム
@@ -558,14 +558,14 @@ NEXT_PUBLIC_APP_NAME=NightWork POS
 ```bash
 # 開発
 NODE_ENV=development
-NEXT_PUBLIC_APP_NAME=NightWork POS
+NEXT_PUBLIC_APP_NAME=LNXS
 NEXT_PUBLIC_API_URL=http://localhost:3000/api
 NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_test_51SMrxT2NRpI9c8r78v4HWfbQHX6KDbrwYGv3J2eC68UsEoqknH3XPNQ9pul3zbuHH26znCvTlhBbwdtKLzvivmWM00f1wczpXr
 STRIPE_SECRET_KEY=STRIPE_SECRET_REMOVED
 
 # 本番
 NODE_ENV=production
-NEXT_PUBLIC_APP_NAME=NightWork POS
+NEXT_PUBLIC_APP_NAME=LNXS
 NEXT_PUBLIC_API_URL=https://your-api-domain.com
 ```
 
@@ -861,4 +861,4 @@ npm run lighthouse
 ---
 
 
-**NightWork POS** - モダンなテクノロジーと直感的な管理ツールでナイトライフビジネスを支援。🍷✨
+**LNXS** - モダンなテクノロジーと直感的な管理ツールでナイトライフビジネスを支援。🍷✨

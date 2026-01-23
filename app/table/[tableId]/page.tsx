@@ -1,11 +1,11 @@
 'use client';
-import { FaPowerOff } from "react-icons/fa"; 
-import { AiOutlinePoweroff } from "react-icons/ai"; 
-import { MdHomeRepairService } from "react-icons/md"; 
-import { BiUserPin } from "react-icons/bi"; 
-import { SiBuymeacoffee } from "react-icons/si"; 
-import { FaHome } from "react-icons/fa"; 
-import { AiFillHome } from "react-icons/ai"; 
+import { FaPowerOff } from "react-icons/fa";
+import { AiOutlinePoweroff } from "react-icons/ai";
+import { MdHomeRepairService } from "react-icons/md";
+import { BiUserPin } from "react-icons/bi";
+import { SiBuymeacoffee } from "react-icons/si";
+import { FaHome } from "react-icons/fa";
+import { AiFillHome } from "react-icons/ai";
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -17,7 +17,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
-import { 
+import {
   Wine, Users, ShoppingCart, DollarSign, Clock, Package,
   ArrowLeft, Plus, Minus, Trash2, CheckCircle,
   AlertCircle, User, CreditCard, X, Bell, Utensils, Coffee, XCircle, AlertTriangle, Pause, Play, Edit2, Save
@@ -55,12 +55,12 @@ export default function TableDashboard({ params }: { params: { tableId: string }
   const [showFieldNominationDialog, setShowFieldNominationDialog] = useState(false);
   const [fieldNominationCast, setFieldNominationCast] = useState<string>('');
   const [showNominationTypeDialog, setShowNominationTypeDialog] = useState(false);
-  const [selectedCastForNomination, setSelectedCastForNomination] = useState<{id: string, name: string} | null>(null);
+  const [selectedCastForNomination, setSelectedCastForNomination] = useState<{ id: string, name: string } | null>(null);
   const [showNominationCastDialog, setShowNominationCastDialog] = useState(false);
   const [selectedNominationCast, setSelectedNominationCast] = useState<string>('');
   const [currentNominationType, setCurrentNominationType] = useState<'inside' | 'main' | 'together' | null>(null);
   const [showManagerCallDialog, setShowManagerCallDialog] = useState(false);
-  const [selectedCastForManagerCall, setSelectedCastForManagerCall] = useState<{id: string, name: string} | null>(null);
+  const [selectedCastForManagerCall, setSelectedCastForManagerCall] = useState<{ id: string, name: string } | null>(null);
   const [managerCallStatus, setManagerCallStatus] = useState<'none' | 'pending' | 'accepted' | 'rejected'>('none');
   const [previousManagerCallStatus, setPreviousManagerCallStatus] = useState<'none' | 'pending' | 'accepted' | 'rejected'>('none');
   const [showStaffCallDialog, setShowStaffCallDialog] = useState(false);
@@ -83,10 +83,10 @@ export default function TableDashboard({ params }: { params: { tableId: string }
   const [services, setServices] = useState<any[]>([]);
   const [isServicesLoading, setIsServicesLoading] = useState(true);
   const [cartOrders, setCartOrders] = useState<any[]>([]);
-  const [countdownTimers, setCountdownTimers] = useState<{[key: string]: number}>({});
-  const [orderRequestStatus, setOrderRequestStatus] = useState<{[key: string]: 'pending' | 'sent' | 'accepted' | 'rejected'}>({});
+  const [countdownTimers, setCountdownTimers] = useState<{ [key: string]: number }>({});
+  const [orderRequestStatus, setOrderRequestStatus] = useState<{ [key: string]: 'pending' | 'sent' | 'accepted' | 'rejected' }>({});
   const [serviceOrders, setServiceOrders] = useState<any[]>([]);
-  const [serviceRequestStatus, setServiceRequestStatus] = useState<{[key: string]: 'pending' | 'sent' | 'accepted' | 'rejected'}>({});
+  const [serviceRequestStatus, setServiceRequestStatus] = useState<{ [key: string]: 'pending' | 'sent' | 'accepted' | 'rejected' }>({});
   const [showPaymentDialog, setShowPaymentDialog] = useState(false);
   const [paymentAmount, setPaymentAmount] = useState<number>(0);
   const [isPaymentCompleted, setIsPaymentCompleted] = useState<boolean>(false);
@@ -105,9 +105,9 @@ export default function TableDashboard({ params }: { params: { tableId: string }
   const [editingRemainingSeconds, setEditingRemainingSeconds] = useState<string>('');
   const [nominations, setNominations] = useState<any[]>([]);
   const [isNominationsLoading, setIsNominationsLoading] = useState<boolean>(false);
-  const [addCharges, setAddCharges] = useState<{[key: string]: number}>({});
+  const [addCharges, setAddCharges] = useState<{ [key: string]: number }>({});
   const [nominationCharges, setNominationCharges] = useState<number[]>([]); // 指名料金の履歴
-  
+
   // 追加サービス関連
   const [showBottleKeepDialog, setShowBottleKeepDialog] = useState(false);
   const [bottleKeepData, setBottleKeepData] = useState({
@@ -127,7 +127,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
     charge: number;
     timestamp: number;
   }>>([]);
-  
+
   // 支払い完了後に商品の追加をロックするフラグ
   const hasAcceptedOrders = cartOrders.some(order => {
     const status = (orderRequestStatus as any)[order.id] || order.status;
@@ -136,7 +136,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
   const isOrderingLocked = isPaymentCompleted && hasAcceptedOrders;
   const isTimeExpired = isSessionActive && setExtensionCountdown <= 0;
   const isOrderingDisabled = isTimeExpired || isPaymentCompleted;
-  
+
   const router = useRouter();
   const { success, error, confirm } = useNotificationContext();
 
@@ -161,7 +161,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
         try {
           // 削除する指名を特定
           const nominationToDelete = nominations.find(n => n.id.toString() === nominationId);
-          
+
           const response = await fetch(`/api/nominations?id=${nominationId}`, {
             method: 'DELETE'
           });
@@ -169,7 +169,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
           if (!result.success) {
             throw new Error(result.error || '指名の削除に失敗しました');
           }
-          
+
           // 削除した指名の料金をnominationChargesから削除
           if (nominationToDelete) {
             // addChargesが空の場合は再取得
@@ -179,7 +179,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                 const chargesResponse = await fetch('/api/add-charges');
                 const chargesResult = await chargesResponse.json();
                 if (chargesResult.success && chargesResult.charges) {
-                  const chargesMap: {[key: string]: number} = {};
+                  const chargesMap: { [key: string]: number } = {};
                   chargesResult.charges.forEach((charge: any) => {
                     chargesMap[charge.charge_name] = parseFloat(charge.value) || 0;
                   });
@@ -200,9 +200,9 @@ export default function TableDashboard({ params }: { params: { tableId: string }
             } else {
               chargeToRemove = charges[nominationToDelete.type_id] || 0;
             }
-            
+
             console.log('指名削除時の料金:', { typeId: nominationToDelete.type_id, chargeToRemove, charges });
-            
+
             // nominationChargesから該当する料金を1つ削除
             const index = nominationCharges.indexOf(chargeToRemove);
             if (index !== -1) {
@@ -213,7 +213,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
               localStorage.setItem('nomination_charges', JSON.stringify(updated));
             }
           }
-          
+
           success('削除完了', '指名を削除しました');
           await loadNominations();
         } catch (err) {
@@ -239,14 +239,14 @@ export default function TableDashboard({ params }: { params: { tableId: string }
       router.push('/');
       return;
     }
-    
+
     setTableAuth(currentTable);
     // 既存の未完了セッションがある場合は復元してセッション中として扱う
     const existingSessionId = typeof window !== 'undefined' ? localStorage.getItem('current_session_id') : null;
     if (existingSessionId) {
       setIsSessionActive(true);
     } else {
-    setIsSessionActive(currentTable.status === 'occupied');
+      setIsSessionActive(currentTable.status === 'occupied');
     }
     setIsLoading(false);
     loadMenuData();
@@ -321,7 +321,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
     if (!tableAuth || !isSessionActive) return;
     const sessionId = localStorage.getItem('current_session_id');
     if (!sessionId) return;
-    
+
     try {
       const response = await fetch(`/api/sessions?id=${sessionId}`);
       const result = await response.json();
@@ -341,12 +341,12 @@ export default function TableDashboard({ params }: { params: { tableId: string }
   // 定期的にスタッフ呼び出しステータスと注文カートを確認
   useEffect(() => {
     if (!tableAuth || !isSessionActive) return;
-    
+
     // 初回実行
     checkPaymentStatus();
     loadNominations();
     loadAdditionalServices();
-    
+
     const interval = setInterval(() => {
       loadManagerCallStatus();
       loadStaffCallStatus();
@@ -379,22 +379,22 @@ export default function TableDashboard({ params }: { params: { tableId: string }
   }, [tableAuth, isSessionActive]);
 
   // セッション情報を取得
-  const [session, setSession] = useState<{id: number; created_at: string; set_count: number; set_extensions?: Array<{ count: number; timestamp: number }>; is_paused?: boolean; paused_at?: string; paused_elapsed?: number} | null>(null);
-  
+  const [session, setSession] = useState<{ id: number; created_at: string; set_count: number; set_extensions?: Array<{ count: number; timestamp: number }>; is_paused?: boolean; paused_at?: string; paused_elapsed?: number } | null>(null);
+
   const loadSession = async () => {
     if (!tableAuth) return;
-    
+
     try {
       const response = await fetch(`/api/sessions`);
       const result = await response.json();
       if (result.success) {
         // 該当テーブルのアクティブなセッション（status=1）を検索
-        const tableActiveSession = result.data.find((s: any) => 
+        const tableActiveSession = result.data.find((s: any) =>
           s.table_id === parseInt(tableAuth.table_id) && s.status === 1
         );
-        
+
         const sessionId = localStorage.getItem('current_session_id');
-        
+
         // 管理者ページからセッションが開始された場合（isSessionActiveがfalseだが、アクティブなセッションが存在する）
         if (!isSessionActive && tableActiveSession) {
           // セッションを開始
@@ -406,13 +406,13 @@ export default function TableDashboard({ params }: { params: { tableId: string }
           }
           setIsSessionActive(true);
           setSession(tableActiveSession);
-          
+
           // セット延長情報を同期
           if (tableActiveSession.set_extensions) {
             setSetExtensions(tableActiveSession.set_extensions);
             localStorage.setItem('set_extensions', JSON.stringify(tableActiveSession.set_extensions));
           }
-          
+
           // テーブルセッションを開始
           try {
             const updatedTable = await startTableSession(tableAuth.table_id);
@@ -420,15 +420,15 @@ export default function TableDashboard({ params }: { params: { tableId: string }
           } catch (err) {
             console.error('テーブルセッション開始エラー:', err);
           }
-          
+
           success('セッション開始', 'セッションが開始されました');
           return;
         }
-        
+
         // 既存のセッションIDがある場合
         if (sessionId) {
           const sessionData = result.data.find((s: any) => s.id.toString() === sessionId);
-          
+
           // セッションが終了した場合（status=0）を検出
           if (sessionData && sessionData.status === 0) {
             // セッションから退出
@@ -442,7 +442,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
             setSetExtensions([]);
             setSetExtensionCountdown(0);
             setSession(null);
-            
+
             // テーブルセッションを終了
             try {
               const updatedTable = await endTableSession(tableAuth.table_id);
@@ -450,7 +450,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
             } catch (err) {
               console.error('テーブルセッション終了エラー:', err);
             }
-            
+
             // 状態をリセット
             setCartOrders([]);
             setServiceOrders([]);
@@ -459,11 +459,11 @@ export default function TableDashboard({ params }: { params: { tableId: string }
             setAdditionalServices([]);
             setIsPaymentCompleted(false);
             setCurrentNominationType(null);
-            
+
             success('セッション終了', 'セッションが終了されました');
             return;
           }
-          
+
           const activeSession = result.data.find((s: any) => s.id.toString() === sessionId && s.status === 1);
           if (activeSession) {
             setSession(activeSession);
@@ -483,17 +483,17 @@ export default function TableDashboard({ params }: { params: { tableId: string }
   // セット延長カウントダウンタイマー（データベースのセッション情報から算出）
   useEffect(() => {
     if (!isSessionActive || !session) return;
-    
+
     const updateCountdown = () => {
       const setCount = session.set_count || 1;
       const setDuration = 3600; // 1セット = 3600秒
       const totalSeconds = setCount * setDuration;
-      
+
       // セッション開始時刻から経過時間を計算
       const sessionStart = new Date(session.created_at).getTime();
       const now = Date.now();
       let elapsed = Math.floor((now - sessionStart) / 1000);
-      
+
       // 停止時間を考慮
       const pausedElapsed = session.paused_elapsed || 0;
       if (session.is_paused && session.paused_at) {
@@ -505,33 +505,33 @@ export default function TableDashboard({ params }: { params: { tableId: string }
         // 停止していない場合、累積停止時間を減算
         elapsed -= pausedElapsed;
       }
-      
+
       const remaining = Math.max(0, totalSeconds - elapsed);
-      
+
       setSetExtensionCountdown(remaining);
     };
-    
+
     // 初回更新
     updateCountdown();
-    
+
     // 1秒ごとに更新（停止中でも更新して表示を維持）
     const interval = setInterval(updateCountdown, 1000);
-    
+
     return () => clearInterval(interval);
   }, [isSessionActive, session]);
-  
+
   // セッション情報を定期的に取得（セット延長情報の同期のため、および管理者ページからセッション開始を検出）
   useEffect(() => {
     if (!tableAuth) return;
-    
+
     // 初回読み込み
     loadSession();
-    
+
     // 1秒ごとに更新（セット延長情報の同期、および管理者ページからセッション開始を検出、残り時間変更の即時反映のため）
     const interval = setInterval(() => {
       loadSession();
     }, 1000);
-    
+
     return () => clearInterval(interval);
   }, [tableAuth]);
 
@@ -541,7 +541,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
       // 出勤中のキャストのみを取得
       const response = await fetch('/api/casts?only_active=true');
       const result = await response.json();
-      
+
       if (result.success) {
         setCasts(result.data);
         setAvailableCasts(result.data); // availableCastsも更新
@@ -560,7 +560,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
       const response = await fetch('/api/add-charges');
       const result = await response.json();
       if (result.success && result.charges) {
-        const chargesMap: {[key: string]: number} = {};
+        const chargesMap: { [key: string]: number } = {};
         result.charges.forEach((charge: any) => {
           chargesMap[charge.charge_name] = parseFloat(charge.value) || 0;
         });
@@ -670,7 +670,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
         const chargesResponse = await fetch('/api/add-charges');
         const chargesResult = await chargesResponse.json();
         if (chargesResult.success && chargesResult.charges) {
-          const chargesMap: {[key: string]: number} = {};
+          const chargesMap: { [key: string]: number } = {};
           chargesResult.charges.forEach((charge: any) => {
             chargesMap[charge.charge_name] = parseFloat(charge.value) || 0;
           });
@@ -709,9 +709,9 @@ export default function TableDashboard({ params }: { params: { tableId: string }
       if (!result.success) {
         throw new Error(result.error || '指名の登録に失敗しました');
       }
-      
+
       console.log('指名料金追加:', { typeId, nominationCharge, charges });
-      
+
       setNominationCharges(prev => {
         const updated = [...prev, nominationCharge];
         console.log('指名料金配列更新:', updated);
@@ -732,20 +732,20 @@ export default function TableDashboard({ params }: { params: { tableId: string }
 
   const loadCartOrders = async () => {
     if (!tableAuth) return;
-    
+
     try {
       const sessionId = localStorage.getItem('current_session_id');
       if (!sessionId) return;
 
       const response = await fetch(`/api/salesorder?session_id=${sessionId}`);
       const result = await response.json();
-      
+
       if (result.success) {
         setCartOrders(result.data);
-        
+
         // ローカルストレージにカートデータを保存
         localStorage.setItem(`cart_orders_${sessionId}`, JSON.stringify(result.data));
-        
+
         // データベースのステータスに基づいてUI表示を更新
         result.data.forEach((order: any) => {
           if (order.status === 'pending') {
@@ -782,20 +782,20 @@ export default function TableDashboard({ params }: { params: { tableId: string }
 
   const loadServiceOrders = async () => {
     if (!tableAuth) return;
-    
+
     try {
       const sessionId = localStorage.getItem('current_session_id');
       if (!sessionId) return;
 
       const response = await fetch(`/api/serviceorder?session_id=${sessionId}`);
       const result = await response.json();
-      
+
       if (result.success) {
         setServiceOrders(result.data);
-        
+
         // ローカルストレージにサービス注文データを保存
         localStorage.setItem(`service_orders_${sessionId}`, JSON.stringify(result.data));
-        
+
         // データベースのステータスに基づいてUI表示を更新
         result.data.forEach((order: any) => {
           // ステータスをそのまま反映（pending, accepted, rejected）
@@ -833,20 +833,20 @@ export default function TableDashboard({ params }: { params: { tableId: string }
   // 静かな更新用の関数（ローディング状態を変更しない）
   const loadCartOrdersSilently = async () => {
     if (!tableAuth) return;
-    
+
     try {
       const sessionId = localStorage.getItem('current_session_id');
       if (!sessionId) return;
 
       const response = await fetch(`/api/salesorder?session_id=${sessionId}`);
       const result = await response.json();
-      
+
       if (result.success) {
         setCartOrders(result.data);
-        
+
         // ローカルストレージにカートデータを保存
         localStorage.setItem(`cart_orders_${sessionId}`, JSON.stringify(result.data));
-        
+
         // データベースのステータスに基づいてUI表示を更新
         result.data.forEach((order: any) => {
           if (order.status === 'pending') {
@@ -865,20 +865,20 @@ export default function TableDashboard({ params }: { params: { tableId: string }
 
   const loadServiceOrdersSilently = async () => {
     if (!tableAuth) return;
-    
+
     try {
       const sessionId = localStorage.getItem('current_session_id');
       if (!sessionId) return;
 
       const response = await fetch(`/api/serviceorder?session_id=${sessionId}`);
       const result = await response.json();
-      
+
       if (result.success) {
         setServiceOrders(result.data);
-        
+
         // ローカルストレージにサービス注文データを保存
         localStorage.setItem(`service_orders_${sessionId}`, JSON.stringify(result.data));
-        
+
         // データベースのステータスに基づいてUI表示を更新
         result.data.forEach((order: any) => {
           // ステータスをそのまま反映（pending, accepted, rejected）
@@ -898,16 +898,16 @@ export default function TableDashboard({ params }: { params: { tableId: string }
   const loadMenuData = async () => {
     try {
       setIsMenuLoading(true);
-      
+
       // カテゴリと商品を並行して取得
       const [categoriesResponse, productsResponse] = await Promise.all([
         fetch('/api/categories'),
         fetch('/api/products')
       ]);
-      
+
       const categoriesResult = await categoriesResponse.json();
       const productsResult = await productsResponse.json();
-      
+
       if (categoriesResult.success && productsResult.success) {
         setMenuCategories(categoriesResult.categories);
         setMenuItems(productsResult.products.filter((p: any) => Number(p.amount) > 0));
@@ -925,10 +925,10 @@ export default function TableDashboard({ params }: { params: { tableId: string }
   const loadServices = async () => {
     try {
       setIsServicesLoading(true);
-      
+
       const response = await fetch('/api/services');
       const result = await response.json();
-      
+
       if (result.success) {
         setServices(result.services);
       } else {
@@ -986,7 +986,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
       });
 
       const result = await response.json();
-      
+
       if (result.success) {
         success('注文完了', '注文が確定されました');
         setShowOrderDialog(false);
@@ -995,7 +995,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
         setSelectedCast('none');
         setIsForCast(false);
         loadCartOrders(); // カートを更新
-        
+
         // 即座に送信済みステータスに設定
         if (result.data && result.data.id) {
           setOrderRequestStatus(prev => ({ ...prev, [result.data.id]: 'sent' }));
@@ -1012,7 +1012,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
               type: 'sales_order',
               table_id: parseInt(tableAuth.table_id),
               table_label: tableAuth.table_label,
-              cast_name: selectedCast && selectedCast !== 'none' ? 
+              cast_name: selectedCast && selectedCast !== 'none' ?
                 casts.find(c => c.id.toString() === selectedCast)?.name || '未選択' : '未選択',
               message: `${selectedProduct.name} x${orderQuantity} の注文が入りました`,
               priority: 'high'
@@ -1048,24 +1048,24 @@ export default function TableDashboard({ params }: { params: { tableId: string }
       }
 
       // クライアント状態を更新
-    setCartOrders(prev => {
-      const newOrders = prev.filter(order => order.id.toString() !== orderId);
-      const sessionId = localStorage.getItem('current_session_id');
-      if (sessionId) {
-        localStorage.setItem(`cart_orders_${sessionId}`, JSON.stringify(newOrders));
-      }
-      return newOrders;
-    });
-    setCountdownTimers(prev => {
+      setCartOrders(prev => {
+        const newOrders = prev.filter(order => order.id.toString() !== orderId);
+        const sessionId = localStorage.getItem('current_session_id');
+        if (sessionId) {
+          localStorage.setItem(`cart_orders_${sessionId}`, JSON.stringify(newOrders));
+        }
+        return newOrders;
+      });
+      setCountdownTimers(prev => {
         const newTimers = { ...prev } as any;
-      delete newTimers[orderId];
-      return newTimers;
-    });
-    setOrderRequestStatus(prev => {
+        delete newTimers[orderId];
+        return newTimers;
+      });
+      setOrderRequestStatus(prev => {
         const newStatus = { ...prev } as any;
-      delete newStatus[orderId];
-      return newStatus;
-    });
+        delete newStatus[orderId];
+        return newStatus;
+      });
       success('削除完了', '承認待ちの注文を削除しました');
     } catch (e: any) {
       console.error('削除エラー:', e);
@@ -1084,9 +1084,9 @@ export default function TableDashboard({ params }: { params: { tableId: string }
     }
 
     // サービス名からサービスを検索
-    const foundService = services.find((s: any) => 
-      s.name === serviceName || 
-      s.name.includes(serviceName) || 
+    const foundService = services.find((s: any) =>
+      s.name === serviceName ||
+      s.name.includes(serviceName) ||
       serviceName.includes(s.name)
     );
 
@@ -1143,31 +1143,31 @@ export default function TableDashboard({ params }: { params: { tableId: string }
       });
 
       const result = await response.json();
-      
+
       if (result.success) {
         success('サービス注文完了', 'サービス注文が確定されました');
         setShowServiceOrderDialog(false);
         setSelectedService(null);
         setServiceOrderQuantity(1);
         setSelectedServiceCast('none');
-        
+
         // サービス注文をカートに追加
         if (result.data) {
           const newServiceOrder = {
             ...result.data,
             service_name: selectedService.name,
-            cast_name: selectedServiceCast && selectedServiceCast !== 'none' ? 
+            cast_name: selectedServiceCast && selectedServiceCast !== 'none' ?
               casts.find(c => c.id.toString() === selectedServiceCast)?.name || '未選択' : null
           };
-          
+
           setServiceOrders(prev => [...prev, newServiceOrder]);
-          
+
           // ステータスをpendingに設定（管理者の承認待ち）
           if (result.data.id) {
             setServiceRequestStatus(prev => ({ ...prev, [result.data.id]: 'pending' }));
           }
         }
-        
+
         loadServiceOrders(); // サービス注文を更新
 
         // 管理者に通知を送信
@@ -1181,7 +1181,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
               type: 'service_order',
               table_id: parseInt(tableAuth.table_id),
               table_label: tableAuth.table_label,
-              cast_name: selectedServiceCast && selectedServiceCast !== 'none' ? 
+              cast_name: selectedServiceCast && selectedServiceCast !== 'none' ?
                 casts.find(c => c.id.toString() === selectedServiceCast)?.name || '未選択' : '未選択',
               message: `${selectedService.name} x${serviceOrderQuantity} のサービス注文が入りました`,
               priority: 'high'
@@ -1225,19 +1225,19 @@ export default function TableDashboard({ params }: { params: { tableId: string }
       error('エラー', '人数を入力してください');
       return;
     }
-    
+
     // 人数がテーブルの定員を超えていないかチェック
     const numGuestCount = parseInt(guestCount);
     if (isNaN(numGuestCount) || numGuestCount <= 0) {
       error('エラー', '有効な人数を入力してください');
       return;
     }
-    
+
     if (tableAuth.capacity && numGuestCount > tableAuth.capacity) {
       error('エラー', `人数はテーブルの定員（${tableAuth.capacity}名）以下で入力してください`);
       return;
     }
-    
+
     try {
       // セット料金（DB: add_charges の set_price.value）が未設定なら開始できない
       let charges = addCharges;
@@ -1246,7 +1246,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
           const chargesResponse = await fetch('/api/add-charges');
           const chargesResult = await chargesResponse.json();
           if (chargesResult.success && chargesResult.charges) {
-            const chargesMap: {[key: string]: number} = {};
+            const chargesMap: { [key: string]: number } = {};
             chargesResult.charges.forEach((charge: any) => {
               chargesMap[charge.charge_name] = parseFloat(charge.value) || 0;
             });
@@ -1265,7 +1265,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
 
       // 人数をローカルストレージに保存
       localStorage.setItem('guest_count', guestCount);
-      
+
       // データベースにセッションを作成 (status=1, client=人数)
       const response = await fetch('/api/sessions', {
         method: 'POST',
@@ -1281,21 +1281,21 @@ export default function TableDashboard({ params }: { params: { tableId: string }
       });
 
       const result = await response.json();
-      
+
       if (!result.success) {
         throw new Error(result.error || 'セッション作成に失敗しました');
       }
 
       // ローカルストレージにcurrent_session_idを保存
       localStorage.setItem('current_session_id', result.data.id.toString());
-      
+
       // セットカウントを1で初期化
       localStorage.setItem('set_count', '1');
-      
+
       // 支払い状態をリセット
       setIsPaymentCompleted(false);
       localStorage.removeItem('payment_completed');
-      
+
       const updatedTable = await startTableSession(tableAuth.table_id);
       setTableAuth(updatedTable);
       setIsSessionActive(true);
@@ -1304,7 +1304,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
       localStorage.removeItem('set_extensions'); // 延長履歴をクリア
       // セッション情報を取得してカウントダウンを更新
       await loadSession();
-      
+
       // セッション作成時に既に停止状態で初期化されているため、追加の初期化は不要
       // （API側でis_paused: true, paused_at: 現在時刻, paused_elapsed: 0, set_extensions: []が設定済み）
       // 指名料金をクリア
@@ -1320,7 +1320,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
 
   const endSession = async () => {
     if (!tableAuth) return;
-    
+
     confirm(
       'セッション終了',
       'セッションを終了しますか？',
@@ -1329,7 +1329,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
           const sessionId = localStorage.getItem('current_session_id');
           const setCount = localStorage.getItem('set_count');
           const endAt = new Date().toISOString();
-          
+
           if (sessionId) {
             // データベースにセッション終了情報を保存（costは保存しない）
             const guestCountLocal = localStorage.getItem('guest_count');
@@ -1366,12 +1366,12 @@ export default function TableDashboard({ params }: { params: { tableId: string }
           localStorage.removeItem('paid_amount');
           localStorage.removeItem('payment_completed');
           localStorage.removeItem('set_count');
-          
+
           // テーブルセッションを終了
           const updatedTable = await endTableSession(tableAuth.table_id);
           setTableAuth(updatedTable);
           setIsSessionActive(false);
-          
+
           // 状態をリセット
           setCartOrders([]);
           setCountdownTimers({});
@@ -1386,7 +1386,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
           localStorage.removeItem('set_extension_total_seconds');
           localStorage.removeItem('set_extensions');
           setSetExtensionCountdown(0);
-          
+
           // DBにset_extensionsをクリア
           if (sessionId) {
             try {
@@ -1399,14 +1399,14 @@ export default function TableDashboard({ params }: { params: { tableId: string }
               console.error('set_extensionsクリアエラー:', err);
             }
           }
-          
+
           // 指名料金をクリア
           setNominationCharges([]);
           localStorage.removeItem('nomination_charges');
           // 追加サービスをクリア
           setAdditionalServices([]);
           localStorage.removeItem('additional_services');
-          
+
           success('セッション終了', 'セッションを終了しました');
         } catch (err) {
           console.error('セッション終了エラー:', err);
@@ -1420,22 +1420,22 @@ export default function TableDashboard({ params }: { params: { tableId: string }
     let subtotal = 0;
     const setPrice = addCharges['set_price'] || 0;
     const extensionPrice = addCharges['extension_price'] || 0;
-    
+
     // 商品の合計
     if (cartOrders && cartOrders.length > 0) {
       const productTotal = cartOrders.reduce((sum, order) => {
-      // 承認された商品のみを合計に含める
-      const status = orderRequestStatus[order.id] || order.status;
-      if (status === 'accepted') {
-        const price = Number(order.total_price);
-        const validPrice = isNaN(price) ? 0 : price;
+        // 承認された商品のみを合計に含める
+        const status = orderRequestStatus[order.id] || order.status;
+        if (status === 'accepted') {
+          const price = Number(order.total_price);
+          const validPrice = isNaN(price) ? 0 : price;
           return sum + validPrice;
-      }
+        }
         return sum;
-    }, 0);
+      }, 0);
       subtotal += productTotal;
     }
-    
+
     // セッション開始時の料金（add_charges の set_price.value × 人数）
     if (guestCount && guestCount.trim() !== '') {
       const initialGuestCount = parseInt(guestCount);
@@ -1443,7 +1443,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
         subtotal += setPrice * initialGuestCount;
       }
     }
-    
+
     // セット延長料金（add_charges の extension_price.value × 延長時人数）
     setExtensions.forEach(extension => {
       if (extension.count > 0) {
@@ -1451,25 +1451,25 @@ export default function TableDashboard({ params }: { params: { tableId: string }
         subtotal += (extension.price ?? (extensionPrice * extension.count));
       }
     });
-    
+
     // 指名料金（DBのnomination.costは「指名登録 + 延長時加算」の累計になっている前提）
     nominations.forEach(nomination => {
       const cost = Number((nomination as any).cost);
       subtotal += Number.isFinite(cost) ? cost : 0;
     });
-    
+
     // 追加サービス料金の合計
     additionalServices.forEach(service => {
       subtotal += service.charge;
     });
-    
+
     // サービス手数料（10%）を追加
     const serviceFee = Math.round(subtotal * 0.1);
     const total = subtotal + serviceFee;
-    
+
     // ローカルストレージに保存
     localStorage.setItem('fullcost', total.toString());
-    
+
     return total;
   };
 
@@ -1483,7 +1483,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
   const calculateCastBack = () => {
     return cartOrders.reduce((total, order) => {
       if (!order.cast_id) return total;
-      
+
       // For now, return 0 as we don't have back calculation for the new system
       // This can be implemented later if needed
       return total;
@@ -1525,7 +1525,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
         const chargesResponse = await fetch('/api/add-charges');
         const chargesResult = await chargesResponse.json();
         if (chargesResult.success && chargesResult.charges) {
-          const chargesMap: {[key: string]: number} = {};
+          const chargesMap: { [key: string]: number } = {};
           chargesResult.charges.forEach((charge: any) => {
             chargesMap[charge.charge_name] = parseFloat(charge.value) || 0;
           });
@@ -1547,15 +1547,15 @@ export default function TableDashboard({ params }: { params: { tableId: string }
     const newExtension = { count, timestamp: Date.now(), price: extensionUnitPrice * count };
     const updatedExtensions = [...setExtensions, newExtension];
     setSetExtensions(updatedExtensions);
-    
+
     // ローカルストレージに保存
     localStorage.setItem('set_extensions', JSON.stringify(updatedExtensions));
-    
+
     // セットカウントを1増加（データベースのセッション情報から取得）
     const currentSetCount = session.set_count || 1;
     const newSetCount = currentSetCount + 1;
     localStorage.setItem('set_count', newSetCount.toString());
-    
+
     // DBにset_countとset_extensionsを同期
     const sessionId = localStorage.getItem('current_session_id');
     if (sessionId) {
@@ -1563,7 +1563,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
         const response = await fetch(`/api/sessions/${sessionId}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
+          body: JSON.stringify({
             set_count: newSetCount,
             set_extensions: updatedExtensions
           })
@@ -1578,17 +1578,17 @@ export default function TableDashboard({ params }: { params: { tableId: string }
         return;
       }
     }
-    
+
     // セッション情報を再取得してカウントダウンを更新（DB更新後に反映される）
     await loadSession();
-    
+
     // 成功メッセージを表示
     success('セット延長', `${count}名でセットを延長しました（60分追加）`);
-    
+
     // ダイアログを閉じる
     setShowSetExtensionDialog(false);
     setExtensionGuestCount('');
-    
+
     // 現在の指名リストの料金を追加
     // addChargesが空の場合は再取得
     charges = charges;
@@ -1597,7 +1597,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
         const chargesResponse = await fetch('/api/add-charges');
         const chargesResult = await chargesResponse.json();
         if (chargesResult.success && chargesResult.charges) {
-          const chargesMap: {[key: string]: number} = {};
+          const chargesMap: { [key: string]: number } = {};
           chargesResult.charges.forEach((charge: any) => {
             chargesMap[charge.charge_name] = parseFloat(charge.value) || 0;
           });
@@ -1611,7 +1611,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
 
     const extensionNominationCharges: number[] = [];
     const nominationDeltaById = new Map<number, { add: number; toMainFlag?: 1; rankCostAdd: number; rankPointAdd: number }>();
-    
+
     // 各指名のcostを更新（延長のたびに「該当する指名料」を加算）
     // 仕様: 延長時に場内指名(inside)は自動的に本指名(main)へ切り替え、基本料金に本指名料金を加算する
     for (const nomination of nominations) {
@@ -1640,7 +1640,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
           rankPointAdd: 1,
         });
       }
-      
+
       // nominationテーブルのcostを更新
       if (charge > 0) {
         try {
@@ -1684,9 +1684,9 @@ export default function TableDashboard({ params }: { params: { tableId: string }
         })
       );
     }
-    
+
     console.log('セット延長時の指名料金:', extensionNominationCharges, 'charges:', charges);
-    
+
     if (extensionNominationCharges.length > 0) {
       setNominationCharges(prev => {
         const updated = [...prev, ...extensionNominationCharges];
@@ -1695,7 +1695,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
         return updated;
       });
     }
-    
+
     // 指名リストを再読み込み
     await loadNominations();
   };
@@ -1721,16 +1721,16 @@ export default function TableDashboard({ params }: { params: { tableId: string }
       const setCount = session.set_count || 1;
       const setDuration = 3600; // 1セット = 3600秒
       const totalSeconds = setCount * setDuration;
-      
+
       // 新しい残り時間から経過時間を計算
       const elapsed = totalSeconds - newRemainingSeconds;
-      
+
       // 停止時間を考慮して新しいcreated_atを計算
       const pausedElapsed = session.paused_elapsed || 0;
       const pausedAt = session.paused_at ? new Date(session.paused_at).getTime() : Date.now();
       const currentPauseDuration = Math.floor((Date.now() - pausedAt) / 1000);
       const totalPausedTime = pausedElapsed + currentPauseDuration;
-      
+
       // 新しいcreated_at = 現在時刻 - 経過時間 - 累積停止時間
       const newCreatedAt = new Date(Date.now() - (elapsed + totalPausedTime) * 1000).toISOString();
 
@@ -1769,17 +1769,17 @@ export default function TableDashboard({ params }: { params: { tableId: string }
       error('エラー', 'セッション情報が見つかりません');
       return;
     }
-    
+
     const isCurrentlyPaused = session.is_paused || false;
     const pausedElapsed = session.paused_elapsed || 0;
     const now = new Date().toISOString();
-    
+
     if (isCurrentlyPaused) {
       // 再開: 停止時間を累積に追加
       const pausedAt = session.paused_at ? new Date(session.paused_at).getTime() : Date.now();
       const currentPauseDuration = Math.floor((Date.now() - pausedAt) / 1000);
       const newPausedElapsed = pausedElapsed + currentPauseDuration;
-      
+
       try {
         const response = await fetch(`/api/sessions/${session.id}`, {
           method: 'PATCH',
@@ -1790,17 +1790,17 @@ export default function TableDashboard({ params }: { params: { tableId: string }
             paused_elapsed: newPausedElapsed
           })
         });
-        
+
         const result = await response.json();
         if (!result.success) {
           throw new Error(result.error || '再開に失敗しました');
         }
-        
+
         // 編集モードをリセット
         setIsEditingRemainingTime(false);
         setEditingRemainingMinutes('');
         setEditingRemainingSeconds('');
-        
+
         await loadSession();
         success('再開', 'セット延長タイマーを再開しました');
       } catch (err) {
@@ -1819,12 +1819,12 @@ export default function TableDashboard({ params }: { params: { tableId: string }
             paused_elapsed: pausedElapsed
           })
         });
-        
+
         const result = await response.json();
         if (!result.success) {
           throw new Error(result.error || '停止に失敗しました');
         }
-        
+
         await loadSession();
         success('停止', 'セット延長タイマーを停止しました');
       } catch (err) {
@@ -1857,13 +1857,13 @@ export default function TableDashboard({ params }: { params: { tableId: string }
       async () => {
         // 最後の延長情報を取得
         const lastExtension = setExtensions[setExtensions.length - 1];
-        
+
         // 延長情報から最後の項目を削除
         const updatedExtensions = setExtensions.slice(0, -1);
-        
+
         // セットカウントを1減少
         const newSetCount = Math.max(1, (session.set_count || 1) - 1);
-        
+
         // DBにset_countとset_extensionsを同期
         const sessionId = localStorage.getItem('current_session_id');
         if (sessionId) {
@@ -1876,12 +1876,12 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                 set_extensions: updatedExtensions
               })
             });
-            
+
             const result = await response.json();
             if (!result.success) {
               throw new Error(result.error || 'セットキャンセルの更新に失敗しました');
             }
-            
+
             // ローカルストレージに保存
             if (updatedExtensions.length > 0) {
               localStorage.setItem('set_extensions', JSON.stringify(updatedExtensions));
@@ -1889,13 +1889,13 @@ export default function TableDashboard({ params }: { params: { tableId: string }
               localStorage.removeItem('set_extensions');
             }
             localStorage.setItem('set_count', newSetCount.toString());
-            
+
             // ローカルステートを更新
             setSetExtensions(updatedExtensions);
-            
+
             // セッション情報を再取得してカウントダウンを更新（DB更新後に反映される）
             await loadSession();
-            
+
             success('セットキャンセル', `${lastExtension.count}名分のセットをキャンセルしました`);
           } catch (err) {
             console.error('セットキャンセルエラー:', err);
@@ -1956,7 +1956,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
 
       // ボトルキープ料金を追加
       const bottleKeepCharge = addCharges['bottle_keep'] || 0;
-      
+
       // APIに追加サービスを保存
       const additionalServiceResponse = await fetch('/api/additional-services', {
         method: 'POST',
@@ -1977,7 +1977,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
       }
 
       const newService = additionalServiceResult.data;
-      
+
       setAdditionalServices(prev => {
         const updated = [...prev, newService];
         localStorage.setItem('additional_services', JSON.stringify(updated));
@@ -2025,7 +2025,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
         const chargesResponse = await fetch('/api/add-charges');
         const chargesResult = await chargesResponse.json();
         if (chargesResult.success && chargesResult.charges) {
-          const chargesMap: {[key: string]: number} = {};
+          const chargesMap: { [key: string]: number } = {};
           chargesResult.charges.forEach((charge: any) => {
             chargesMap[charge.charge_name] = parseFloat(charge.value) || 0;
           });
@@ -2039,7 +2039,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
 
     const vipRoomCharge = (charges['vip_room'] || 0) * count;
     console.log('VIPルーム料金追加:', { count, vipRoomCharge, charges });
-    
+
     // セッションIDを取得
     const sessionId = localStorage.getItem('current_session_id');
     if (!sessionId) {
@@ -2068,7 +2068,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
     }
 
     const newService = additionalServiceResult.data;
-    
+
     setAdditionalServices(prev => {
       const updated = [...prev, newService];
       console.log('追加サービス更新:', updated);
@@ -2105,7 +2105,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
         const chargesResponse = await fetch('/api/add-charges');
         const chargesResult = await chargesResponse.json();
         if (chargesResult.success && chargesResult.charges) {
-          const chargesMap: {[key: string]: number} = {};
+          const chargesMap: { [key: string]: number } = {};
           chargesResult.charges.forEach((charge: any) => {
             chargesMap[charge.charge_name] = parseFloat(charge.value) || 0;
           });
@@ -2119,7 +2119,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
 
     const karaokeCharge = (charges['song_room'] || 0) * count;
     console.log('カラオケ料金追加:', { count, karaokeCharge, charges });
-    
+
     // セッションIDを取得
     const sessionId = localStorage.getItem('current_session_id');
     if (!sessionId) {
@@ -2148,7 +2148,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
     }
 
     const newService = additionalServiceResult.data;
-    
+
     setAdditionalServices(prev => {
       const updated = [...prev, newService];
       console.log('追加サービス更新:', updated);
@@ -2164,13 +2164,13 @@ export default function TableDashboard({ params }: { params: { tableId: string }
   // 支払い処理
   const handlePayment = () => {
     const totalAmount = calculateTotal();
-    
+
     if (totalAmount <= 0) {
       const acceptedOrders = cartOrders.filter(order => {
         const status = orderRequestStatus[order.id] || order.status;
         return status === 'accepted';
       });
-      
+
       if (acceptedOrders.length === 0) {
         error('エラー', '承認された商品がありません。管理者による承認をお待ちください。');
       } else {
@@ -2178,12 +2178,12 @@ export default function TableDashboard({ params }: { params: { tableId: string }
       }
       return;
     }
-    
+
     if (totalAmount < 50) {
       error('エラー', '最小支払い金額は50円です');
       return;
     }
-    
+
     // 決済方法選択ダイアログを表示
     setShowPaymentMethodDialog(true);
   };
@@ -2191,7 +2191,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
   const handleCreditCardPayment = () => {
     // 支払い金額は合計の1.1倍（10%追加）
     const paymentAmount = calculatePaymentAmount();
-    
+
     setPaymentAmount(paymentAmount);
     setShowPaymentMethodDialog(false);
     setShowPaymentDialog(true);
@@ -2211,7 +2211,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
 
   const handleStoreCreditCardPaymentConfirm = async () => {
     const amount = parseFloat(storeCreditCardPaymentAmount);
-    
+
     if (isNaN(amount) || amount <= 0) {
       error('エラー', '有効な金額を入力してください');
       return;
@@ -2222,24 +2222,24 @@ export default function TableDashboard({ params }: { params: { tableId: string }
       error('エラー', `支払い金額は合計金額（${formatCurrency(totalAmount)}）以上である必要があります`);
       return;
     }
-    
+
     // ローカルストレージのfullcostに保存
     localStorage.setItem('fullcost', amount.toString());
-    
+
     // 支払い金額をローカルストレージに保存（表示用）
     localStorage.setItem('paid_amount', amount.toString());
-    
+
     // 支払い完了状態を設定
     setIsPaymentCompleted(true);
     localStorage.setItem('payment_completed', 'true');
-    
+
     // sessionsテーブルも更新
     const sessionId = localStorage.getItem('current_session_id');
     if (sessionId) {
       const currentCost = localStorage.getItem('cost') || '0';
       const newCost = parseInt(currentCost) + amount;
       localStorage.setItem('cost', newCost.toString());
-      
+
       fetch(`/api/sessions/${sessionId}`, {
         method: 'PATCH',
         headers: {
@@ -2250,7 +2250,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
         }),
       }).catch(err => console.error('セッション更新エラー:', err));
     }
-    
+
     // 承認待ち（pending/sent）の注文は決済完了時に拒否へ更新
     try {
       const ordersToReject = cartOrders.filter((order: any) => {
@@ -2277,7 +2277,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
     } catch (e) {
       console.error('決済後の注文更新処理エラー:', e);
     }
-    
+
     success('決済成功', `支払いが完了しました`);
     setShowStoreCreditCardPaymentDialog(false);
     setStoreCreditCardPaymentAmount('');
@@ -2285,7 +2285,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
 
   const handleCashPaymentConfirm = async () => {
     const amount = parseFloat(cashPaymentAmount);
-    
+
     if (isNaN(amount) || amount <= 0) {
       error('エラー', '有効な金額を入力してください');
       return;
@@ -2296,24 +2296,24 @@ export default function TableDashboard({ params }: { params: { tableId: string }
       error('エラー', `支払い金額は合計金額（${formatCurrency(totalAmount)}）以上である必要があります`);
       return;
     }
-    
+
     // ローカルストレージのfullcostに保存
     localStorage.setItem('fullcost', amount.toString());
-    
+
     // 支払い金額をローカルストレージに保存（表示用）
     localStorage.setItem('paid_amount', amount.toString());
-    
+
     // 支払い完了状態を設定
     setIsPaymentCompleted(true);
     localStorage.setItem('payment_completed', 'true');
-    
+
     // sessionsテーブルも更新
     const sessionId = localStorage.getItem('current_session_id');
     if (sessionId) {
       const currentCost = localStorage.getItem('cost') || '0';
       const newCost = parseInt(currentCost) + amount;
       localStorage.setItem('cost', newCost.toString());
-      
+
       fetch(`/api/sessions/${sessionId}`, {
         method: 'PATCH',
         headers: {
@@ -2324,7 +2324,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
         }),
       }).catch(err => console.error('セッション更新エラー:', err));
     }
-    
+
     // 承認待ち（pending/sent）の注文は決済完了時に拒否へ更新
     try {
       const ordersToReject = cartOrders.filter((order: any) => {
@@ -2351,7 +2351,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
     } catch (e) {
       console.error('決済後の注文更新処理エラー:', e);
     }
-    
+
     success('決済成功', `支払いが完了しました`);
     setShowCashPaymentDialog(false);
     setCashPaymentAmount('');
@@ -2362,14 +2362,14 @@ export default function TableDashboard({ params }: { params: { tableId: string }
     const currentCost = localStorage.getItem('cost') || '0';
     const newCost = parseInt(currentCost) + paymentAmount;
     localStorage.setItem('cost', newCost.toString());
-    
+
     // 支払い金額をローカルストレージに保存（表示用）
     localStorage.setItem('paid_amount', paymentAmount.toString());
-    
+
     // 支払い完了状態を設定
     setIsPaymentCompleted(true);
     localStorage.setItem('payment_completed', 'true');
-    
+
     // sessionsテーブルも更新
     const sessionId = localStorage.getItem('current_session_id');
     if (sessionId) {
@@ -2383,7 +2383,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
         }),
       }).catch(err => console.error('セッション更新エラー:', err));
     }
-    
+
     // 承認待ち（pending/sent）の注文は決済完了時に拒否へ更新
     try {
       const ordersToReject = cartOrders.filter((order: any) => {
@@ -2410,7 +2410,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
     } catch (e) {
       console.error('決済後の注文更新処理エラー:', e);
     }
-    
+
     success('支払い完了', `${paymentAmount.toLocaleString()}円の支払いが完了しました`);
     setShowPaymentDialog(false);
     setPaymentAmount(0);
@@ -2501,8 +2501,8 @@ export default function TableDashboard({ params }: { params: { tableId: string }
   const handleNominationCastConfirm = async () => {
     if (isTimeExpired) {
       error('エラー', 'セット時間が終了したため、指名はできません');
-        return;
-      }
+      return;
+    }
     if (!selectedNominationCast || !currentNominationType || !tableAuth) return;
 
     try {
@@ -2510,7 +2510,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
       const castName = selectedCast?.name ?? 'キャスト';
       const successFlag = await submitNomination(selectedNominationCast, currentNominationType, castName);
       if (!successFlag) return;
-      
+
       setShowNominationCastDialog(false);
       setSelectedNominationCast('');
       // currentNominationTypeは保持してチェックマークを表示
@@ -2597,7 +2597,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
       });
 
       const result = await response.json();
-      
+
       if (result.success) {
         setStaffCallStatus('pending');
         setStaffCallId(result.data.id.toString());
@@ -2637,7 +2637,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
       // 出勤中のキャスト一覧を取得
       const response = await fetch('/api/casts?only_active=true');
       const result = await response.json();
-      
+
       if (result.success) {
         setAvailableCasts(result.data);
         setShowManagerCallDialog(true);
@@ -2683,13 +2683,13 @@ export default function TableDashboard({ params }: { params: { tableId: string }
       });
 
       const result = await response.json();
-      
+
       if (result.success) {
         success('スタッフ呼び出し完了', '管理者に通知されました');
         setShowManagerCallDialog(false);
         setSelectedCastForManagerCall(null);
         setManagerCallStatus('pending');
-        
+
         // 管理者ダッシュボードに通知を送信
         try {
           await fetch('/api/notifications', {
@@ -2727,16 +2727,16 @@ export default function TableDashboard({ params }: { params: { tableId: string }
 
       const response = await fetch(`/api/callmanager?table_id=${tableAuth.table_id}&session_id=${currentSessionId}`);
       const result = await response.json();
-      
+
       if (result.success && result.data.length > 0) {
         const latestCall = result.data[0];
         const newStatus = latestCall.status;
-        
+
         // ステータスが変更された場合のみ状態を更新（通知は表示しない）
         if (previousManagerCallStatus !== newStatus) {
           setPreviousManagerCallStatus(newStatus);
         }
-        
+
         setManagerCallStatus(newStatus);
       } else {
         const newStatus = 'none';
@@ -2759,7 +2759,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
 
       const response = await fetch(`/api/callmanager?table_id=${tableAuth.table_id}&session_id=${currentSessionId}`);
       const result = await response.json();
-      
+
       if (result.success && result.data.length > 0) {
         // calltypeが'service'のものを探す
         const serviceCall = result.data.find((call: any) => call.calltype === 'service');
@@ -2807,9 +2807,9 @@ export default function TableDashboard({ params }: { params: { tableId: string }
       <header className="bg-white/80 backdrop-blur-sm border-b border-gray-200 sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center py-4 sm:py-0 sm:h-16 space-y-3 sm:space-y-0">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center space-y-2 sm:space-y-0 sm:space-x-4">
-              <Button 
-                variant="ghost" 
+            <div className="flex  sm:flex-row items-start sm:items-center space-y-2 sm:space-y-0 sm:space-x-4">
+              <Button
+                variant="ghost"
                 size="sm"
                 onClick={() => router.push('/')}
                 className="self-start sm:self-auto"
@@ -2817,26 +2817,26 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                 <ArrowLeft className="w-4 h-4 mr-2" />
                 戻る
               </Button>
-              <div className="flex flex-col sm:flex-row sm:items-center space-y-1 sm:space-y-0 sm:space-x-3">
+              <div className="flex sm:flex-row sm:items-center gap-16  space-y-1 justify-between sm:space-y-0 sm:space-x-3">
                 <h1 className="text-lg sm:text-xl font-bold text-gray-900">{tableAuth.table_label}</h1>
                 <p className="text-xs sm:text-sm text-gray-500">
                   {tableAuth.area} • {tableAuth.capacity}名
                 </p>
               </div>
+
             </div>
-            <div className="flex items-center space-x-2 sm:space-x-3 w-full sm:w-auto">
+            <div className="flex items-center justify-between space-x-2 sm:space-x-3 w-full sm:w-auto">
               {isSessionActive && (
-                <Button 
-                  variant="outline" 
+                <Button
+                  variant="outline"
                   size="sm"
                   onClick={() => handleStaffCall('service', 'スタッフ呼び出し')}
-                  className={`flex items-center text-xs sm:text-sm ${
-                    staffCallStatus === 'pending' 
-                      ? 'bg-orange-50 border-orange-300 text-orange-700' 
-                      : staffCallStatus === 'accepted'
+                  className={`flex items-center text-xs sm:text-sm ${staffCallStatus === 'pending'
+                    ? 'bg-orange-50 border-orange-300 text-orange-700'
+                    : staffCallStatus === 'accepted'
                       ? 'bg-green-50 border-green-300 text-green-700'
                       : ''
-                  }`}
+                    }`}
                   disabled={isTimeExpired || staffCallStatus === 'pending' || staffCallStatus === 'accepted'}
                 >
                   {staffCallStatus === 'pending' ? (
@@ -2858,17 +2858,17 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                 </Button>
               )}
               {/* <Badge 
-                variant={isSessionActive ? 'default' : 'outline'}
-                className={`${isSessionActive ? 'bg-green-100 text-green-800' : ''} text-xs sm:text-sm`}
-              >
-                {isSessionActive ? <FaPowerOff /> : '待機中'}
-              </Badge> */}
+                    variant={isSessionActive ? 'default' : 'outline'}
+                    className={`${isSessionActive ? 'bg-green-100 text-green-800' : ''} text-xs sm:text-sm`}
+                    >
+                    {isSessionActive ? <FaPowerOff /> : '待機中'}
+                  </Badge> */}
               {isSessionActive && (
-                <Button 
-                  variant="outline" 
+                <Button
+                  variant="outline"
                   size="sm"
                   onClick={endSession}
-                  className={`${isSessionActive ? 'bg-green-100 text-green-800' : ''} text-xs sm:text-sm`}
+                  className={`${isSessionActive ? 'bg-green-100 text-green-800' : ''} text-xs sm:text-xs`}
                 >
                   <FaPowerOff />
                 </Button>
@@ -2883,540 +2883,540 @@ export default function TableDashboard({ params }: { params: { tableId: string }
           {/* 左側（全幅の5/6） */}
           <div className="w-full lg:w-5/6 relative flex-1 flex flex-col min-h-0">
             <div className="flex-1 overflow-y-auto space-y-4 sm:space-y-6 pb-20">
-            {/* セッション管理 */}
-            {!isSessionActive && (
-              <Card className="bg-blue-50 border-blue-200 col-span-10">
-                <CardHeader>
-                  <CardTitle className="flex items-center">
-                    <User className="w-5 h-5 mr-2" />
-                    セッション開始
-                  </CardTitle>
-                  <CardDescription>
-                    セッションを開始してください
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="guest-count">着席人数</Label>
-                      <Input
-                        id="guest-count"
-                        type="number"
-                        min="1"
-                        placeholder="人数を入力してください"
-                        value={guestCount}
-                        onChange={(e) => {
-                          const value = e.target.value;
-                          setGuestCount(value);
-                          // ローカルストレージに即座に保存
-                          if (value.trim() !== '') {
-                            localStorage.setItem('guest_count', value);
-                          } else {
-                            localStorage.removeItem('guest_count');
-                          }
-                        }}
-                        className="w-full"
-                      />
-                      {tableAuth?.capacity && (
-                        <p className="text-sm text-gray-500">
-                          定員: {tableAuth.capacity}名まで
-                        </p>
-                      )}
-                    </div>
-                    <Button 
-                      onClick={startSession}
-                      disabled={!guestCount || guestCount.trim() === ''}
-                      className="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      <CheckCircle className="w-4 h-4 mr-2" />
+              {/* セッション管理 */}
+              {!isSessionActive && (
+                <Card className="bg-blue-50 border-blue-200 col-span-10">
+                  <CardHeader>
+                    <CardTitle className="flex items-center">
+                      <User className="w-5 h-5 mr-2" />
                       セッション開始
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
+                    </CardTitle>
+                    <CardDescription>
+                      セッションを開始してください
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="guest-count">着席人数</Label>
+                        <Input
+                          id="guest-count"
+                          type="number"
+                          min="1"
+                          placeholder="人数を入力してください"
+                          value={guestCount}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            setGuestCount(value);
+                            // ローカルストレージに即座に保存
+                            if (value.trim() !== '') {
+                              localStorage.setItem('guest_count', value);
+                            } else {
+                              localStorage.removeItem('guest_count');
+                            }
+                          }}
+                          className="w-full"
+                        />
+                        {tableAuth?.capacity && (
+                          <p className="text-sm text-gray-500">
+                            定員: {tableAuth.capacity}名まで
+                          </p>
+                        )}
+                      </div>
+                      <Button
+                        onClick={startSession}
+                        disabled={!guestCount || guestCount.trim() === ''}
+                        className="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <CheckCircle className="w-4 h-4 mr-2" />
+                        セッション開始
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
 
-            {/* メニューカテゴリ */}
-            {isSessionActive && (
-              <div className="space-y-6">
-                {/* {isTimeExpired && (
+              {/* メニューカテゴリ */}
+              {isSessionActive && (
+                <div className="space-y-6">
+                  {/* {isTimeExpired && (
                   <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-sm rounded">
                     セット時間が終了しました。延長してから注文やサービスを実行してください。
                   </div>
                 )} */}
-                {isOrderingLocked && (
-                  <div className="p-3 bg-green-50 border border-green-200 text-green-800 text-sm rounded-none">
-                    支払いが確認されたため、商品の追加はできません。
-                  </div>
-                )}
-                {isMenuLoading ? (
-                  <div className="text-center py-8">
-                    <div className="w-8 h-8 border-2 border-purple-600 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-                    <p className="text-gray-500">メニューを読み込み中...</p>
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    {/* 注文 */}
-                    {leftMode === 'order' && (
+                  {isOrderingLocked && (
+                    <div className="p-3 bg-green-50 border border-green-200 text-green-800 text-sm rounded-none">
+                      支払いが確認されたため、商品の追加はできません。
+                    </div>
+                  )}
+                  {isMenuLoading ? (
+                    <div className="text-center py-8">
+                      <div className="w-8 h-8 border-2 border-purple-600 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+                      <p className="text-gray-500">メニューを読み込み中...</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {/* 注文 */}
+                      {leftMode === 'order' && (
                         <div className={isTimeExpired ? 'pointer-events-none opacity-50' : ''}>
-                        {/* カテゴリタブ（スクロール時に固定 / 連続した平行四辺形） */}
-                        <div className="sticky top-[0px] sm:top-[0px] bg-gradient-to-br from-purple-50 via-pink-50 to-blue-50 pt-2 pb-2 z-30">
-                          <div className="pl-2 sm:pl-5 flex items-center overflow-x-auto">
-                            {[
-                              { id: 'all', name: 'すべて' },
-                              ...menuCategories.filter((c) => c.id !== 4).map((c) => ({ id: String(c.id), name: c.name })),
-                            ].map((tab, idx) => {
-                              const active = selectedCategoryId === tab.id;
-                              return (
+                          {/* カテゴリタブ（スクロール時に固定 / 連続した平行四辺形） */}
+                          <div className="sticky top-[0px] sm:top-[0px] bg-gradient-to-br from-purple-50 via-pink-50 to-blue-50 pt-2 pb-2 z-30">
+                            <div className="pl-2 sm:pl-5 flex items-center overflow-x-auto">
+                              {[
+                                { id: 'all', name: 'すべて' },
+                                ...menuCategories.filter((c) => c.id !== 4).map((c) => ({ id: String(c.id), name: c.name })),
+                              ].map((tab, idx) => {
+                                const active = selectedCategoryId === tab.id;
+                                return (
+                                  <button
+                                    key={tab.id}
+                                    type="button"
+                                    onClick={() => setSelectedCategoryId(tab.id)}
+                                    className={[
+                                      'relative h-8 sm:h-10 px-3 sm:px-5 text-xs sm:text-sm font-semibold select-none whitespace-nowrap',
+                                      'skew-x-12',
+                                      idx === 0 ? '' : '-ml-2 sm:-ml-3',
+                                      active
+                                        ? 'bg-purple-600 text-white shadow-md z-20'
+                                        : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50 z-10',
+                                      'rounded-none',
+                                    ].join(' ')}
+                                  >
+                                    <span className="inline-block -skew-x-12">
+                                      {tab.name}
+                                    </span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-3">
+                            {(() => {
+                              const items = selectedCategoryId === 'all'
+                                ? menuItems
+                                : menuItems.filter((it: any) => Number(it.category_id) === Number(selectedCategoryId));
+                              if (!items || items.length === 0) {
+                                return (
+                                  <div className="col-span-2 sm:col-span-3 lg:col-span-4 text-center text-sm text-gray-500 py-10">
+                                    該当する商品がありません
+                                  </div>
+                                );
+                              }
+                              return items.map((item: any) => (
                                 <button
-                                  key={tab.id}
+                                  key={item.id}
                                   type="button"
-                                  onClick={() => setSelectedCategoryId(tab.id)}
-                                  className={[
-                                    'relative h-8 sm:h-10 px-3 sm:px-5 text-xs sm:text-sm font-semibold select-none whitespace-nowrap',
-                                    'skew-x-12',
-                                    idx === 0 ? '' : '-ml-2 sm:-ml-3',
-                                    active
-                                      ? 'bg-purple-600 text-white shadow-md z-20'
-                                      : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50 z-10',
-                                    'rounded-none',
-                                  ].join(' ')}
+                                  onClick={() => { if (!isOrderingLocked && !isTimeExpired) addToCart(item); }}
+                                  className={`text-left rounded-lg border bg-white overflow-hidden shadow-sm hover:shadow-md transition-shadow ${isOrderingDisabled ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50'}`}
+                                  disabled={isOrderingDisabled}
                                 >
-                                  <span className="inline-block -skew-x-12">
-                                    {tab.name}
-                                  </span>
+                                  <div className="relative aspect-square bg-gray-100">
+                                    {item.image ? (
+                                      <img src={item.image} alt={item.name} className="w-full h-full object-cover" />
+                                    ) : (
+                                      <div className="w-full h-full flex items-center justify-center text-gray-400">
+                                        <Package className="w-8 h-8" />
+                                      </div>
+                                    )}
+                                    <div className="absolute right-1 bottom-1 bg-black/70 text-white text-[9px] sm:text-[11px] px-1.5 sm:px-2 py-0.5 sm:py-1 rounded">
+                                      {formatCurrency(item.sale_price)}
+                                    </div>
+                                  </div>
+                                  <div className="p-1 sm:p-1.5">
+                                    <div className="text-[11px] sm:text-[13px] font-semibold leading-tight line-clamp-2">{item.name}</div>
+                                    <div className="text-[9px] sm:text-[11px] text-gray-500 mt-0.5 sm:mt-1">
+                                      SKU: {item.sku ? item.sku : '-'}
+                                    </div>
+                                  </div>
                                 </button>
-                              );
-                            })}
-                        </div>
-                        </div>
+                              ));
+                            })()}
+                          </div>
 
-                        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-3">
-                              {(() => {
-                                const items = selectedCategoryId === 'all'
-                                  ? menuItems
-                                  : menuItems.filter((it: any) => Number(it.category_id) === Number(selectedCategoryId));
-                                if (!items || items.length === 0) {
-                                  return (
-                                <div className="col-span-2 sm:col-span-3 lg:col-span-4 text-center text-sm text-gray-500 py-10">
-                                        該当する商品がありません
-                                </div>
-                                  );
-                                }
-                                return items.map((item: any) => (
-                              <button
-                                key={item.id}
-                                type="button"
-                                onClick={() => { if (!isOrderingLocked && !isTimeExpired) addToCart(item); }}
-                                className={`text-left rounded-lg border bg-white overflow-hidden shadow-sm hover:shadow-md transition-shadow ${isOrderingDisabled ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50'}`}
-                                disabled={isOrderingDisabled}
-                              >
-                                <div className="relative aspect-square bg-gray-100">
-                                  {item.image ? (
-                                    <img src={item.image} alt={item.name} className="w-full h-full object-cover" />
-                                  ) : (
-                                    <div className="w-full h-full flex items-center justify-center text-gray-400">
-                                      <Package className="w-8 h-8" />
-                                    </div>
-                                  )}
-                                  <div className="absolute right-1 bottom-1 bg-black/70 text-white text-[9px] sm:text-[11px] px-1.5 sm:px-2 py-0.5 sm:py-1 rounded">
-                                    {formatCurrency(item.sale_price)}
-                                </div>
-                                </div>
-                                <div className="p-1 sm:p-1.5">
-                                  <div className="text-[11px] sm:text-[13px] font-semibold leading-tight line-clamp-2">{item.name}</div>
-                                  <div className="text-[9px] sm:text-[11px] text-gray-500 mt-0.5 sm:mt-1">
-                                    SKU: {item.sku ? item.sku : '-'}
-                                  </div>
-                                </div>
-                              </button>
-                            ));
-                          })()}
-                        </div>
-
-                        {/* 左下：注文カートボタン（押すと横からモーダル表示） */}
-                        <div className="fixed left-2 sm:left-5 bottom-[100px] sm:bottom-[100px] z-40">
-                          {(() => {
-                            const hasRequested = cartOrders.some((order: any) => {
-                              const st = (orderRequestStatus as any)[order.id] || order.status;
-                              return st === 'pending' || st === 'sent';
-                            });
-                            return (
-                              <Button
-                                onClick={() => setIsOrderCartOpen(true)}
-                                className="h-12 w-12 sm:h-16 sm:w-16 rounded-full bg-gradient-to-r from-pink-500 to-fuchsia-500 text-white shadow-lg hover:from-pink-600 hover:to-fuchsia-600 relative border-0"
-                                variant="outline"
-                              >
-                                <ShoppingCart className="w-5 h-5 sm:w-6 sm:h-6" />
-                                
-                                {hasRequested && (
-                                  <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-red-500 rounded-full ring-2 ring-white" />
-                                )}
-                              </Button>
-                            );
-                          })()}
-                        </div>
-
-                        <Sheet open={isOrderCartOpen} onOpenChange={setIsOrderCartOpen}>
-                          <SheetContent side="right" className="w-full sm:w-[420px] sm:max-w-md p-0">
-                            <div className="p-6 pb-4 border-b">
-                              <SheetHeader>
-                                <SheetTitle className="flex items-center">
-                                  <ShoppingCart className="w-5 h-5 mr-2" />
-                                  注文カート
-                                </SheetTitle>
-                              </SheetHeader>
-                              <div className="text-sm text-gray-500 mt-1">
-                                {cartOrders.length}個の商品
-                              </div>
-                            </div>
-
-                            <div className="p-6 pt-4">
-                              {cartOrders.length === 0 ? (
-                                <div className="text-center py-10 text-gray-500">
-                                  <ShoppingCart className="w-12 h-12 mx-auto mb-3 text-gray-400" />
-                                  <p>カートが空です</p>
-                                </div>
-                              ) : (
-                                <ScrollArea className="h-[60vh] sm:h-[70vh] pr-1">
-                                  <div className="space-y-3">
-                                    {cartOrders.map((order: any) => (
-                                      <div key={order.id} className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-2 sm:p-3 bg-gray-50 rounded-lg border gap-2 sm:gap-0">
-                                        <div className="flex-1 min-w-0 w-full sm:w-auto">
-                                          <h4 className="font-medium text-xs sm:text-sm truncate">{order.product_name}</h4>
-                                          <p className="text-[10px] sm:text-xs text-gray-500">
-                                            ¥{order.unit_price?.toLocaleString()} × {order.amount}個
-                                            {order.cast_name ? (
-                                              <span className="ml-1 sm:ml-2 text-blue-600">(担当: {order.cast_name})</span>
-                                            ) : (
-                                              <span className="ml-1 sm:ml-2 text-gray-500">(お客様直接注文)</span>
-                                            )}
-                                          </p>
-                                          <div className="flex flex-col sm:flex-row items-start sm:items-center mt-1 gap-1 sm:gap-0">
-                                            <span className="text-xs sm:text-sm font-bold text-blue-600">
-                                              合計: ¥{order.total_price?.toLocaleString()}
-                                            </span>
-                                            {orderRequestStatus[order.id] === 'sent' && (
-                                              <span className="text-[9px] sm:text-xs text-blue-600 font-medium">
-                                                (管理者に送信済み)
-                                              </span>
-                                            )}
-                                            {orderRequestStatus[order.id] === 'accepted' && (
-                                              <span className="text-[9px] sm:text-xs text-green-600 font-medium">
-                                                (管理者が受付済み)
-                                              </span>
-                                            )}
-                                            {(orderRequestStatus[order.id] as string) === 'rejected' && (
-                                              <span className="text-[9px] sm:text-xs text-red-600 font-medium">
-                                                (管理者が拒否)
-                                              </span>
-                                      )}
-                                          </div>
-                                        </div>
-                                        <div className="flex items-center space-x-1 sm:space-x-2 w-full sm:w-auto justify-end">
-                                          <div className="relative">
-                                            {orderRequestStatus[order.id] === 'pending' && (
-                                              <div className="w-6 h-6 flex items-center justify-center">
-                                                <Clock className="w-4 h-4 text-orange-500 animate-pulse" />
-                                              </div>
-                                            )}
-                                            {orderRequestStatus[order.id] === 'sent' && (
-                                              <div className="w-6 h-6 flex items-center justify-center">
-                                                <Bell className="w-4 h-4 text-blue-500 animate-bounce" />
-                                              </div>
-                                            )}
-                                            {orderRequestStatus[order.id] === 'accepted' && (
-                                              <div className="w-6 h-6 flex items-center justify-center">
-                                                <CheckCircle className="w-4 h-4 text-green-500" />
-                                              </div>
-                                            )}
-                                            {(orderRequestStatus[order.id] as string) === 'rejected' && (
-                                              <div className="w-6 h-6 flex items-center justify-center">
-                                                <X className="w-4 h-4 text-red-500" />
-                                              </div>
-                                            )}
-                                          </div>
-                                          {(() => {
-                                            const st = (orderRequestStatus as any)[order.id] || order.status;
-                                            const canDelete = st === 'pending' || st === 'sent';
-                                            return canDelete ? (
-                                <Button 
-                                  size="sm"
-                                                variant="outline"
-                                                onClick={() => removeFromCart(order.id.toString(), st)}
-                                                className="text-red-600 hover:text-red-700"
+                          {/* 左下：注文カートボタン（押すと横からモーダル表示） */}
+                          <div className="fixed left-2 sm:left-5 bottom-[100px] sm:bottom-[100px] z-40">
+                            {(() => {
+                              const hasRequested = cartOrders.some((order: any) => {
+                                const st = (orderRequestStatus as any)[order.id] || order.status;
+                                return st === 'pending' || st === 'sent';
+                              });
+                              return (
+                                <Button
+                                  onClick={() => setIsOrderCartOpen(true)}
+                                  className="h-12 w-12 sm:h-16 sm:w-16 rounded-full bg-gradient-to-r from-pink-500 to-fuchsia-500 text-white shadow-lg hover:from-pink-600 hover:to-fuchsia-600 relative border-0"
+                                  variant="outline"
                                 >
-                                                <Trash2 className="w-3 h-3" />
+                                  <ShoppingCart className="w-5 h-5 sm:w-6 sm:h-6" />
+
+                                  {hasRequested && (
+                                    <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-red-500 rounded-full ring-2 ring-white" />
+                                  )}
                                 </Button>
-                                            ) : null;
-                              })()}
-                                        </div>
-                                      </div>
-                                    ))}
-                                  </div>
-                        </ScrollArea>
-                              )}
-                        </div>
-                          </SheetContent>
-                        </Sheet>
-                      </div>
-                    )}
+                              );
+                            })()}
+                          </div>
 
-                    {/* 指定 */}
-                    {leftMode === 'nomination' && (
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6 lg:gap-8 xl:gap-12">
-                        {/* 指名ボタンエリア */}
-                        <div className="col-span-1 md:col-span-1 lg:col-span-1 space-y-4 md:space-y-6 lg:space-y-8 md:pr-4 lg:pr-0">
-                          <Button
-                            size="lg"
-                            className="w-full h-40 sm:h-44 md:h-48 lg:h-52 xl:h-56 text-base sm:text-lg md:text-xl lg:text-2xl bg-purple-600 hover:bg-purple-700 relative overflow-hidden p-0 shadow-lg hover:shadow-xl transition-shadow"
-                            disabled={isOrderingDisabled}
-                            onClick={() => {
-                              setCurrentNominationType('main');
-                              localStorage.setItem('nomination_type', 'main');
-                              setShowNominationCastDialog(true);
-                            }}
-                          >
-                            <div className="absolute inset-0">
-                              <img
-                                src="/assets/nomination/1.jpeg"
-                                alt="本指名"
-                                className="w-full h-full object-cover opacity-80"
-                              />
-                              <div className="absolute inset-0 bg-black/25" />
-                            </div>
-                            <div className="relative z-10 w-full h-full flex items-center justify-center font-bold tracking-wide text-white drop-shadow-lg">
-                              本 指 名
-                            </div>
-                          </Button>
-                          <Button
-                            size="lg"
-                            className="w-full h-40 sm:h-44 md:h-48 lg:h-52 xl:h-56 text-base sm:text-lg md:text-xl lg:text-2xl bg-blue-600 hover:bg-blue-700 relative overflow-hidden p-0 shadow-lg hover:shadow-xl transition-shadow"
-                            disabled={isOrderingDisabled}
-                            onClick={() => {
-                              setCurrentNominationType('inside');
-                              localStorage.setItem('nomination_type', 'inside');
-                              setShowNominationCastDialog(true);
-                            }}
-                          >
-                            <div className="absolute inset-0">
-                              <img
-                                src="/assets/nomination/2.jpeg"
-                                alt="場内指名"
-                                className="w-full h-full object-cover opacity-80"
-                              />
-                              <div className="absolute inset-0 bg-black/25" />
-                            </div>
-                            <div className="relative z-10 w-full h-full flex items-center justify-center font-bold tracking-wide text-white drop-shadow-lg">
-                              場 内 指 名
-                            </div>
-                          </Button>
-                        </div>
-                        {/* 指名リストエリア */}
-                        <div className="col-span-1 md:col-span-1 lg:col-span-2">
-                          <Card className="h-full">
-                            <CardHeader className="pb-3">
-                              <CardTitle className="flex items-center text-base sm:text-lg md:text-xl">
-                                <Users className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 mr-2" />
-                                指名リスト
-                              </CardTitle>
-                            </CardHeader>
-                            <CardContent>
-                              {isNominationsLoading ? (
-                                <div className="flex items-center justify-center py-8">
-                                  <div className="w-6 h-6 border-2 border-purple-600 border-t-transparent rounded-full animate-spin" />
+                          <Sheet open={isOrderCartOpen} onOpenChange={setIsOrderCartOpen}>
+                            <SheetContent side="right" className="w-full sm:w-[420px] sm:max-w-md p-0">
+                              <div className="p-6 pb-4 border-b">
+                                <SheetHeader>
+                                  <SheetTitle className="flex items-center">
+                                    <ShoppingCart className="w-5 h-5 mr-2" />
+                                    注文カート
+                                  </SheetTitle>
+                                </SheetHeader>
+                                <div className="text-sm text-gray-500 mt-1">
+                                  {cartOrders.length}個の商品
                                 </div>
-                              ) : nominations.length === 0 ? (
-                                <div className="text-center py-8 text-sm sm:text-base text-gray-500">
-                                  <Users className="w-12 h-12 mx-auto mb-2 text-gray-400" />
-                                  <p>指名はありません</p>
-                                </div>
-                              ) : (
-                                <ScrollArea className="h-[calc(100vh-280px)] sm:h-[calc(100vh-320px)] md:h-[calc(100vh-360px)] lg:h-[calc(100vh-400px)] pr-2">
-                                  <div className="space-y-2 sm:space-y-3">
-                                    {nominations.map((nomination: any) => (
-                                      <div 
-                                        key={nomination.id} 
-                                        className="flex flex-col sm:flex-row items-start sm:items-center justify-between border border-gray-200 rounded-lg bg-white px-3 sm:px-4 md:px-5 py-2.5 sm:py-3 gap-2 sm:gap-3 hover:bg-gray-50 transition-colors"
-                                      >
-                                        <div className="flex-1 min-w-0 w-full sm:w-auto">
-                                          <div className="font-medium text-sm sm:text-base md:text-lg text-gray-900 truncate mb-1">
-                                            {nomination.cast_name}
+                              </div>
+
+                              <div className="p-6 pt-4">
+                                {cartOrders.length === 0 ? (
+                                  <div className="text-center py-10 text-gray-500">
+                                    <ShoppingCart className="w-12 h-12 mx-auto mb-3 text-gray-400" />
+                                    <p>カートが空です</p>
+                                  </div>
+                                ) : (
+                                  <ScrollArea className="h-[60vh] sm:h-[70vh] pr-1">
+                                    <div className="space-y-3">
+                                      {cartOrders.map((order: any) => (
+                                        <div key={order.id} className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-2 sm:p-3 bg-gray-50 rounded-lg border gap-2 sm:gap-0">
+                                          <div className="flex-1 min-w-0 w-full sm:w-auto">
+                                            <h4 className="font-medium text-xs sm:text-sm truncate">{order.product_name}</h4>
+                                            <p className="text-[10px] sm:text-xs text-gray-500">
+                                              ¥{order.unit_price?.toLocaleString()} × {order.amount}個
+                                              {order.cast_name ? (
+                                                <span className="ml-1 sm:ml-2 text-blue-600">(担当: {order.cast_name})</span>
+                                              ) : (
+                                                <span className="ml-1 sm:ml-2 text-gray-500">(お客様直接注文)</span>
+                                              )}
+                                            </p>
+                                            <div className="flex flex-col sm:flex-row items-start sm:items-center mt-1 gap-1 sm:gap-0">
+                                              <span className="text-xs sm:text-sm font-bold text-blue-600">
+                                                合計: ¥{order.total_price?.toLocaleString()}
+                                              </span>
+                                              {orderRequestStatus[order.id] === 'sent' && (
+                                                <span className="text-[9px] sm:text-xs text-blue-600 font-medium">
+                                                  (管理者に送信済み)
+                                                </span>
+                                              )}
+                                              {orderRequestStatus[order.id] === 'accepted' && (
+                                                <span className="text-[9px] sm:text-xs text-green-600 font-medium">
+                                                  (管理者が受付済み)
+                                                </span>
+                                              )}
+                                              {(orderRequestStatus[order.id] as string) === 'rejected' && (
+                                                <span className="text-[9px] sm:text-xs text-red-600 font-medium">
+                                                  (管理者が拒否)
+                                                </span>
+                                              )}
+                                            </div>
                                           </div>
-                                          <div className="text-xs sm:text-sm text-gray-500">
-                                            {new Date(nomination.created_at).toLocaleString('ja-JP', {
-                                              year: 'numeric',
-                                              month: '2-digit',
-                                              day: '2-digit',
-                                              hour: '2-digit',
-                                              minute: '2-digit'
-                                            })}
+                                          <div className="flex items-center space-x-1 sm:space-x-2 w-full sm:w-auto justify-end">
+                                            <div className="relative">
+                                              {orderRequestStatus[order.id] === 'pending' && (
+                                                <div className="w-6 h-6 flex items-center justify-center">
+                                                  <Clock className="w-4 h-4 text-orange-500 animate-pulse" />
+                                                </div>
+                                              )}
+                                              {orderRequestStatus[order.id] === 'sent' && (
+                                                <div className="w-6 h-6 flex items-center justify-center">
+                                                  <Bell className="w-4 h-4 text-blue-500 animate-bounce" />
+                                                </div>
+                                              )}
+                                              {orderRequestStatus[order.id] === 'accepted' && (
+                                                <div className="w-6 h-6 flex items-center justify-center">
+                                                  <CheckCircle className="w-4 h-4 text-green-500" />
+                                                </div>
+                                              )}
+                                              {(orderRequestStatus[order.id] as string) === 'rejected' && (
+                                                <div className="w-6 h-6 flex items-center justify-center">
+                                                  <X className="w-4 h-4 text-red-500" />
+                                                </div>
+                                              )}
+                                            </div>
+                                            {(() => {
+                                              const st = (orderRequestStatus as any)[order.id] || order.status;
+                                              const canDelete = st === 'pending' || st === 'sent';
+                                              return canDelete ? (
+                                                <Button
+                                                  size="sm"
+                                                  variant="outline"
+                                                  onClick={() => removeFromCart(order.id.toString(), st)}
+                                                  className="text-red-600 hover:text-red-700"
+                                                >
+                                                  <Trash2 className="w-3 h-3" />
+                                                </Button>
+                                              ) : null;
+                                            })()}
                                           </div>
                                         </div>
-                                        <div className="flex items-center space-x-2 sm:space-x-3 w-full sm:w-auto justify-end sm:justify-start">
-                                          <Badge 
-                                            className={`text-xs sm:text-sm px-2 sm:px-3 py-1 ${nominationBadgeStyle[nomination.type_id as 'main' | 'inside' | 'together'] || 'bg-gray-100 text-gray-700'}`}
-                                          >
-                                            {getNominationTypeLabel(nomination.type_id)}
-                                          </Badge>
-                                          <Button 
-                                            size="sm"
-                                            variant="outline"
-                                            className="text-red-600 border-red-300 hover:bg-red-50 h-8 sm:h-9 w-8 sm:w-9 p-0"
-                                            onClick={() => deleteNominationRecord(nomination.id)}
-                                          >
-                                            <Trash2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                                          </Button>
-                                        </div>
-                                      </div>
-                                    ))}
-                                  </div>
-                                </ScrollArea>
-                              )}
-                            </CardContent>
-                          </Card>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* サービス */}
-                    {leftMode === 'service' && (
-                      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                        <div className="col-span-1 lg:col-span-2 space-y-4">
-                        <Card>
-                          <CardHeader className="pb-2">
-                            <CardTitle className="flex items-center text-xs sm:text-sm">
-                                <Bell className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
-                                サービス・呼び出し
-                            </CardTitle>
-                          </CardHeader>
-                          <CardContent>
-                              {isServicesLoading ? (
-                                <div className="flex items-center justify-center py-6">
-                                  <div className="w-6 h-6 border-2 border-purple-600 border-t-transparent rounded-full animate-spin" />
-                                </div>
-                              ) : services.length === 0 ? (
-                                <div className="text-center py-4 text-sm text-gray-500">
-                                  サービスがありません
-                                </div>
-                              ) : (
-                                <div className={`grid grid-cols-2 sm:grid-cols-3 gap-2 ${isTimeExpired ? 'pointer-events-none opacity-50' : ''}`}>
-                                  {services.map((service: any) => (
-                              <Button 
-                                      key={service.id}
-                                variant="outline"
-                                      onClick={() => handleServiceOrder(service)}
-                                disabled={isOrderingDisabled}
-                                      className={`h-12 sm:h-14 px-1 sm:px-2 flex-col justify-center gap-0.5 sm:gap-1 ${isOrderingDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
-                              >
-                                      <Utensils className="w-4 h-4 sm:w-5 sm:h-5" />
-                                      <span className="text-[10px] sm:text-[13px] leading-tight line-clamp-1">{service.name}</span>
-                              </Button>
-                                  ))}
-                            </div>
-                              )}
-                          </CardContent>
-                        </Card>
-
-                        <Card>
-                          <CardHeader className="pb-2">
-                            <CardTitle className="flex items-center text-xs sm:text-sm">
-                              <Coffee className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
-                              追加注文
-                            </CardTitle>
-                          </CardHeader>
-                          <CardContent>
-                            <div className={`grid grid-cols-3 gap-2 ${isTimeExpired ? 'pointer-events-none opacity-50' : ''}`}>
-                              <Button 
-                                variant="outline"
-                                onClick={() => setShowBottleKeepDialog(true)}
-                                disabled={isTimeExpired}
-                                className="h-12 sm:h-14 px-1 sm:px-2 flex-col justify-center gap-0.5 sm:gap-1"
-                              >
-                                <Wine className="w-4 h-4 sm:w-5 sm:h-5" />
-                                <span className="text-[10px] sm:text-[13px] leading-tight">ボトルキープ</span>
-                              </Button>
-                              <Button 
-                                variant="outline"
-                                onClick={() => setShowVipRoomDialog(true)}
-                                disabled={isTimeExpired}
-                                className="h-14 px-2 flex-col justify-center gap-1"
-                              >
-                                <Users className="w-5 h-5" />
-                                <span className="text-[10px] sm:text-[13px] leading-tight">VIPルーム</span>
-                              </Button>
-                              <Button 
-                                variant="outline"
-                                onClick={() => setShowKaraokeDialog(true)}
-                                disabled={isTimeExpired}
-                                className="h-14 px-2 flex-col justify-center gap-1"
-                              >
-                                <Users className="w-5 h-5" />
-                                <span className="text-[10px] sm:text-[13px] leading-tight">カラオケ利用</span>
-                              </Button>
-                            </div>
-                          </CardContent>
-                        </Card>
-                      </div>
-
-                        {/* 右側：サービス注文カート */}
-                        <div className="col-span-1">
-                          <Card>
-                          <CardHeader>
-                            <CardTitle className="flex items-center">
-                              <Utensils className="w-5 h-5 mr-2" />
-                              サービス注文カート
-                          </CardTitle>
-                          <CardDescription>
-                              {serviceOrders.length}個のサービス
-                          </CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                            {serviceOrders.length === 0 ? (
-                                <div className="text-center py-6 text-gray-500">
-                                  <Utensils className="w-10 h-10 mx-auto mb-2 text-gray-400" />
-                                <p>サービス注文がありません</p>
-                              </div>
-                              ) : (
-                                <ScrollArea className="h-[45vh] sm:h-[55vh] pr-1">
-                              <div className="space-y-3">
-                                {serviceOrders.map((order) => (
-                                  <div key={order.id} className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-2 sm:p-3 bg-gray-50 rounded-lg border gap-2 sm:gap-0">
-                                    <div className="flex-1 min-w-0 w-full sm:w-auto">
-                                      <h4 className="font-medium text-xs sm:text-sm truncate">{order.service_name}</h4>
-                                      <p className="text-[10px] sm:text-xs text-gray-500">
-                                        数量: {order.amount}個
-                                        {order.cast_name ? (
-                                              <span className="ml-1 sm:ml-2 text-blue-600">(担当: {order.cast_name})</span>
-                                        ) : (
-                                              <span className="ml-1 sm:ml-2 text-gray-500">(お客様直接注文)</span>
-                                        )}
-                                      </p>
-                                      </div>
-                                    <div className="flex items-center space-x-1 sm:space-x-2 w-full sm:w-auto justify-end">
-                                      <Button 
-                                        size="sm"
-                                        variant="outline"
-                                        onClick={() => removeFromServiceOrders(order.id.toString())}
-                                        className="text-red-600 hover:text-red-700"
-                                      >
-                                        <Trash2 className="w-3 h-3" />
-                                      </Button>
-                                </div>
-                            </div>
-                                ))}
-                              </div>
-                              </ScrollArea>
-                            )}
-                          </CardContent>
-                        </Card>
-                                      </div>
+                                      ))}
                                     </div>
-                    )}
+                                  </ScrollArea>
+                                )}
                               </div>
-                            )}
-                      </div>
-                    )}
+                            </SheetContent>
+                          </Sheet>
+                        </div>
+                      )}
+
+                      {/* 指定 */}
+                      {leftMode === 'nomination' && (
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6 lg:gap-8 xl:gap-12">
+                          {/* 指名ボタンエリア */}
+                          <div className="col-span-1 md:col-span-1 lg:col-span-1 space-y-4 md:space-y-6 lg:space-y-8 md:pr-4 lg:pr-0">
+                            <Button
+                              size="lg"
+                              className="w-full h-40 sm:h-44 md:h-48 lg:h-52 xl:h-56 text-base sm:text-lg md:text-xl lg:text-2xl bg-purple-600 hover:bg-purple-700 relative overflow-hidden p-0 shadow-lg hover:shadow-xl transition-shadow"
+                              disabled={isOrderingDisabled}
+                              onClick={() => {
+                                setCurrentNominationType('main');
+                                localStorage.setItem('nomination_type', 'main');
+                                setShowNominationCastDialog(true);
+                              }}
+                            >
+                              <div className="absolute inset-0">
+                                <img
+                                  src="/assets/nomination/1.jpeg"
+                                  alt="本指名"
+                                  className="w-full h-full object-cover opacity-80"
+                                />
+                                <div className="absolute inset-0 bg-black/25" />
+                              </div>
+                              <div className="relative z-10 w-full h-full flex items-center justify-center font-bold tracking-wide text-white drop-shadow-lg">
+                                本 指 名
+                              </div>
+                            </Button>
+                            <Button
+                              size="lg"
+                              className="w-full h-40 sm:h-44 md:h-48 lg:h-52 xl:h-56 text-base sm:text-lg md:text-xl lg:text-2xl bg-blue-600 hover:bg-blue-700 relative overflow-hidden p-0 shadow-lg hover:shadow-xl transition-shadow"
+                              disabled={isOrderingDisabled}
+                              onClick={() => {
+                                setCurrentNominationType('inside');
+                                localStorage.setItem('nomination_type', 'inside');
+                                setShowNominationCastDialog(true);
+                              }}
+                            >
+                              <div className="absolute inset-0">
+                                <img
+                                  src="/assets/nomination/2.jpeg"
+                                  alt="場内指名"
+                                  className="w-full h-full object-cover opacity-80"
+                                />
+                                <div className="absolute inset-0 bg-black/25" />
+                              </div>
+                              <div className="relative z-10 w-full h-full flex items-center justify-center font-bold tracking-wide text-white drop-shadow-lg">
+                                場 内 指 名
+                              </div>
+                            </Button>
+                          </div>
+                          {/* 指名リストエリア */}
+                          <div className="col-span-1 md:col-span-1 lg:col-span-2">
+                            <Card className="h-full">
+                              <CardHeader className="pb-3">
+                                <CardTitle className="flex items-center text-base sm:text-lg md:text-xl">
+                                  <Users className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 mr-2" />
+                                  指名リスト
+                                </CardTitle>
+                              </CardHeader>
+                              <CardContent>
+                                {isNominationsLoading ? (
+                                  <div className="flex items-center justify-center py-8">
+                                    <div className="w-6 h-6 border-2 border-purple-600 border-t-transparent rounded-full animate-spin" />
+                                  </div>
+                                ) : nominations.length === 0 ? (
+                                  <div className="text-center py-8 text-sm sm:text-base text-gray-500">
+                                    <Users className="w-12 h-12 mx-auto mb-2 text-gray-400" />
+                                    <p>指名はありません</p>
+                                  </div>
+                                ) : (
+                                  <ScrollArea className="h-[calc(100vh-280px)] sm:h-[calc(100vh-320px)] md:h-[calc(100vh-360px)] lg:h-[calc(100vh-400px)] pr-2">
+                                    <div className="space-y-2 sm:space-y-3">
+                                      {nominations.map((nomination: any) => (
+                                        <div
+                                          key={nomination.id}
+                                          className="flex flex-col sm:flex-row items-start sm:items-center justify-between border border-gray-200 rounded-lg bg-white px-3 sm:px-4 md:px-5 py-2.5 sm:py-3 gap-2 sm:gap-3 hover:bg-gray-50 transition-colors"
+                                        >
+                                          <div className="flex-1 min-w-0 w-full sm:w-auto">
+                                            <div className="font-medium text-sm sm:text-base md:text-lg text-gray-900 truncate mb-1">
+                                              {nomination.cast_name}
+                                            </div>
+                                            <div className="text-xs sm:text-sm text-gray-500">
+                                              {new Date(nomination.created_at).toLocaleString('ja-JP', {
+                                                year: 'numeric',
+                                                month: '2-digit',
+                                                day: '2-digit',
+                                                hour: '2-digit',
+                                                minute: '2-digit'
+                                              })}
+                                            </div>
+                                          </div>
+                                          <div className="flex items-center space-x-2 sm:space-x-3 w-full sm:w-auto justify-end sm:justify-start">
+                                            <Badge
+                                              className={`text-xs sm:text-sm px-2 sm:px-3 py-1 ${nominationBadgeStyle[nomination.type_id as 'main' | 'inside' | 'together'] || 'bg-gray-100 text-gray-700'}`}
+                                            >
+                                              {getNominationTypeLabel(nomination.type_id)}
+                                            </Badge>
+                                            <Button
+                                              size="sm"
+                                              variant="outline"
+                                              className="text-red-600 border-red-300 hover:bg-red-50 h-8 sm:h-9 w-8 sm:w-9 p-0"
+                                              onClick={() => deleteNominationRecord(nomination.id)}
+                                            >
+                                              <Trash2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                                            </Button>
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </ScrollArea>
+                                )}
+                              </CardContent>
+                            </Card>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* サービス */}
+                      {leftMode === 'service' && (
+                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                          <div className="col-span-1 lg:col-span-2 space-y-4">
+                            <Card>
+                              <CardHeader className="pb-2">
+                                <CardTitle className="flex items-center text-xs sm:text-sm">
+                                  <Bell className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
+                                  サービス・呼び出し
+                                </CardTitle>
+                              </CardHeader>
+                              <CardContent>
+                                {isServicesLoading ? (
+                                  <div className="flex items-center justify-center py-6">
+                                    <div className="w-6 h-6 border-2 border-purple-600 border-t-transparent rounded-full animate-spin" />
+                                  </div>
+                                ) : services.length === 0 ? (
+                                  <div className="text-center py-4 text-sm text-gray-500">
+                                    サービスがありません
+                                  </div>
+                                ) : (
+                                  <div className={`grid grid-cols-2 sm:grid-cols-3 gap-2 ${isTimeExpired ? 'pointer-events-none opacity-50' : ''}`}>
+                                    {services.map((service: any) => (
+                                      <Button
+                                        key={service.id}
+                                        variant="outline"
+                                        onClick={() => handleServiceOrder(service)}
+                                        disabled={isOrderingDisabled}
+                                        className={`h-12 sm:h-14 px-1 sm:px-2 flex-col justify-center gap-0.5 sm:gap-1 ${isOrderingDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                      >
+                                        <Utensils className="w-4 h-4 sm:w-5 sm:h-5" />
+                                        <span className="text-[10px] sm:text-[13px] leading-tight line-clamp-1">{service.name}</span>
+                                      </Button>
+                                    ))}
+                                  </div>
+                                )}
+                              </CardContent>
+                            </Card>
+
+                            <Card>
+                              <CardHeader className="pb-2">
+                                <CardTitle className="flex items-center text-xs sm:text-sm">
+                                  <Coffee className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
+                                  追加注文
+                                </CardTitle>
+                              </CardHeader>
+                              <CardContent>
+                                <div className={`grid grid-cols-3 gap-2 ${isTimeExpired ? 'pointer-events-none opacity-50' : ''}`}>
+                                  <Button
+                                    variant="outline"
+                                    onClick={() => setShowBottleKeepDialog(true)}
+                                    disabled={isTimeExpired}
+                                    className="h-12 sm:h-14 px-1 sm:px-2 flex-col justify-center gap-0.5 sm:gap-1"
+                                  >
+                                    <Wine className="w-4 h-4 sm:w-5 sm:h-5" />
+                                    <span className="text-[10px] sm:text-[13px] leading-tight">ボトルキープ</span>
+                                  </Button>
+                                  <Button
+                                    variant="outline"
+                                    onClick={() => setShowVipRoomDialog(true)}
+                                    disabled={isTimeExpired}
+                                    className="h-14 px-2 flex-col justify-center gap-1"
+                                  >
+                                    <Users className="w-5 h-5" />
+                                    <span className="text-[10px] sm:text-[13px] leading-tight">VIPルーム</span>
+                                  </Button>
+                                  <Button
+                                    variant="outline"
+                                    onClick={() => setShowKaraokeDialog(true)}
+                                    disabled={isTimeExpired}
+                                    className="h-14 px-2 flex-col justify-center gap-1"
+                                  >
+                                    <Users className="w-5 h-5" />
+                                    <span className="text-[10px] sm:text-[13px] leading-tight">カラオケ利用</span>
+                                  </Button>
+                                </div>
+                              </CardContent>
+                            </Card>
+                          </div>
+
+                          {/* 右側：サービス注文カート */}
+                          <div className="col-span-1">
+                            <Card>
+                              <CardHeader>
+                                <CardTitle className="flex items-center">
+                                  <Utensils className="w-5 h-5 mr-2" />
+                                  サービス注文カート
+                                </CardTitle>
+                                <CardDescription>
+                                  {serviceOrders.length}個のサービス
+                                </CardDescription>
+                              </CardHeader>
+                              <CardContent>
+                                {serviceOrders.length === 0 ? (
+                                  <div className="text-center py-6 text-gray-500">
+                                    <Utensils className="w-10 h-10 mx-auto mb-2 text-gray-400" />
+                                    <p>サービス注文がありません</p>
+                                  </div>
+                                ) : (
+                                  <ScrollArea className="h-[45vh] sm:h-[55vh] pr-1">
+                                    <div className="space-y-3">
+                                      {serviceOrders.map((order) => (
+                                        <div key={order.id} className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-2 sm:p-3 bg-gray-50 rounded-lg border gap-2 sm:gap-0">
+                                          <div className="flex-1 min-w-0 w-full sm:w-auto">
+                                            <h4 className="font-medium text-xs sm:text-sm truncate">{order.service_name}</h4>
+                                            <p className="text-[10px] sm:text-xs text-gray-500">
+                                              数量: {order.amount}個
+                                              {order.cast_name ? (
+                                                <span className="ml-1 sm:ml-2 text-blue-600">(担当: {order.cast_name})</span>
+                                              ) : (
+                                                <span className="ml-1 sm:ml-2 text-gray-500">(お客様直接注文)</span>
+                                              )}
+                                            </p>
+                                          </div>
+                                          <div className="flex items-center space-x-1 sm:space-x-2 w-full sm:w-auto justify-end">
+                                            <Button
+                                              size="sm"
+                                              variant="outline"
+                                              onClick={() => removeFromServiceOrders(order.id.toString())}
+                                              className="text-red-600 hover:text-red-700"
+                                            >
+                                              <Trash2 className="w-3 h-3" />
+                                            </Button>
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </ScrollArea>
+                                )}
+                              </CardContent>
+                            </Card>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* 左下ナビ（黒帯 約80px） */}
@@ -3427,7 +3427,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                   className="text-white text-xs sm:text-sm md:text-base lg:text-[18px] hover:bg-white/10 gap-1 sm:gap-2 flex-col sm:flex-row h-auto py-2 sm:py-0"
                   onClick={() => router.push('/')}
                 >
-                  <FaHome className="w-4 h-4 sm:w-5 sm:h-5" /> 
+                  <FaHome className="w-4 h-4 sm:w-5 sm:h-5" />
                   <span className="hidden sm:inline">最初のページ</span>
                   <span className="sm:hidden text-[10px]">最初</span>
                 </Button>
@@ -3436,27 +3436,27 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                   className={`text-white text-xs sm:text-sm md:text-base lg:text-[18px] gap-1 sm:gap-2 hover:bg-white/10 ${leftMode === 'order' ? 'bg-white/10' : ''} flex-col sm:flex-row h-auto py-2 sm:py-0`}
                   onClick={() => setLeftMode('order')}
                 >
-                 <SiBuymeacoffee className="w-4 h-4 sm:w-5 sm:h-5" /> 
-                 <span className="hidden sm:inline">注文</span>
-                 <span className="sm:hidden text-[10px]">注文</span>
+                  <SiBuymeacoffee className="w-4 h-4 sm:w-5 sm:h-5" />
+                  <span className="hidden sm:inline">注文</span>
+                  <span className="sm:hidden text-[10px]">注文</span>
                 </Button>
                 <Button
                   variant="ghost"
                   className={`text-white text-xs sm:text-sm md:text-base lg:text-[18px] gap-1 sm:gap-2 hover:bg-white/10 ${leftMode === 'nomination' ? 'bg-white/10' : ''} flex-col sm:flex-row h-auto py-2 sm:py-0`}
                   onClick={() => setLeftMode('nomination')}
                 >
-                 <BiUserPin className="w-4 h-4 sm:w-5 sm:h-5" /> 
-                 <span className="hidden sm:inline">指定</span>
-                 <span className="sm:hidden text-[10px]">指定</span>
+                  <BiUserPin className="w-4 h-4 sm:w-5 sm:h-5" />
+                  <span className="hidden sm:inline">指定</span>
+                  <span className="sm:hidden text-[10px]">指定</span>
                 </Button>
                 <Button
                   variant="ghost"
                   className={`text-white text-xs sm:text-sm md:text-base lg:text-[18px] gap-1 sm:gap-2 hover:bg-white/10 ${leftMode === 'service' ? 'bg-white/10' : ''} flex-col sm:flex-row h-auto py-2 sm:py-0`}
                   onClick={() => setLeftMode('service')}
                 >
-                 <MdHomeRepairService className="w-4 h-4 sm:w-5 sm:h-5" /> 
-                 <span className="hidden sm:inline">サービス</span>
-                 <span className="sm:hidden text-[10px]">サービス</span>
+                  <MdHomeRepairService className="w-4 h-4 sm:w-5 sm:h-5" />
+                  <span className="hidden sm:inline">サービス</span>
+                  <span className="sm:hidden text-[10px]">サービス</span>
                 </Button>
               </div>
             )}
@@ -3466,380 +3466,380 @@ export default function TableDashboard({ params }: { params: { tableId: string }
           {isSessionActive && (
             <div className="w-full lg:w-1/6 lg:min-w-[260px] flex flex-col min-h-0 order-first lg:order-last">
               <div className="flex-1 overflow-y-auto space-y-4">
-            {/* セット延長 */}
-            <Card className="bg-gradient-to-r from-purple-50 to-pink-50 border-purple-200">
-              <CardHeader className="pb-2 sm:pb-3">
-                <CardTitle className="flex items-center text-xs sm:text-sm font-semibold text-purple-800">
-                  <Clock className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
-                  セット延長
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-x-2 flex flex-col sm:flex-row">
-                <div className="w-full sm:w-1/2 bg-white rounded-md p-2 sm:p-3 border border-purple-200 text-center relative mb-2 sm:mb-0">
-                  <div className="text-[11px] text-gray-500 mb-1"> </div>
-                  {/* {session?.is_paused && (
+                {/* セット延長 */}
+                <Card className="bg-gradient-to-r from-purple-50 to-pink-50 border-purple-200">
+                  <CardHeader className="pb-2 sm:pb-3">
+                    <CardTitle className="flex items-center text-xs sm:text-sm font-semibold text-purple-800">
+                      <Clock className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
+                      セット延長
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-x-2 flex flex-col sm:flex-row">
+                    <div className="w-full sm:w-1/2 bg-white rounded-md p-2 sm:p-3 border border-purple-200 text-center relative mb-2 sm:mb-0">
+                      <div className="text-[11px] text-gray-500 mb-1"> </div>
+                      {/* {session?.is_paused && (
                     <div className="absolute top-1 right-1">
                       <span className="inline-flex items-center text-orange-700 border border-orange-200 px-2 py-0.5 text-[10px] font-semibold leading-none">
                         停止中
                       </span>
                     </div>
                   )} */}
-                  {session?.is_paused && isEditingRemainingTime ? (
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-center gap-1">
-                        <Input
-                          type="number"
-                          min="0"
-                          max="999"
-                          value={editingRemainingMinutes}
-                          onChange={(e) => setEditingRemainingMinutes(e.target.value)}
-                          className="w-16 h-8 text-center text-lg font-bold"
-                          placeholder="分"
-                        />
-                        <span className="text-2xl font-bold">:</span>
-                        <Input
-                          type="number"
-                          min="0"
-                          max="59"
-                          value={editingRemainingSeconds}
-                          onChange={(e) => setEditingRemainingSeconds(e.target.value)}
-                          className="w-16 h-8 text-center text-lg font-bold"
-                          placeholder="秒"
-                        />
-                      </div>
-                      <div className="flex gap-1 justify-center">
-                        <Button
-                          size="sm"
-                          onClick={handleChangeRemainingTime}
-                          className="bg-green-600 hover:bg-green-700 text-white"
-                        >
-                          <Save className="w-3 h-3 mr-1" />
-                          {/* 変更 */}
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => {
-                            setIsEditingRemainingTime(false);
-                            setEditingRemainingMinutes('');
-                            setEditingRemainingSeconds('');
-                          }}
-                        >
-                          <X className="w-3 h-3 mr-1" />
-                          {/* キャンセル */}
-                        </Button>
-                      </div>
-                    </div>
-                  ) : (
-                    <>
-                      <div className={`text-xl sm:text-2xl font-bold leading-none ${session?.is_paused ? 'text-gray-400' : 'text-purple-600'}`}>
-                        {Math.floor(setExtensionCountdown / 60)}:{(setExtensionCountdown % 60).toString().padStart(2, '0')}
-                      </div>
-                      <div className="text-[9px] sm:text-[11px] text-gray-500 mt-1">
-                        {Math.floor(setExtensionCountdown / 60)}分 {setExtensionCountdown % 60}秒
-                      </div>
-                      {session?.is_paused && (
+                      {session?.is_paused && isEditingRemainingTime ? (
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-center gap-1">
+                            <Input
+                              type="number"
+                              min="0"
+                              max="999"
+                              value={editingRemainingMinutes}
+                              onChange={(e) => setEditingRemainingMinutes(e.target.value)}
+                              className="w-16 h-8 text-center text-lg font-bold"
+                              placeholder="分"
+                            />
+                            <span className="text-2xl font-bold">:</span>
+                            <Input
+                              type="number"
+                              min="0"
+                              max="59"
+                              value={editingRemainingSeconds}
+                              onChange={(e) => setEditingRemainingSeconds(e.target.value)}
+                              className="w-16 h-8 text-center text-lg font-bold"
+                              placeholder="秒"
+                            />
+                          </div>
+                          <div className="flex gap-1 justify-center">
+                            <Button
+                              size="sm"
+                              onClick={handleChangeRemainingTime}
+                              className="bg-green-600 hover:bg-green-700 text-white"
+                            >
+                              <Save className="w-3 h-3 mr-1" />
+                              {/* 変更 */}
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                setIsEditingRemainingTime(false);
+                                setEditingRemainingMinutes('');
+                                setEditingRemainingSeconds('');
+                              }}
+                            >
+                              <X className="w-3 h-3 mr-1" />
+                              {/* キャンセル */}
+                            </Button>
+                          </div>
+                        </div>
+                      ) : (
                         <>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => {
-                              setIsEditingRemainingTime(true);
-                              setEditingRemainingMinutes(Math.floor(setExtensionCountdown / 60).toString());
-                              setEditingRemainingSeconds((setExtensionCountdown % 60).toString());
-                            }}
-                            className="mt-2 text-xs"
-                          >
-                            <Edit2 className="w-3 h-3 mr-1" />
-                            {/* 残り時間変更 */}
-                          </Button>
+                          <div className={`text-xl sm:text-2xl font-bold leading-none ${session?.is_paused ? 'text-gray-400' : 'text-purple-600'}`}>
+                            {Math.floor(setExtensionCountdown / 60)}:{(setExtensionCountdown % 60).toString().padStart(2, '0')}
+                          </div>
+                          <div className="text-[9px] sm:text-[11px] text-gray-500 mt-1">
+                            {Math.floor(setExtensionCountdown / 60)}分 {setExtensionCountdown % 60}秒
+                          </div>
+                          {session?.is_paused && (
+                            <>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                  setIsEditingRemainingTime(true);
+                                  setEditingRemainingMinutes(Math.floor(setExtensionCountdown / 60).toString());
+                                  setEditingRemainingSeconds((setExtensionCountdown % 60).toString());
+                                }}
+                                className="mt-2 text-xs"
+                              >
+                                <Edit2 className="w-3 h-3 mr-1" />
+                                {/* 残り時間変更 */}
+                              </Button>
+                            </>
+                          )}
                         </>
                       )}
-                    </>
-                  )}
-                </div>
+                    </div>
 
-                <div className="w-full sm:w-1/2 flex flex-col space-y-2">
-                  <div className="text-xs sm:text-sm text-gray-700">
-                    <div>セット数: {localStorage.getItem('set_count') || 1}</div>
-                    {/* <div>人数: {guestCount}名</div> */}
-                  </div>
-                  <Button
-                    onClick={handleSetExtension}
-                    size="sm"
-                    className="flex-1 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-xs sm:text-sm"
-                  >
-                    <Clock className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
-                    <span className="text-[10px] sm:text-xs font-semibold">セット延長</span>
-                  </Button>
-                  <Button
-                    onClick={handleCancelSet}
-                    size="sm"
-                    disabled={setExtensionCountdown < 3600 || setExtensions.length === 0}
-                    variant="outline"
-                    className="flex-1 border-red-300 text-red-600 hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed text-xs sm:text-sm"
-                  >
-                    <X className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
-                    <span className="text-[10px] sm:text-xs font-semibold">1セットキャンセル</span>
-                  </Button>
-                  <Button
-                    onClick={handlePauseResume}
-                    size="sm"
-                    variant={session?.is_paused ? "default" : "outline"}
-                    className={session?.is_paused ? "flex-1 bg-green-600 hover:bg-green-700 text-white text-xs sm:text-sm" : "flex-1 border-purple-300 text-purple-700 hover:bg-purple-50 text-xs sm:text-sm"}
-                  >
-                    {session?.is_paused ? (
-                      <>
-                        <Play className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
-                        <span className="text-[10px] sm:text-xs font-semibold">再開</span>
-                      </>
-                    ) : (
-                      <>
-                        <Pause className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
-                        <span className="text-[10px] sm:text-xs font-semibold">停止</span>
-                      </>
-                    )}
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
+                    <div className="w-full sm:w-1/2 flex flex-col space-y-2">
+                      <div className="text-xs sm:text-sm text-gray-700">
+                        <div>セット数: {localStorage.getItem('set_count') || 1}</div>
+                        {/* <div>人数: {guestCount}名</div> */}
+                      </div>
+                      <Button
+                        onClick={handleSetExtension}
+                        size="sm"
+                        className="flex-1 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-xs sm:text-sm"
+                      >
+                        <Clock className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
+                        <span className="text-[10px] sm:text-xs font-semibold">セット延長</span>
+                      </Button>
+                      <Button
+                        onClick={handleCancelSet}
+                        size="sm"
+                        disabled={setExtensionCountdown < 3600 || setExtensions.length === 0}
+                        variant="outline"
+                        className="flex-1 border-red-300 text-red-600 hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed text-xs sm:text-sm"
+                      >
+                        <X className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
+                        <span className="text-[10px] sm:text-xs font-semibold">1セットキャンセル</span>
+                      </Button>
+                      <Button
+                        onClick={handlePauseResume}
+                        size="sm"
+                        variant={session?.is_paused ? "default" : "outline"}
+                        className={session?.is_paused ? "flex-1 bg-green-600 hover:bg-green-700 text-white text-xs sm:text-sm" : "flex-1 border-purple-300 text-purple-700 hover:bg-purple-50 text-xs sm:text-sm"}
+                      >
+                        {session?.is_paused ? (
+                          <>
+                            <Play className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
+                            <span className="text-[10px] sm:text-xs font-semibold">再開</span>
+                          </>
+                        ) : (
+                          <>
+                            <Pause className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
+                            <span className="text-[10px] sm:text-xs font-semibold">停止</span>
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
 
-            {/* 合計・注文 */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center text-sm sm:text-base">
-                    <DollarSign className="w-4 h-4 sm:w-5 sm:h-5 mr-1 sm:mr-2" />
-                    注文合計
-                  </CardTitle>
-                {/* <CardDescription>
+                {/* 合計・注文 */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center text-sm sm:text-base">
+                      <DollarSign className="w-4 h-4 sm:w-5 sm:h-5 mr-1 sm:mr-2" />
+                      注文合計
+                    </CardTitle>
+                    {/* <CardDescription>
                   セッション料金・セット延長・承認済み商品の合計を表示します
                 </CardDescription> */}
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  {/* 承認状況の表示 */}
-                  {(() => {
-                    const acceptedOrders = cartOrders.filter(order => {
-                      const status = orderRequestStatus[order.id] || order.status;
-                      return status === 'accepted';
-                    });
-                    const pendingOrders = cartOrders.filter(order => {
-                      const status = orderRequestStatus[order.id] || order.status;
-                      return status === 'pending' || status === 'sent';
-                    });
-                    
-                    return (
-                      <div className="bg-blue-50 rounded-lg p-2 sm:p-3 text-xs sm:text-sm">
-                        <div className="space-y-1">
-                          <div className="flex justify-between">
-                            <span className="text-blue-700">承認済み商品:</span>
-                            <span className="font-medium text-blue-900">{acceptedOrders.length}件</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-blue-700">承認待ち商品:</span>
-                            <span className="font-medium text-orange-600">{pendingOrders.length}件</span>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })()}
-                
-                {cartOrders.length === 0 && (!guestCount || guestCount.trim() === '') && setExtensions.length === 0 && (
-                  <div className="rounded-lg border border-dashed border-gray-300 p-3 sm:p-4 text-xs sm:text-sm text-gray-500">
-                    現在、表示できる料金情報がありません。商品追加または人数入力を行ってください。
-                  </div>
-                )}
-                  
-                  <div className="space-y-2">
-                  {/* 商品の合計 */}
-                  {(() => {
-                    const productTotal = cartOrders.reduce((sum, order) => {
-                      const status = orderRequestStatus[order.id] || order.status;
-                      if (status === 'accepted') {
-                        const price = Number(order.total_price);
-                        const validPrice = isNaN(price) ? 0 : price;
-                        return sum + validPrice;
-                      }
-                      return sum;
-                    }, 0);
-                    if (productTotal > 0) {
-                      return (
-                        <div className="flex justify-between text-xs sm:text-sm">
-                          <span>商品合計</span>
-                          <span>{formatCurrency(productTotal)}</span>
-                    </div>
-                      );
-                    }
-                    return null;
-                  })()}
-                  
-                  {/* セッション開始時の料金 */}
-                  {(() => {
-                    if (guestCount && guestCount.trim() !== '') {
-                      const initialGuestCount = parseInt(guestCount);
-                      if (!isNaN(initialGuestCount) && initialGuestCount > 0) {
-                        const sessionFee = (addCharges['set_price'] || 0) * initialGuestCount;
-                        return (
-                          <div className="flex justify-between text-xs sm:text-sm">
-                            <span>セッション料金 ({guestCount}名)</span>
-                            <span>{formatCurrency(sessionFee)}</span>
-                          </div>
-                        );
-                      }
-                    }
-                    return null;
-                  })()}
-                  
-                  {/* セット延長料金 */}
-                  {setExtensions.length > 0 && setExtensions.map((extension, index) => (
-                    <div key={index} className="flex justify-between text-xs sm:text-sm">
-                      <span>セット延長 ({extension.count}名)</span>
-                      <span>{formatCurrency(extension.price ?? ((addCharges['extension_price'] || 0) * extension.count))}</span>
-                    </div>
-                  ))}
-                  
-                  {/* 指名料金の明細 */}
-                  {nominations.length > 0 && (
-                    <div className="border-t pt-2 space-y-1">
-                      <div className="text-[10px] sm:text-xs font-semibold text-gray-600 mb-1">指名料金</div>
-                      {nominations.map((nomination, index) => {
-                        let chargeLabel = '';
-                        
-                        if (nomination.type_id === 'together') {
-                          chargeLabel = `${getNominationTypeLabel(nomination.type_id)} - ${nomination.cast_name}`;
-                        } else if (nomination.type_id === 'main') {
-                          chargeLabel = `${getNominationTypeLabel(nomination.type_id)} - ${nomination.cast_name}`;
-                        } else if (nomination.type_id === 'inside') {
-                          const promoted = Number((nomination as any).tomain_nomination) === 1;
-                          chargeLabel = `${getNominationTypeLabel(nomination.type_id)}${promoted ? '（本指名へ昇格）' : ''} - ${nomination.cast_name}`;
-                        }
-                        
-                        return (
-                          <div key={nomination.id} className="flex justify-between text-xs sm:text-sm pl-2 sm:pl-3">
-                            <span className="text-gray-700 truncate pr-2">{chargeLabel}</span>
-                            <span className="flex-shrink-0">{formatCurrency(Number((nomination as any).cost) || 0)}</span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                  
-                  {/* 追加サービス料金の明細 */}
-                  {additionalServices.length > 0 && (
-                    <div className="border-t pt-2 space-y-1">
-                      <div className="text-[10px] sm:text-xs font-semibold text-gray-600 mb-1">追加サービス</div>
-                      {additionalServices.map((service, index) => {
-                        let serviceLabel = '';
-                        if (service.type === 'bottle_keep') {
-                          serviceLabel = 'ボトルキープ';
-                        } else if (service.type === 'vip_room') {
-                          serviceLabel = `VIPルーム利用 (${service.count}部屋)`;
-                        } else if (service.type === 'karaoke') {
-                          serviceLabel = `カラオケ利用 (${service.count}曲)`;
-                        }
-                        
-                        return (
-                          <div key={index} className="flex justify-between text-xs sm:text-sm pl-2 sm:pl-3">
-                            <span className="text-gray-700 truncate pr-2">{serviceLabel}</span>
-                            <span className="flex-shrink-0">{formatCurrency(service.charge)}</span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                  
-                  {/* 小計とサービス手数料 */}
-                  {(() => {
-                    let subtotal = 0;
-                    
-                    // 商品の合計
-                    if (cartOrders && cartOrders.length > 0) {
-                      const productTotal = cartOrders.reduce((sum, order) => {
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    {/* 承認状況の表示 */}
+                    {(() => {
+                      const acceptedOrders = cartOrders.filter(order => {
                         const status = orderRequestStatus[order.id] || order.status;
-                        if (status === 'accepted') {
-                          const price = Number(order.total_price);
-                          const validPrice = isNaN(price) ? 0 : price;
-                          return sum + validPrice;
-                        }
-                        return sum;
-                      }, 0);
-                      subtotal += productTotal;
-                    }
-                    
-                    // セッション開始時の料金
-                    if (guestCount && guestCount.trim() !== '') {
-                      const initialGuestCount = parseInt(guestCount);
-                      if (!isNaN(initialGuestCount) && initialGuestCount > 0) {
-                        subtotal += (addCharges['set_price'] || 0) * initialGuestCount;
-                      }
-                    }
-                    
-                    // セット延長料金
-                    setExtensions.forEach(extension => {
-                      if (extension.count > 0) {
-                        subtotal += (extension.price ?? ((addCharges['extension_price'] || 0) * extension.count));
-                      }
-                    });
-                    
-                    // 指名料金（DBのnomination.cost累計）
-                    nominations.forEach(nomination => {
-                      const cost = Number((nomination as any).cost);
-                      subtotal += Number.isFinite(cost) ? cost : 0;
-                    });
-                    
-                    // 追加サービス料金の合計
-                    additionalServices.forEach(service => {
-                      subtotal += service.charge;
-                    });
-                    
-                    const serviceFee = Math.round(subtotal * 0.1);
-                    
-                    if (subtotal > 0) {
+                        return status === 'accepted';
+                      });
+                      const pendingOrders = cartOrders.filter(order => {
+                        const status = orderRequestStatus[order.id] || order.status;
+                        return status === 'pending' || status === 'sent';
+                      });
+
                       return (
-                        <>
-                          <div className="border-t pt-2 flex justify-between text-xs sm:text-sm">
-                            <span>小計</span>
-                            <span>{formatCurrency(subtotal)}</span>
+                        <div className="bg-blue-50 rounded-lg p-2 sm:p-3 text-xs sm:text-sm">
+                          <div className="space-y-1">
+                            <div className="flex justify-between">
+                              <span className="text-blue-700">承認済み商品:</span>
+                              <span className="font-medium text-blue-900">{acceptedOrders.length}件</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-blue-700">承認待ち商品:</span>
+                              <span className="font-medium text-orange-600">{pendingOrders.length}件</span>
+                            </div>
                           </div>
-                          <div className="flex justify-between text-xs sm:text-sm">
-                            <span>サービス手数料 (10%)</span>
-                            <span>{formatCurrency(serviceFee)}</span>
-                          </div>
-                        </>
+                        </div>
                       );
-                    }
-                    return null;
-                  })()}
-                  
-                    <div className="border-t pt-2 flex justify-between font-bold text-sm sm:text-lg">
-                      <span>合計</span>
-                      <span>{formatCurrency(calculateTotal())}</span>
-                    </div>
-                  </div>
-                  
-                  <div className="space-y-3">
-                    {isPaymentCompleted ? (
-                      <div className="w-full bg-green-50 border-2 border-green-200 rounded-lg p-3 sm:p-4 text-center">
-                        <div className="flex items-center justify-center space-x-2 text-green-700">
-                          <CheckCircle className="w-5 h-5 sm:w-6 sm:h-6" />
-                          <span className="font-bold text-sm sm:text-lg">決済成功</span>
-                        </div>
-                        <div className="text-xs sm:text-sm text-green-600 mt-1">
-                          支払いが完了しました
-                        </div>
-                        <div className="text-sm sm:text-lg font-bold text-green-700 mt-2">
-                          {formatCurrency(parseInt(localStorage.getItem('paid_amount') || '0'))}
-                        </div>
+                    })()}
+
+                    {cartOrders.length === 0 && (!guestCount || guestCount.trim() === '') && setExtensions.length === 0 && (
+                      <div className="rounded-lg border border-dashed border-gray-300 p-3 sm:p-4 text-xs sm:text-sm text-gray-500">
+                        現在、表示できる料金情報がありません。商品追加または人数入力を行ってください。
                       </div>
-                    ) : null}
-                    
+                    )}
 
-                  </div>
-                </CardContent>
-              </Card>
+                    <div className="space-y-2">
+                      {/* 商品の合計 */}
+                      {(() => {
+                        const productTotal = cartOrders.reduce((sum, order) => {
+                          const status = orderRequestStatus[order.id] || order.status;
+                          if (status === 'accepted') {
+                            const price = Number(order.total_price);
+                            const validPrice = isNaN(price) ? 0 : price;
+                            return sum + validPrice;
+                          }
+                          return sum;
+                        }, 0);
+                        if (productTotal > 0) {
+                          return (
+                            <div className="flex justify-between text-xs sm:text-sm">
+                              <span>商品合計</span>
+                              <span>{formatCurrency(productTotal)}</span>
+                            </div>
+                          );
+                        }
+                        return null;
+                      })()}
 
+                      {/* セッション開始時の料金 */}
+                      {(() => {
+                        if (guestCount && guestCount.trim() !== '') {
+                          const initialGuestCount = parseInt(guestCount);
+                          if (!isNaN(initialGuestCount) && initialGuestCount > 0) {
+                            const sessionFee = (addCharges['set_price'] || 0) * initialGuestCount;
+                            return (
+                              <div className="flex justify-between text-xs sm:text-sm">
+                                <span>セッション料金 ({guestCount}名)</span>
+                                <span>{formatCurrency(sessionFee)}</span>
+                              </div>
+                            );
+                          }
+                        }
+                        return null;
+                      })()}
 
+                      {/* セット延長料金 */}
+                      {setExtensions.length > 0 && setExtensions.map((extension, index) => (
+                        <div key={index} className="flex justify-between text-xs sm:text-sm">
+                          <span>セット延長 ({extension.count}名)</span>
+                          <span>{formatCurrency(extension.price ?? ((addCharges['extension_price'] || 0) * extension.count))}</span>
                         </div>
+                      ))}
+
+                      {/* 指名料金の明細 */}
+                      {nominations.length > 0 && (
+                        <div className="border-t pt-2 space-y-1">
+                          <div className="text-[10px] sm:text-xs font-semibold text-gray-600 mb-1">指名料金</div>
+                          {nominations.map((nomination, index) => {
+                            let chargeLabel = '';
+
+                            if (nomination.type_id === 'together') {
+                              chargeLabel = `${getNominationTypeLabel(nomination.type_id)} - ${nomination.cast_name}`;
+                            } else if (nomination.type_id === 'main') {
+                              chargeLabel = `${getNominationTypeLabel(nomination.type_id)} - ${nomination.cast_name}`;
+                            } else if (nomination.type_id === 'inside') {
+                              const promoted = Number((nomination as any).tomain_nomination) === 1;
+                              chargeLabel = `${getNominationTypeLabel(nomination.type_id)}${promoted ? '（本指名へ昇格）' : ''} - ${nomination.cast_name}`;
+                            }
+
+                            return (
+                              <div key={nomination.id} className="flex justify-between text-xs sm:text-sm pl-2 sm:pl-3">
+                                <span className="text-gray-700 truncate pr-2">{chargeLabel}</span>
+                                <span className="flex-shrink-0">{formatCurrency(Number((nomination as any).cost) || 0)}</span>
+                              </div>
+                            );
+                          })}
                         </div>
+                      )}
+
+                      {/* 追加サービス料金の明細 */}
+                      {additionalServices.length > 0 && (
+                        <div className="border-t pt-2 space-y-1">
+                          <div className="text-[10px] sm:text-xs font-semibold text-gray-600 mb-1">追加サービス</div>
+                          {additionalServices.map((service, index) => {
+                            let serviceLabel = '';
+                            if (service.type === 'bottle_keep') {
+                              serviceLabel = 'ボトルキープ';
+                            } else if (service.type === 'vip_room') {
+                              serviceLabel = `VIPルーム利用 (${service.count}部屋)`;
+                            } else if (service.type === 'karaoke') {
+                              serviceLabel = `カラオケ利用 (${service.count}曲)`;
+                            }
+
+                            return (
+                              <div key={index} className="flex justify-between text-xs sm:text-sm pl-2 sm:pl-3">
+                                <span className="text-gray-700 truncate pr-2">{serviceLabel}</span>
+                                <span className="flex-shrink-0">{formatCurrency(service.charge)}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {/* 小計とサービス手数料 */}
+                      {(() => {
+                        let subtotal = 0;
+
+                        // 商品の合計
+                        if (cartOrders && cartOrders.length > 0) {
+                          const productTotal = cartOrders.reduce((sum, order) => {
+                            const status = orderRequestStatus[order.id] || order.status;
+                            if (status === 'accepted') {
+                              const price = Number(order.total_price);
+                              const validPrice = isNaN(price) ? 0 : price;
+                              return sum + validPrice;
+                            }
+                            return sum;
+                          }, 0);
+                          subtotal += productTotal;
+                        }
+
+                        // セッション開始時の料金
+                        if (guestCount && guestCount.trim() !== '') {
+                          const initialGuestCount = parseInt(guestCount);
+                          if (!isNaN(initialGuestCount) && initialGuestCount > 0) {
+                            subtotal += (addCharges['set_price'] || 0) * initialGuestCount;
+                          }
+                        }
+
+                        // セット延長料金
+                        setExtensions.forEach(extension => {
+                          if (extension.count > 0) {
+                            subtotal += (extension.price ?? ((addCharges['extension_price'] || 0) * extension.count));
+                          }
+                        });
+
+                        // 指名料金（DBのnomination.cost累計）
+                        nominations.forEach(nomination => {
+                          const cost = Number((nomination as any).cost);
+                          subtotal += Number.isFinite(cost) ? cost : 0;
+                        });
+
+                        // 追加サービス料金の合計
+                        additionalServices.forEach(service => {
+                          subtotal += service.charge;
+                        });
+
+                        const serviceFee = Math.round(subtotal * 0.1);
+
+                        if (subtotal > 0) {
+                          return (
+                            <>
+                              <div className="border-t pt-2 flex justify-between text-xs sm:text-sm">
+                                <span>小計</span>
+                                <span>{formatCurrency(subtotal)}</span>
+                              </div>
+                              <div className="flex justify-between text-xs sm:text-sm">
+                                <span>サービス手数料 (10%)</span>
+                                <span>{formatCurrency(serviceFee)}</span>
+                              </div>
+                            </>
+                          );
+                        }
+                        return null;
+                      })()}
+
+                      <div className="border-t pt-2 flex justify-between font-bold text-sm sm:text-lg">
+                        <span>合計</span>
+                        <span>{formatCurrency(calculateTotal())}</span>
+                      </div>
+                    </div>
+
+                    <div className="space-y-3">
+                      {isPaymentCompleted ? (
+                        <div className="w-full bg-green-50 border-2 border-green-200 rounded-lg p-3 sm:p-4 text-center">
+                          <div className="flex items-center justify-center space-x-2 text-green-700">
+                            <CheckCircle className="w-5 h-5 sm:w-6 sm:h-6" />
+                            <span className="font-bold text-sm sm:text-lg">決済成功</span>
+                          </div>
+                          <div className="text-xs sm:text-sm text-green-600 mt-1">
+                            支払いが完了しました
+                          </div>
+                          <div className="text-sm sm:text-lg font-bold text-green-700 mt-2">
+                            {formatCurrency(parseInt(localStorage.getItem('paid_amount') || '0'))}
+                          </div>
+                        </div>
+                      ) : null}
+
+
+                    </div>
+                  </CardContent>
+                </Card>
+
+
+              </div>
+            </div>
           )}
         </div>
 
@@ -3855,7 +3855,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                 {getServiceTypeLabel(serviceType)}を注文します
               </DialogDescription>
             </DialogHeader>
-            
+
             <div className="space-y-4">
               {/* サービスタイプ選択 */}
               <div className="space-y-2">
@@ -3914,7 +3914,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                   onChange={(e) => setServiceNote(e.target.value)}
                 />
               </div>
-              
+
               {/* 注文情報表示 */}
               <div className="bg-gray-50 rounded-none p-4">
                 <h4 className="font-medium text-gray-900 mb-2">注文情報</h4>
@@ -3934,7 +3934,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                 </div>
               </div>
             </div>
-            
+
             <div className="flex justify-end space-x-3">
               <Button variant="outline" onClick={() => {
                 setShowServiceDialog(false);
@@ -3962,7 +3962,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                 指名を登録します（キャストを選択してください）
               </DialogDescription>
             </DialogHeader>
-            
+
             <div className="space-y-4">
               {/* 指名タイプ選択 */}
               <div className="space-y-2">
@@ -3996,7 +3996,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                   onChange={(e) => setNominationAmount(e.target.value)}
                 />
               </div>
-              
+
               {/* 指名情報表示 */}
               <div className="bg-gray-50 rounded-none p-4">
                 <h4 className="font-medium text-gray-900 mb-2">指名情報</h4>
@@ -4020,7 +4020,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                 </div>
               </div>
             </div>
-            
+
             <div className="flex justify-end space-x-3">
               <Button variant="outline" onClick={() => {
                 setShowNominationDialog(false);
@@ -4029,7 +4029,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
               }}>
                 キャンセル
               </Button>
-              <Button 
+              <Button
                 onClick={handleNomination}
                 disabled={!selectedNominationType || !nominationAmount}
               >
@@ -4051,7 +4051,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                 場内で指名するキャストを選択してください
               </DialogDescription>
             </DialogHeader>
-            
+
             <div className="space-y-4">
               <div className="space-y-2">
                 <Label>指名するキャスト</Label>
@@ -4073,7 +4073,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                   </SelectContent>
                 </Select>
               </div>
-              
+
               {/* 場内指名情報表示 */}
               <div className="bg-gray-50 rounded-none p-4">
                 <h4 className="font-medium text-gray-900 mb-2">場内指名情報</h4>
@@ -4096,7 +4096,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                 </div>
               </div>
             </div>
-            
+
             <div className="flex justify-end space-x-3">
               <Button variant="outline" onClick={() => {
                 setShowFieldNominationDialog(false);
@@ -4104,7 +4104,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
               }}>
                 キャンセル
               </Button>
-              <Button 
+              <Button
                 onClick={handleFieldNomination}
                 disabled={isOrderingDisabled || !fieldNominationCast}
               >
@@ -4126,7 +4126,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                 {selectedCastForNomination?.name}の指名タイプを選択してください
               </DialogDescription>
             </DialogHeader>
-            
+
             <div className="space-y-4">
               <div className="grid grid-cols-1 gap-3">
                 <Button
@@ -4166,7 +4166,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                 </Button>
               </div>
             </div>
-            
+
             <div className="flex justify-end space-x-3">
               <Button variant="outline" onClick={() => {
                 setShowNominationTypeDialog(false);
@@ -4186,51 +4186,51 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                 <Users className="w-5 h-5 mr-2" />
                 キャスト選択
               </DialogTitle>
-               <DialogDescription>
-                 {selectedMenuItem?.type === 'nomination' 
-                   ? '指名するキャストを選択してください'
-                   : selectedMenuItem?.type === 'menu'
-                   ? `${selectedMenuItem?.name}の担当キャストを選択してください（任意）`
-                   : `${selectedMenuItem?.name}の担当キャストを選択してください（指名の場合は必須）`
-                 }
-               </DialogDescription>
+              <DialogDescription>
+                {selectedMenuItem?.type === 'nomination'
+                  ? '指名するキャストを選択してください'
+                  : selectedMenuItem?.type === 'menu'
+                    ? `${selectedMenuItem?.name}の担当キャストを選択してください（任意）`
+                    : `${selectedMenuItem?.name}の担当キャストを選択してください（指名の場合は必須）`
+                }
+              </DialogDescription>
             </DialogHeader>
-            
+
             <div className="space-y-4">
-               <div className="grid grid-cols-1 gap-3">
-                 {availableCasts.map((cast) => (
-                   <Button
-                     key={cast.id}
-                     variant="outline"
-                     onClick={() => {
-                       if (selectedMenuItem?.type === 'nomination') {
-                         handleNominationCastSelection(cast.id, cast.name);
-                       } else {
-                         // Cast selection for new order system - for now just close dialog
-                         setShowCastSelection(false);
-                         setSelectedMenuItem(null);
-                       }
-                     }}
-                     className="flex items-center justify-between p-4 h-auto"
-                   >
-                     <div className="flex items-center space-x-3">
-                       <div className="w-10 h-10 bg-pink-100 rounded-lg flex items-center justify-center">
-                         <Users className="w-5 h-5 text-pink-600" />
-                       </div>
-                       <div className="text-left">
-                         <h4 className="font-medium">{cast.name}</h4>
-                         <p className="text-sm text-gray-500">キャスト</p>
-                       </div>
-                     </div>
-                     <Badge variant="outline" className="bg-green-50 text-green-700">
-                       空き
-                     </Badge>
-                   </Button>
-                 ))}
-               </div>
-               
+              <div className="grid grid-cols-1 gap-3">
+                {availableCasts.map((cast) => (
+                  <Button
+                    key={cast.id}
+                    variant="outline"
+                    onClick={() => {
+                      if (selectedMenuItem?.type === 'nomination') {
+                        handleNominationCastSelection(cast.id, cast.name);
+                      } else {
+                        // Cast selection for new order system - for now just close dialog
+                        setShowCastSelection(false);
+                        setSelectedMenuItem(null);
+                      }
+                    }}
+                    className="flex items-center justify-between p-4 h-auto"
+                  >
+                    <div className="flex items-center space-x-3">
+                      <div className="w-10 h-10 bg-pink-100 rounded-lg flex items-center justify-center">
+                        <Users className="w-5 h-5 text-pink-600" />
+                      </div>
+                      <div className="text-left">
+                        <h4 className="font-medium">{cast.name}</h4>
+                        <p className="text-sm text-gray-500">キャスト</p>
+                      </div>
+                    </div>
+                    <Badge variant="outline" className="bg-green-50 text-green-700">
+                      空き
+                    </Badge>
+                  </Button>
+                ))}
+              </div>
+
             </div>
-            
+
             <div className="flex justify-end space-x-3">
               <Button variant="outline" onClick={() => {
                 setShowCastSelection(false);
@@ -4254,7 +4254,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                 {selectedProduct?.name}の注文詳細を入力してください
               </DialogDescription>
             </DialogHeader>
-            
+
             <div className="space-y-4">
               {/* 商品情報 */}
               <div className="p-4 bg-gray-50 rounded-lg">
@@ -4296,8 +4296,8 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                 <Label htmlFor="cast-select" className={!isForCast ? 'text-gray-400' : ''}>
                   担当キャスト（任意）
                 </Label>
-                <Select 
-                  value={selectedCast} 
+                <Select
+                  value={selectedCast}
                   onValueChange={setSelectedCast}
                   disabled={!isForCast}
                 >
@@ -4511,7 +4511,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                 指名するキャストを選択してください
               </DialogDescription>
             </DialogHeader>
-            
+
             <div className="space-y-4">
               <div className="space-y-2">
                 <Label>キャスト選択</Label>
@@ -4522,13 +4522,13 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                   <SelectContent>
                     {availableCasts.map((cast) => (
                       <SelectItem key={cast.id} value={cast.id.toString()}>
-                        {cast.name} 
+                        {cast.name}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
-              
+
               {/* 指名情報表示 */}
               <div className="bg-gray-50 rounded-none p-4">
                 <h4 className="font-medium text-gray-900 mb-2">指名情報</h4>
@@ -4548,10 +4548,10 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                 </div>
               </div>
             </div>
-            
+
             <div className="flex justify-end space-x-2">
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 onClick={() => {
                   setShowNominationCastDialog(false);
                   setSelectedNominationCast('');
@@ -4584,7 +4584,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                 延長する人数を入力してください。延長後、60分のカウントダウンが再開されます。
               </DialogDescription>
             </DialogHeader>
-            
+
             <div className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="extension-guest-count">延長時の人数</Label>
@@ -4598,13 +4598,13 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                   className="w-full"
                 />
                 <p className="text-sm text-gray-500">
-                  延長料金: {extensionGuestCount && !isNaN(parseInt(extensionGuestCount)) && parseInt(extensionGuestCount) > 0 
+                  延長料金: {extensionGuestCount && !isNaN(parseInt(extensionGuestCount)) && parseInt(extensionGuestCount) > 0
                     ? formatCurrency((addCharges['extension_price'] || 0) * parseInt(extensionGuestCount))
                     : formatCurrency(0)}
                 </p>
               </div>
             </div>
-            
+
             <div className="flex justify-end space-x-3">
               <Button
                 variant="outline"
@@ -4639,7 +4639,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                 支払い方法を選択してください
               </DialogDescription>
             </DialogHeader>
-            
+
             <div className="space-y-4">
               <Button
                 onClick={handleCreditCardPayment}
@@ -4649,16 +4649,16 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                 <CreditCard className="w-5 h-5 mr-2" />
                 クレジットカードで決済 ({formatCurrency(calculatePaymentAmount())})
               </Button>
-              
+
               <Button
                 onClick={handleStoreCreditCardPayment}
                 className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
                 size="lg"
               >
                 <CreditCard className="w-5 h-5 mr-2" />
-                店舗用クレジットカード決済 
+                店舗用クレジットカード決済
               </Button>
-              
+
               <Button
                 onClick={handleCashPayment}
                 className="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700"
@@ -4683,7 +4683,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                 決済金額を入力してください
               </DialogDescription>
             </DialogHeader>
-            
+
             <div className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="store-credit-card-amount">決済金額</Label>
@@ -4700,7 +4700,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                   合計金額: {formatCurrency(calculateTotal())}
                 </p>
               </div>
-              
+
               <div className="flex justify-end space-x-2">
                 <Button
                   variant="outline"
@@ -4736,7 +4736,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                 受け取った金額を入力してください
               </DialogDescription>
             </DialogHeader>
-            
+
             <div className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="cash-amount">受け取った金額</Label>
@@ -4753,7 +4753,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                   合計金額: {formatCurrency(calculateTotal())}
                 </p>
               </div>
-              
+
               <div className="flex justify-end space-x-2">
                 <Button
                   variant="outline"
@@ -4789,7 +4789,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                 承認された商品の支払いを行います
               </DialogDescription>
             </DialogHeader>
-            
+
             <StripeProvider>
               <StripePaymentForm
                 amount={paymentAmount}
@@ -4813,7 +4813,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                 スタッフ呼び出しを行うキャストを選択してください
               </DialogDescription>
             </DialogHeader>
-            
+
             <div className="space-y-4">
               <div className="space-y-2">
                 <Label>キャスト選択</Label>
@@ -4821,11 +4821,10 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                   {availableCasts.map((cast) => (
                     <div
                       key={cast.id}
-                      className={`p-3 border rounded-lg cursor-pointer transition-colors ${
-                        selectedCastForManagerCall?.id === cast.id
-                          ? 'border-blue-500 bg-blue-50'
-                          : 'border-gray-200 hover:border-gray-300'
-                      }`}
+                      className={`p-3 border rounded-lg cursor-pointer transition-colors ${selectedCastForManagerCall?.id === cast.id
+                        ? 'border-blue-500 bg-blue-50'
+                        : 'border-gray-200 hover:border-gray-300'
+                        }`}
                       onClick={() => setSelectedCastForManagerCall(cast)}
                     >
                       <div className="flex items-center justify-between">
@@ -4838,7 +4837,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                   ))}
                 </div>
               </div>
-              
+
               <div className="flex justify-end space-x-2">
                 <Button
                   variant="outline"
@@ -4873,7 +4872,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                 スタッフ呼び出しを行うキャストを選択してください
               </DialogDescription>
             </DialogHeader>
-            
+
             <div className="space-y-4">
               <div className="space-y-2">
                 <Label>キャスト選択</Label>
@@ -4902,7 +4901,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                   </Select>
                 )}
               </div>
-              
+
               {/* スタッフ呼び出し情報表示 */}
               <div className="bg-gray-50 rounded-lg p-4">
                 <h4 className="font-medium text-gray-900 mb-2">スタッフ呼び出し情報</h4>
@@ -4918,7 +4917,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                 </div>
               </div>
             </div>
-            
+
             <div className="flex justify-end space-x-2">
               <Button
                 variant="outline"
@@ -4953,7 +4952,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                 ボトルキープの情報を入力してください
               </DialogDescription>
             </DialogHeader>
-            
+
             <div className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="client-name">顧客名 *</Label>
@@ -4962,10 +4961,10 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                   type="text"
                   placeholder="顧客名を入力"
                   value={bottleKeepData.clientName}
-                  onChange={(e) => setBottleKeepData({...bottleKeepData, clientName: e.target.value})}
+                  onChange={(e) => setBottleKeepData({ ...bottleKeepData, clientName: e.target.value })}
                 />
               </div>
-              
+
               <div className="space-y-2">
                 <Label htmlFor="client-email">顧客メールアドレス</Label>
                 <Input
@@ -4973,10 +4972,10 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                   type="email"
                   placeholder="メールアドレスを入力"
                   value={bottleKeepData.clientEmail}
-                  onChange={(e) => setBottleKeepData({...bottleKeepData, clientEmail: e.target.value})}
+                  onChange={(e) => setBottleKeepData({ ...bottleKeepData, clientEmail: e.target.value })}
                 />
               </div>
-              
+
               <div className="space-y-2">
                 <Label htmlFor="bottle-name">ボトル名 *</Label>
                 <Input
@@ -4984,10 +4983,10 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                   type="text"
                   placeholder="ボトル名を入力"
                   value={bottleKeepData.bottleName}
-                  onChange={(e) => setBottleKeepData({...bottleKeepData, bottleName: e.target.value})}
+                  onChange={(e) => setBottleKeepData({ ...bottleKeepData, bottleName: e.target.value })}
                 />
               </div>
-              
+
               <div className="space-y-2">
                 <Label htmlFor="bottle-amount">残量 (ml) *</Label>
                 <Input
@@ -4996,10 +4995,10 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                   min="0"
                   placeholder="残量を入力"
                   value={bottleKeepData.amount}
-                  onChange={(e) => setBottleKeepData({...bottleKeepData, amount: e.target.value})}
+                  onChange={(e) => setBottleKeepData({ ...bottleKeepData, amount: e.target.value })}
                 />
               </div>
-              
+
               <div className="space-y-2">
                 <Label htmlFor="bottle-other">備考</Label>
                 <Input
@@ -5007,17 +5006,17 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                   type="text"
                   placeholder="備考を入力"
                   value={bottleKeepData.other}
-                  onChange={(e) => setBottleKeepData({...bottleKeepData, other: e.target.value})}
+                  onChange={(e) => setBottleKeepData({ ...bottleKeepData, other: e.target.value })}
                 />
               </div>
-              
+
               <div className="bg-blue-50 rounded-lg p-3 text-sm">
                 <p className="text-blue-700">
                   ボトルキープ料金: {formatCurrency(addCharges['bottle_keep'] || 0)}
                 </p>
               </div>
             </div>
-            
+
             <div className="flex justify-end space-x-3">
               <Button
                 variant="outline"
@@ -5058,7 +5057,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                 利用する部屋数を入力してください
               </DialogDescription>
             </DialogHeader>
-            
+
             <div className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="vip-room-count">部屋数</Label>
@@ -5076,9 +5075,9 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                     ? formatCurrency((addCharges['vip_room'] || 0) * parseInt(vipRoomCount))
                     : formatCurrency(0)}
                 </p>
-                </div>
+              </div>
             </div>
-            
+
             <div className="flex justify-end space-x-3">
               <Button
                 variant="outline"
@@ -5113,7 +5112,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                 歌う曲数を入力してください
               </DialogDescription>
             </DialogHeader>
-            
+
             <div className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="karaoke-count">曲数</Label>
@@ -5133,9 +5132,9 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                 </p>
               </div>
             </div>
-            
+
             <div className="flex justify-end space-x-3">
-              <Button 
+              <Button
                 variant="outline"
                 onClick={() => {
                   setShowKaraokeDialog(false);

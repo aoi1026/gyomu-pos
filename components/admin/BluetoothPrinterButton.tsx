@@ -92,7 +92,7 @@ export default function BluetoothPrinterButton() {
   return (
     <>
       <Button
-        variant="outline"
+        variant="ghost"
         size="sm"
         className="text-xs sm:text-sm"
         onClick={() => setOpen(true)}

@@ -12,6 +12,8 @@ import { getCurrentUser, hasRole } from '@/lib/auth';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
+import { Menu } from 'lucide-react';
 import NominationBackRatesPanel from '@/components/admin/NominationBackRatesPanel';
 
 export default function SalarySettingsPage() {
@@ -65,6 +67,7 @@ export default function SalarySettingsPage() {
   
   // アクティブなメイン項目
   const [activeMainItem, setActiveMainItem] = useState<string>('hourly-wage');
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   useEffect(() => {
     const tab = searchParams?.get('tab');
@@ -594,366 +597,525 @@ export default function SalarySettingsPage() {
     }
   };
 
+  // サイドバーメニューのコンテンツ（再利用可能）
+  const SidebarMenuContent = ({ onItemClick }: { onItemClick?: () => void }) => (
+    <div className="space-y-2">
+      <Button
+        variant={activeMainItem === 'hourly-wage' ? 'default' : 'ghost'}
+        className="w-full justify-start text-sm sm:text-base"
+        onClick={() => {
+          setActiveMainItem('hourly-wage');
+          onItemClick?.();
+        }}
+      >
+        <DollarSign className="w-4 h-4 sm:w-5 sm:h-5 mr-2" />
+        <span className="truncate">キャスト時給設定</span>
+      </Button>
+      <Button
+        variant={activeMainItem === 'attenday' ? 'default' : 'ghost'}
+        className="w-full justify-start text-sm sm:text-base"
+        onClick={() => {
+          setActiveMainItem('attenday');
+          loadAttendayData();
+          onItemClick?.();
+        }}
+      >
+        <Package className="w-4 h-4 sm:w-5 sm:h-5 mr-2" />
+        <span className="truncate">出勤日数に関係なく</span>
+      </Button>
+      <Button
+        variant={activeMainItem === 'back-rate' ? 'default' : 'ghost'}
+        className="w-full justify-start text-sm sm:text-base"
+        onClick={() => {
+          setActiveMainItem('back-rate');
+          loadBackRateData();
+          onItemClick?.();
+        }}
+      >
+        <Percent className="w-4 h-4 sm:w-5 sm:h-5 mr-2" />
+        <span className="truncate">キャストバック率関係</span>
+      </Button>
+      <Button
+        variant={activeMainItem === 'full-reflect' ? 'default' : 'ghost'}
+        className="w-full justify-start text-sm sm:text-base"
+        onClick={() => {
+          setActiveMainItem('full-reflect');
+          loadFullReflectData();
+          onItemClick?.();
+        }}
+      >
+        <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5 mr-2" />
+        <span className="truncate">100%給与反映</span>
+      </Button>
+      <Button
+        variant={activeMainItem === 'nomination-back-rates' ? 'default' : 'ghost'}
+        className="w-full justify-start text-sm sm:text-base"
+        onClick={() => {
+          setActiveMainItem('nomination-back-rates');
+          onItemClick?.();
+        }}
+      >
+        <Users className="w-4 h-4 sm:w-5 sm:h-5 mr-2" />
+        <span className="truncate">指名バック率</span>
+      </Button>
+    </div>
+  );
+
   if (isLoading) {
     return (
-      <div className="container mx-auto p-6">
+      <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6">
         <div className="flex items-center justify-center h-64">
-          <div className="text-gray-500">読み込み中...</div>
+          <div className="flex flex-col items-center space-y-4">
+            <div className="w-8 h-8 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin" />
+            <div className="text-sm sm:text-base text-gray-500">読み込み中...</div>
+          </div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="container mx-auto p-6">
-      <div className="mb-6">
-        <Button
-          variant="ghost"
-          onClick={() => router.push('/dashboard')}
-          className="mb-4"
-        >
-          <ArrowLeft className="w-4 h-4 mr-2" />
-          ダッシュボードに戻る
-        </Button>
-        <h1 className="text-3xl font-bold text-gray-900 flex items-center">
-          <DollarSign className="w-8 h-8 mr-3 text-emerald-600" />
-          給与項目管理
-        </h1>
-      </div>
-
-      {message && (
-        <div className={`mb-4 p-4 rounded-md ${
-          message.type === 'success' 
-            ? 'bg-green-50 text-green-800 border border-green-200' 
-            : 'bg-red-50 text-red-800 border border-red-200'
-        }`}>
-          {message.text}
-        </div>
-      )}
-
-      <div className="flex gap-6">
-        {/* 左サイドバー */}
-        <div className="w-64 flex-shrink-0">
-          <Card>
-            <CardHeader>
-              <CardTitle>設定分類</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-2">
-                <Button
-                  variant={activeMainItem === 'hourly-wage' ? 'default' : 'ghost'}
-                  className="w-full justify-start"
-                  onClick={() => setActiveMainItem('hourly-wage')}
-                >
-                  <DollarSign className="w-4 h-4 mr-2" />
-                  キャスト時給設定
-                </Button>
-                <Button
-                  variant={activeMainItem === 'attenday' ? 'default' : 'ghost'}
-                  className="w-full justify-start"
-                  onClick={() => {
-                    setActiveMainItem('attenday');
-                    loadAttendayData();
-                  }}
-                >
-                  <Package className="w-4 h-4 mr-2" />
-                  出勤日数に関係なく
-                </Button>
-                <Button
-                  variant={activeMainItem === 'back-rate' ? 'default' : 'ghost'}
-                  className="w-full justify-start"
-                  onClick={() => {
-                    setActiveMainItem('back-rate');
-                    loadBackRateData();
-                  }}
-                >
-                  <Percent className="w-4 h-4 mr-2" />
-                  キャストバック率関係
-                </Button>
-                
-                <Button
-                  variant={activeMainItem === 'full-reflect' ? 'default' : 'ghost'}
-                  className="w-full justify-start"
-                  onClick={() => {
-                    setActiveMainItem('full-reflect');
-                    loadFullReflectData();
-                  }}
-                >
-                  <CheckCircle className="w-4 h-4 mr-2" />
-                  100%給与反映
-                </Button>
-                <Button
-                  variant={activeMainItem === 'nomination-back-rates' ? 'default' : 'ghost'}
-                  className="w-full justify-start"
-                  onClick={() => {
-                    setActiveMainItem('nomination-back-rates');
-                  }}
-                >
-                  <Users className="w-4 h-4 mr-2" />
-                  指名バック率
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* 右側コンテンツ */}
-        <div className="flex-1">
-          <div className="space-y-6">
-            {/* キャスト時給設定 */}
-            {activeMainItem === 'hourly-wage' && (
-              <Card>
-                <CardHeader>
-                  <CardTitle>キャスト時給設定</CardTitle>
-                  <CardDescription>
-                    基準日数に基づいてレギュラーとアルバイトの時給を設定します
-                  </CardDescription>
-                </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="space-y-2">
-              <Label htmlFor="standard-date">基準日選択</Label>
-              <Select
-                value={standardDate.toString()}
-                onValueChange={(value) => setStandardDate(parseInt(value))}
-              >
-                <SelectTrigger id="standard-date" className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {[1, 2, 3, 4, 5, 6, 7].map((day) => (
-                    <SelectItem key={day} value={day.toString()}>
-                      {day}日
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <p className="text-sm text-gray-500">
-                前週の出勤日数が{standardDate}日以上（{standardDate}日含む）の場合、レギュラー時給が適用されます
-              </p>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="regular-wage">
-                {standardDate}日以上（{standardDate}日含む）: 時給入力欄 (レギュラー)
-              </Label>
-              <div className="flex items-center space-x-2">
-                <Input
-                  id="regular-wage"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={regularWage}
-                  onChange={(e) => setRegularWage(parseFloat(e.target.value) || 0)}
-                  className="flex-1"
-                />
-                <span className="text-gray-600">円</span>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="arubaito-wage">
-                {standardDate}日未満: 時給入力欄 (アルバイト)
-              </Label>
-              <div className="flex items-center space-x-2">
-                <Input
-                  id="arubaito-wage"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={arubaitoWage}
-                  onChange={(e) => setArubaitoWage(parseFloat(e.target.value) || 0)}
-                  className="flex-1"
-                />
-                <span className="text-gray-600">円</span>
-              </div>
-            </div>
-
-            <div className="flex space-x-4">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
+      <div className="container mx-auto px-3 sm:px-4 md:px-6 lg:px-8 py-4 sm:py-6">
+        {/* ヘッダー */}
+        <div className="mb-4 sm:mb-6">
+          <div className="flex items-center justify-between mb-3 sm:mb-4">
+            <div className="flex items-center space-x-2 sm:space-x-3">
               <Button
-                onClick={handleSave}
-                disabled={isSaving}
-                className="bg-emerald-600 hover:bg-emerald-700"
+                variant="ghost"
+                onClick={() => router.push('/dashboard')}
+                className="h-9 sm:h-10 px-2 sm:px-3"
+                size="sm"
               >
-                <Save className="w-4 h-4 mr-2" />
-                {isSaving ? '保存中...' : '保存'}
+                <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5 mr-1 sm:mr-2" />
+                <span className="hidden sm:inline">ダッシュボードに戻る</span>
+                <span className="sm:hidden text-xs">戻る</span>
               </Button>
-              {/* <Button
-                onClick={handleUpdateHourlyPrices}
-                disabled={isUpdating}
-                variant="outline"
-                className="border-blue-300 text-blue-700 hover:bg-blue-50"
-              >
-                <RefreshCw className={`w-4 h-4 mr-2 ${isUpdating ? 'animate-spin' : ''}`} />
-                {isUpdating ? '更新中...' : '前週の出勤日数に基づいて時給を更新'}
-              </Button> */}
+              {/* モバイルメニューボタン */}
+              <Sheet open={isMobileMenuOpen} onOpenChange={setIsMobileMenuOpen}>
+                <SheetTrigger asChild>
+                  <Button variant="outline" className="lg:hidden h-9 sm:h-10 px-2 sm:px-3" size="sm">
+                    <Menu className="w-4 h-4 sm:w-5 sm:h-5 mr-1 sm:mr-2" />
+                    <span className="text-xs sm:text-sm">メニュー</span>
+                  </Button>
+                </SheetTrigger>
+                <SheetContent side="left" className="w-[280px] sm:w-[320px]">
+                  <SheetHeader>
+                    <SheetTitle className="text-base sm:text-lg">設定分類</SheetTitle>
+                  </SheetHeader>
+                  <div className="mt-6">
+                    <SidebarMenuContent onItemClick={() => setIsMobileMenuOpen(false)} />
+                  </div>
+                </SheetContent>
+              </Sheet>
             </div>
-          </CardContent>
-        </Card>
-            )}
+          </div>
+          <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900 flex items-center">
+            <DollarSign className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 mr-2 sm:mr-3 text-emerald-600" />
+            <span>給与項目管理</span>
+          </h1>
+        </div>
 
-            {/* 出勤日数に関係なく */}
-            {activeMainItem === 'attenday' && (
-              <Card>
-                <CardHeader>
-                  <CardTitle>出勤日数に関係なく</CardTitle>
-                  <CardDescription>
-                    カテゴリー別の日別金額を設定します
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    <div className="flex justify-between items-center">
-                      <h3 className="text-lg font-semibold">出勤日数に関係なく</h3>
-                      <div className="flex space-x-2">
-                        <Button
-                          onClick={handleOpenAddModal}
-                          size="sm"
-                          className="bg-blue-600 hover:bg-blue-700"
-                        >
-                          <Plus className="w-4 h-4 mr-2" />
-                          データ追加
-                        </Button>
-                        {/* <Button
-                          onClick={handleUpdateCategoryFromAttendance}
-                          disabled={isUpdatingCategory}
-                          size="sm"
-                          variant="outline"
-                          className="border-green-300 text-green-700 hover:bg-green-50"
-                        >
-                          <RefreshCw className={`w-4 h-4 mr-2 ${isUpdatingCategory ? 'animate-spin' : ''}`} />
-                          {isUpdatingCategory ? '更新中...' : '前週の出勤日数に基づいて給与カテゴリを更新'}
-                        </Button> */}
+        {/* メッセージ表示 */}
+        {message && (
+          <div className={`mb-4 sm:mb-6 p-3 sm:p-4 rounded-lg shadow-sm ${
+            message.type === 'success' 
+              ? 'bg-green-50 text-green-800 border border-green-200' 
+              : 'bg-red-50 text-red-800 border border-red-200'
+          }`}>
+            <div className="flex items-center space-x-2">
+              {message.type === 'success' ? (
+                <CheckCircle className="w-5 h-5 flex-shrink-0" />
+              ) : (
+                <X className="w-5 h-5 flex-shrink-0" />
+              )}
+              <span className="text-sm sm:text-base">{message.text}</span>
+            </div>
+          </div>
+        )}
+
+        <div className="flex flex-col lg:flex-row gap-4 sm:gap-6">
+          {/* 左サイドバー（PCのみ表示） */}
+          <div className="hidden lg:block w-64 flex-shrink-0">
+            <Card className="sticky top-6">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base sm:text-lg">設定分類</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <SidebarMenuContent />
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* 右側コンテンツ */}
+          <div className="flex-1 min-w-0">
+            <div className="space-y-4 sm:space-y-6">
+              {/* キャスト時給設定 */}
+              {activeMainItem === 'hourly-wage' && (
+                <Card className="shadow-sm">
+                  <CardHeader className="pb-3 sm:pb-4">
+                    <CardTitle className="text-lg sm:text-xl md:text-2xl">キャスト時給設定</CardTitle>
+                    <CardDescription className="text-sm sm:text-base">
+                      基準日数に基づいてレギュラーとアルバイトの時給を設定します
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4 sm:space-y-6">
+                    <div className="space-y-2">
+                      <Label htmlFor="standard-date" className="text-sm sm:text-base font-medium">基準日選択</Label>
+                      <Select
+                        value={standardDate.toString()}
+                        onValueChange={(value) => setStandardDate(parseInt(value))}
+                      >
+                        <SelectTrigger id="standard-date" className="w-full h-10 sm:h-11">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {[1, 2, 3, 4, 5, 6, 7].map((day) => (
+                            <SelectItem key={day} value={day.toString()}>
+                              {day}日
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs sm:text-sm text-gray-500 mt-1">
+                        前週の出勤日数が{standardDate}日以上（{standardDate}日含む）の場合、レギュラー時給が適用されます
+                      </p>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="regular-wage" className="text-sm sm:text-base font-medium">
+                        <span className="hidden sm:inline">{standardDate}日以上（{standardDate}日含む）: </span>時給入力欄 (レギュラー)
+                      </Label>
+                      <div className="flex items-center space-x-2">
+                        <Input
+                          id="regular-wage"
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={regularWage}
+                          onChange={(e) => setRegularWage(parseFloat(e.target.value) || 0)}
+                          className="flex-1 h-10 sm:h-11 text-sm sm:text-base"
+                        />
+                        <span className="text-sm sm:text-base text-gray-600 font-medium">円</span>
                       </div>
                     </div>
 
-                    {isLoadingAttenday ? (
-                      <div className="text-center py-8 text-gray-500">読み込み中...</div>
-                    ) : attendayData.length === 0 ? (
-                      <div className="text-center py-8 text-gray-500">データがありません</div>
-                    ) : (
-                      <div className="overflow-x-auto">
-                        <Table>
-                          <TableHeader>
-                            <TableRow>
-                              <TableHead className="min-w-[150px]">カテゴリー名</TableHead>
-                              <TableHead className="text-center">1日</TableHead>
-                              <TableHead className="text-center">2日</TableHead>
-                              <TableHead className="text-center">3日</TableHead>
-                              <TableHead className="text-center">4日</TableHead>
-                              <TableHead className="text-center">5日</TableHead>
-                              <TableHead className="text-center">6日</TableHead>
-                              <TableHead className="text-center">7日</TableHead>
-                              <TableHead className="text-center min-w-[100px]">操作</TableHead>
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {attendayData.map((item) => (
-                              <TableRow key={item.category_id}>
-                                <TableCell className="font-semibold">{item.category_name}</TableCell>
-                                {[1, 2, 3, 4, 5, 6, 7].map((day) => (
-                                  <TableCell key={day} className="text-center">
-                                    {item[day] ? `¥${item[day].toLocaleString()}` : '-'}
-                                  </TableCell>
-                                ))}
-                                <TableCell className="text-center">
-                                  <div className="flex items-center justify-center space-x-2">
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      className="h-8 w-8 p-0 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
-                                      onClick={() => handleOpenEditModal({ category_id: item.category_id, category_name: item.category_name })}
-                                    >
-                                      <Pencil className="w-4 h-4" />
-                                    </Button>
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
-                                      onClick={() => {
-                                        setAttendayCategoryToDelete({ category_id: item.category_id, category_name: item.category_name });
-                                        setShowDeleteAttendayModal(true);
-                                      }}
-                                    >
-                                      <Trash2 className="w-4 h-4" />
-                                    </Button>
-                                  </div>
-                                </TableCell>
-                              </TableRow>
-                            ))}
-                          </TableBody>
-                        </Table>
+                    <div className="space-y-2">
+                      <Label htmlFor="arubaito-wage" className="text-sm sm:text-base font-medium">
+                        <span className="hidden sm:inline">{standardDate}日未満: </span>時給入力欄 (アルバイト)
+                      </Label>
+                      <div className="flex items-center space-x-2">
+                        <Input
+                          id="arubaito-wage"
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={arubaitoWage}
+                          onChange={(e) => setArubaitoWage(parseFloat(e.target.value) || 0)}
+                          className="flex-1 h-10 sm:h-11 text-sm sm:text-base"
+                        />
+                        <span className="text-sm sm:text-base text-gray-600 font-medium">円</span>
                       </div>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-            )}
+                    </div>
 
-            {/* キャストバック率関係 */}
-            {activeMainItem === 'back-rate' && (
-              <Card>
-                <CardHeader>
-                  <CardTitle>キャストバック率関係</CardTitle>
-                  <CardDescription>
-                    キャストごとのカテゴリー別バック率を設定します
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    <div className="flex justify-between items-center">
-                      <h3 className="text-lg font-semibold">キャストバック率関係</h3>
+                    <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 pt-2">
                       <Button
-                        onClick={() => setShowBackRateAddModal(true)}
+                        onClick={handleSave}
+                        disabled={isSaving}
+                        className="bg-emerald-600 hover:bg-emerald-700 h-10 sm:h-11 w-full sm:w-auto min-w-[120px]"
+                      >
+                        <Save className="w-4 h-4 mr-2" />
+                        {isSaving ? '保存中...' : '保存'}
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* 出勤日数に関係なく */}
+              {activeMainItem === 'attenday' && (
+                <Card className="shadow-sm">
+                  <CardHeader className="pb-3 sm:pb-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
+                      <div>
+                        <CardTitle className="text-lg sm:text-xl md:text-2xl">出勤日数に関係なく</CardTitle>
+                        <CardDescription className="text-sm sm:text-base mt-1">
+                          カテゴリー別の日別金額を設定します
+                        </CardDescription>
+                      </div>
+                      <Button
+                        onClick={handleOpenAddModal}
                         size="sm"
-                        className="bg-blue-600 hover:bg-blue-700"
+                        className="bg-blue-600 hover:bg-blue-700 h-9 sm:h-10 w-full sm:w-auto"
                       >
                         <Plus className="w-4 h-4 mr-2" />
                         データ追加
                       </Button>
                     </div>
-
-                    {backRateCategories.length === 0 ? (
-                      <div className="text-center py-8 text-gray-500">データがありません</div>
+                  </CardHeader>
+                  <CardContent>
+                    {isLoadingAttenday ? (
+                      <div className="flex flex-col items-center justify-center py-12 sm:py-16">
+                        <div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mb-4" />
+                        <div className="text-sm sm:text-base text-gray-500">読み込み中...</div>
+                      </div>
+                    ) : attendayData.length === 0 ? (
+                      <div className="text-center py-12 sm:py-16 text-sm sm:text-base text-gray-500">
+                        データがありません
+                      </div>
                     ) : (
-                      <div className="overflow-x-auto">
-                        <Table>
-                          <TableHeader>
-                            <TableRow>
-                              <TableHead className="min-w-[150px]">キャスト名</TableHead>
-                              {backRateCategories.map((cat) => (
-                                <TableHead key={cat.id} className="text-center min-w-[120px]">
-                                  <div className="flex items-center justify-center space-x-2">
-                                    <span>{cat.name}</span>
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      className="h-6 w-6 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setCategoryToDelete(cat);
-                                        setShowDeleteCategoryModal(true);
-                                      }}
-                                    >
-                                      <X className="w-4 h-4" />
-                                    </Button>
-                                  </div>
-                                </TableHead>
-                              ))}
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {allUsers
-                              .filter(user => user.role !== 'admin')
-                              .map((user) => (
-                              <TableRow key={user.id}>
-                                <TableCell className="font-semibold">{user.name}</TableCell>
+                      <>
+                        {/* デスクトップ表示（テーブル） */}
+                        <div className="hidden md:block overflow-x-auto -mx-4 sm:mx-0">
+                          <div className="inline-block min-w-full align-middle">
+                            <Table>
+                              <TableHeader>
+                                <TableRow>
+                                  <TableHead className="min-w-[150px]">カテゴリー名</TableHead>
+                                  <TableHead className="text-center">1日</TableHead>
+                                  <TableHead className="text-center">2日</TableHead>
+                                  <TableHead className="text-center">3日</TableHead>
+                                  <TableHead className="text-center">4日</TableHead>
+                                  <TableHead className="text-center">5日</TableHead>
+                                  <TableHead className="text-center">6日</TableHead>
+                                  <TableHead className="text-center">7日</TableHead>
+                                  <TableHead className="text-center min-w-[100px]">操作</TableHead>
+                                </TableRow>
+                              </TableHeader>
+                              <TableBody>
+                                {attendayData.map((item) => (
+                                  <TableRow key={item.category_id}>
+                                    <TableCell className="font-semibold">{item.category_name}</TableCell>
+                                    {[1, 2, 3, 4, 5, 6, 7].map((day) => (
+                                      <TableCell key={day} className="text-center">
+                                        {item[day] ? `¥${item[day].toLocaleString()}` : '-'}
+                                      </TableCell>
+                                    ))}
+                                    <TableCell className="text-center">
+                                      <div className="flex items-center justify-center space-x-2">
+                                        <Button
+                                          variant="ghost"
+                                          size="sm"
+                                          className="h-8 w-8 p-0 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                                          onClick={() => handleOpenEditModal({ category_id: item.category_id, category_name: item.category_name })}
+                                        >
+                                          <Pencil className="w-4 h-4" />
+                                        </Button>
+                                        <Button
+                                          variant="ghost"
+                                          size="sm"
+                                          className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
+                                          onClick={() => {
+                                            setAttendayCategoryToDelete({ category_id: item.category_id, category_name: item.category_name });
+                                            setShowDeleteAttendayModal(true);
+                                          }}
+                                        >
+                                          <Trash2 className="w-4 h-4" />
+                                        </Button>
+                                      </div>
+                                    </TableCell>
+                                  </TableRow>
+                                ))}
+                              </TableBody>
+                            </Table>
+                          </div>
+                        </div>
+                        {/* モバイル表示（カード） */}
+                        <div className="md:hidden space-y-4">
+                          {attendayData.map((item) => (
+                            <Card key={item.category_id} className="border border-gray-200">
+                              <CardHeader className="pb-3">
+                                <CardTitle className="text-base font-semibold">{item.category_name}</CardTitle>
+                              </CardHeader>
+                              <CardContent className="space-y-3">
+                                <div className="grid grid-cols-2 gap-3">
+                                  {[1, 2, 3, 4, 5, 6, 7].map((day) => (
+                                    <div key={day} className="flex justify-between items-center p-2 bg-gray-50 rounded">
+                                      <span className="text-sm font-medium text-gray-600">{day}日</span>
+                                      <span className="text-sm font-semibold text-gray-900">
+                                        {item[day] ? `¥${item[day].toLocaleString()}` : '-'}
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
+                                <div className="flex items-center justify-end space-x-2 pt-2 border-t">
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-9 w-9 p-0 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                                    onClick={() => handleOpenEditModal({ category_id: item.category_id, category_name: item.category_name })}
+                                  >
+                                    <Pencil className="w-4 h-4" />
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-9 w-9 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
+                                    onClick={() => {
+                                      setAttendayCategoryToDelete({ category_id: item.category_id, category_name: item.category_name });
+                                      setShowDeleteAttendayModal(true);
+                                    }}
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </Button>
+                                </div>
+                              </CardContent>
+                            </Card>
+                          ))}
+                        </div>
+                      </>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* キャストバック率関係 */}
+              {activeMainItem === 'back-rate' && (
+                <Card className="shadow-sm">
+                  <CardHeader className="pb-3 sm:pb-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
+                      <div>
+                        <CardTitle className="text-lg sm:text-xl md:text-2xl">キャストバック率関係</CardTitle>
+                        <CardDescription className="text-sm sm:text-base mt-1">
+                          キャストごとのカテゴリー別バック率を設定します
+                        </CardDescription>
+                      </div>
+                      <Button
+                        onClick={() => setShowBackRateAddModal(true)}
+                        size="sm"
+                        className="bg-blue-600 hover:bg-blue-700 h-9 sm:h-10 w-full sm:w-auto"
+                      >
+                        <Plus className="w-4 h-4 mr-2" />
+                        データ追加
+                      </Button>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    {backRateCategories.length === 0 ? (
+                      <div className="text-center py-12 sm:py-16 text-sm sm:text-base text-gray-500">
+                        データがありません
+                      </div>
+                    ) : (
+                      <>
+                        {/* デスクトップ表示（テーブル） */}
+                        <div className="hidden lg:block overflow-x-auto -mx-4 sm:mx-0">
+                          <div className="inline-block min-w-full align-middle">
+                            <Table>
+                              <TableHeader>
+                                <TableRow>
+                                  <TableHead className="min-w-[150px]">キャスト名</TableHead>
+                                  {backRateCategories.map((cat) => (
+                                    <TableHead key={cat.id} className="text-center min-w-[120px]">
+                                      <div className="flex items-center justify-center space-x-2">
+                                        <span className="text-sm">{cat.name}</span>
+                                        <Button
+                                          variant="ghost"
+                                          size="sm"
+                                          className="h-6 w-6 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setCategoryToDelete(cat);
+                                            setShowDeleteCategoryModal(true);
+                                          }}
+                                        >
+                                          <X className="w-3 h-3" />
+                                        </Button>
+                                      </div>
+                                    </TableHead>
+                                  ))}
+                                </TableRow>
+                              </TableHeader>
+                              <TableBody>
+                                {allUsers
+                                  .filter(user => user.role !== 'admin')
+                                  .map((user) => (
+                                  <TableRow key={user.id}>
+                                    <TableCell className="font-semibold">{user.name}</TableCell>
+                                    {backRateCategories.map((cat) => {
+                                      const value = backRateData[user.id]?.[cat.id] || 0;
+                                      const isEditing = editingCell?.castId === user.id && editingCell?.categoryId === cat.id;
+                                      return (
+                                        <TableCell key={cat.id} className="text-center">
+                                          {isEditing ? (
+                                            <div className="flex items-center justify-center space-x-2">
+                                              <Input
+                                                type="number"
+                                                min="0"
+                                                max="0.999"
+                                                step="0.001"
+                                                value={editingValue}
+                                                onChange={(e) => setEditingValue(e.target.value)}
+                                                className="w-20 h-8 text-sm"
+                                                autoFocus
+                                              />
+                                              <Button
+                                                size="sm"
+                                                onClick={handleCellSave}
+                                                disabled={isSavingBackRate}
+                                                className="h-8 text-xs"
+                                              >
+                                                保存
+                                              </Button>
+                                              <Button
+                                                size="sm"
+                                                variant="ghost"
+                                                onClick={() => setEditingCell(null)}
+                                                className="h-8 text-xs"
+                                              >
+                                                取消
+                                              </Button>
+                                            </div>
+                                          ) : (
+                                            <div
+                                              className="cursor-pointer hover:bg-gray-100 p-2 rounded text-sm"
+                                              onClick={() => handleCellEdit(user.id, cat.id, value)}
+                                            >
+                                              {value > 0 ? (value * 100).toFixed(1) + '%' : '-'}
+                                            </div>
+                                          )}
+                                        </TableCell>
+                                      );
+                                    })}
+                                  </TableRow>
+                                ))}
+                              </TableBody>
+                            </Table>
+                          </div>
+                        </div>
+                        {/* タブレット・モバイル表示（カード） */}
+                        <div className="lg:hidden space-y-4">
+                          {allUsers
+                            .filter(user => user.role !== 'admin')
+                            .map((user) => (
+                            <Card key={user.id} className="border border-gray-200">
+                              <CardHeader className="pb-3">
+                                <CardTitle className="text-base font-semibold">{user.name}</CardTitle>
+                              </CardHeader>
+                              <CardContent className="space-y-3">
                                 {backRateCategories.map((cat) => {
                                   const value = backRateData[user.id]?.[cat.id] || 0;
                                   const isEditing = editingCell?.castId === user.id && editingCell?.categoryId === cat.id;
                                   return (
-                                    <TableCell key={cat.id} className="text-center">
+                                    <div key={cat.id} className="flex items-center justify-between p-3 bg-gray-50 rounded border">
+                                      <div className="flex items-center space-x-2 flex-1 min-w-0">
+                                        <span className="text-sm font-medium text-gray-700 truncate">{cat.name}</span>
+                                        {backRateCategories.length > 0 && (
+                                          <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            className="h-6 w-6 p-0 text-red-600 hover:text-red-700 hover:bg-red-50 flex-shrink-0"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              setCategoryToDelete(cat);
+                                              setShowDeleteCategoryModal(true);
+                                            }}
+                                          >
+                                            <X className="w-3 h-3" />
+                                          </Button>
+                                        )}
+                                      </div>
                                       {isEditing ? (
-                                        <div className="flex items-center space-x-2">
+                                        <div className="flex items-center space-x-2 flex-shrink-0">
                                           <Input
                                             type="number"
                                             min="0"
@@ -961,13 +1123,14 @@ export default function SalarySettingsPage() {
                                             step="0.001"
                                             value={editingValue}
                                             onChange={(e) => setEditingValue(e.target.value)}
-                                            className="w-20"
+                                            className="w-20 h-9 text-sm"
                                             autoFocus
                                           />
                                           <Button
                                             size="sm"
                                             onClick={handleCellSave}
                                             disabled={isSavingBackRate}
+                                            className="h-9 text-xs px-2"
                                           >
                                             保存
                                           </Button>
@@ -975,123 +1138,155 @@ export default function SalarySettingsPage() {
                                             size="sm"
                                             variant="ghost"
                                             onClick={() => setEditingCell(null)}
+                                            className="h-9 text-xs px-2"
                                           >
-                                            キャンセル
+                                            取消
                                           </Button>
                                         </div>
                                       ) : (
                                         <div
-                                          className="cursor-pointer hover:bg-gray-100 p-2 rounded"
+                                          className="cursor-pointer hover:bg-gray-100 px-3 py-1.5 rounded text-sm font-medium text-blue-600 flex-shrink-0"
                                           onClick={() => handleCellEdit(user.id, cat.id, value)}
                                         >
-                                          {value > 0 ? (value * 100).toFixed(1) + '%' : '-'}
+                                          {value > 0 ? (value * 100).toFixed(1) + '%' : '設定'}
                                         </div>
                                       )}
-                                    </TableCell>
+                                    </div>
                                   );
                                 })}
-                              </TableRow>
-                            ))}
-                          </TableBody>
-                        </Table>
-                      </div>
+                              </CardContent>
+                            </Card>
+                          ))}
+                        </div>
+                      </>
                     )}
-                  </div>
-                </CardContent>
-              </Card>
-            )}
+                  </CardContent>
+                </Card>
+              )}
 
             {/* 指名バック率（admin/cast-back-rates の統合） */}
             {activeMainItem === 'nomination-back-rates' && (
               <NominationBackRatesPanel />
             )}
 
-            {/* 100%給与反映 */}
-            {activeMainItem === 'full-reflect' && (
-              <Card>
-                <CardHeader>
-                  <CardTitle>100%給与反映</CardTitle>
-                  <CardDescription>
-                    100%給与反映のカテゴリーを設定します
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    <div className="flex justify-between items-center">
-                      <h3 className="text-lg font-semibold">100%給与反映</h3>
+              {/* 100%給与反映 */}
+              {activeMainItem === 'full-reflect' && (
+                <Card className="shadow-sm">
+                  <CardHeader className="pb-3 sm:pb-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
+                      <div>
+                        <CardTitle className="text-lg sm:text-xl md:text-2xl">100%給与反映</CardTitle>
+                        <CardDescription className="text-sm sm:text-base mt-1">
+                          100%給与反映のカテゴリーを設定します
+                        </CardDescription>
+                      </div>
                       <Button
                         onClick={() => setShowFullReflectAddModal(true)}
                         size="sm"
-                        className="bg-blue-600 hover:bg-blue-700"
+                        className="bg-blue-600 hover:bg-blue-700 h-9 sm:h-10 w-full sm:w-auto"
                       >
                         <Plus className="w-4 h-4 mr-2" />
                         データ追加
                       </Button>
                     </div>
-
+                  </CardHeader>
+                  <CardContent>
                     {fullReflectCategories.length === 0 ? (
-                      <div className="text-center py-8 text-gray-500">データがありません</div>
-                    ) : (
-                      <div className="overflow-x-auto">
-                        <Table>
-                          <TableHeader>
-                            <TableRow>
-                              <TableHead className="min-w-[80px]">番号</TableHead>
-                              <TableHead className="min-w-[200px]">カテゴリー名</TableHead>
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {fullReflectCategories.map((cat, index) => (
-                              <TableRow key={cat.id}>
-                                <TableCell className="font-semibold">{index + 1}</TableCell>
-                                <TableCell>
-                                  <div className="flex items-center justify-between">
-                                    <span>{cat.name}</span>
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
-                                      onClick={() => {
-                                        setFullReflectCategoryToDelete(cat);
-                                        setShowDeleteFullReflectModal(true);
-                                      }}
-                                    >
-                                      <Trash2 className="w-4 h-4" />
-                                    </Button>
-                                  </div>
-                                </TableCell>
-                              </TableRow>
-                            ))}
-                          </TableBody>
-                        </Table>
+                      <div className="text-center py-12 sm:py-16 text-sm sm:text-base text-gray-500">
+                        データがありません
                       </div>
+                    ) : (
+                      <>
+                        {/* デスクトップ表示（テーブル） */}
+                        <div className="hidden md:block overflow-x-auto">
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead className="min-w-[80px]">番号</TableHead>
+                                <TableHead className="min-w-[200px]">カテゴリー名</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {fullReflectCategories.map((cat, index) => (
+                                <TableRow key={cat.id}>
+                                  <TableCell className="font-semibold">{index + 1}</TableCell>
+                                  <TableCell>
+                                    <div className="flex items-center justify-between">
+                                      <span className="text-sm sm:text-base">{cat.name}</span>
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
+                                        onClick={() => {
+                                          setFullReflectCategoryToDelete(cat);
+                                          setShowDeleteFullReflectModal(true);
+                                        }}
+                                      >
+                                        <Trash2 className="w-4 h-4" />
+                                      </Button>
+                                    </div>
+                                  </TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </div>
+                        {/* モバイル表示（カード） */}
+                        <div className="md:hidden space-y-3">
+                          {fullReflectCategories.map((cat, index) => (
+                            <Card key={cat.id} className="border border-gray-200">
+                              <CardContent className="p-4">
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center space-x-3">
+                                    <div className="flex items-center justify-center w-8 h-8 rounded-full bg-emerald-100 text-emerald-700 font-semibold text-sm">
+                                      {index + 1}
+                                    </div>
+                                    <span className="text-sm font-medium text-gray-900">{cat.name}</span>
+                                  </div>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-9 w-9 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
+                                    onClick={() => {
+                                      setFullReflectCategoryToDelete(cat);
+                                      setShowDeleteFullReflectModal(true);
+                                    }}
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </Button>
+                                </div>
+                              </CardContent>
+                            </Card>
+                          ))}
+                        </div>
+                      </>
                     )}
-                  </div>
-                </CardContent>
-              </Card>
-            )}
+                  </CardContent>
+                </Card>
+              )}
+            </div>
           </div>
         </div>
       </div>
 
       {/* 出勤日数に関係なく - データ追加モーダル */}
       <Dialog open={showAddModal} onOpenChange={setShowAddModal}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-[95vw] sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>日別金額設定</DialogTitle>
-            <DialogDescription>
+            <DialogTitle className="text-lg sm:text-xl">日別金額設定</DialogTitle>
+            <DialogDescription className="text-sm sm:text-base">
               製品カテゴリーを選択し、1～7日までの日別金額を入力してください
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-6 py-4">
+          <div className="space-y-4 sm:space-y-6 py-4">
             {!editingAttendayCategory && (
               <div className="space-y-2">
-                <Label htmlFor="category-select">製品カテゴリー</Label>
+                <Label htmlFor="category-select" className="text-sm sm:text-base font-medium">製品カテゴリー</Label>
                 <Select
                   value={selectedCategory?.toString() || ''}
                   onValueChange={(value) => setSelectedCategory(parseInt(value))}
                 >
-                  <SelectTrigger id="category-select">
+                  <SelectTrigger id="category-select" className="h-10 sm:h-11">
                     <SelectValue placeholder="カテゴリーを選択" />
                   </SelectTrigger>
                   <SelectContent>
@@ -1107,12 +1302,12 @@ export default function SalarySettingsPage() {
               </div>
             )}
 
-            <div className="space-y-4">
-              <Label>日別金額（1～7日）</Label>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="space-y-3 sm:space-y-4">
+              <Label className="text-sm sm:text-base font-medium">日別金額（1～7日）</Label>
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 sm:gap-4">
                 {[1, 2, 3, 4, 5, 6, 7].map((day) => (
                   <div key={day} className="space-y-2">
-                    <Label htmlFor={`day-${day}`} className="text-sm">
+                    <Label htmlFor={`day-${day}`} className="text-xs sm:text-sm font-medium">
                       {day}日
                     </Label>
                     <div className="flex items-center space-x-2">
@@ -1124,26 +1319,28 @@ export default function SalarySettingsPage() {
                         value={dayAmounts[day] || ''}
                         onChange={(e) => setDayAmounts({ ...dayAmounts, [day]: parseFloat(e.target.value) || 0 })}
                         placeholder="0"
+                        className="h-9 sm:h-10 text-sm"
                       />
-                      <span className="text-sm text-gray-600">円</span>
+                      <span className="text-xs sm:text-sm text-gray-600 font-medium">円</span>
                     </div>
                   </div>
                 ))}
               </div>
             </div>
 
-            <div className="flex justify-end space-x-2 pt-4">
+            <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 sm:gap-3 pt-4 border-t">
               <Button
                 variant="outline"
                 onClick={() => setShowAddModal(false)}
                 disabled={isSavingAttenday}
+                className="h-10 sm:h-11 w-full sm:w-auto"
               >
                 キャンセル
               </Button>
               <Button
                 onClick={handleSaveAttenday}
                 disabled={isSavingAttenday || !selectedCategory}
-                className="bg-blue-600 hover:bg-blue-700"
+                className="bg-blue-600 hover:bg-blue-700 h-10 sm:h-11 w-full sm:w-auto"
               >
                 <Save className="w-4 h-4 mr-2" />
                 {isSavingAttenday ? '保存中...' : '保存'}
@@ -1155,21 +1352,21 @@ export default function SalarySettingsPage() {
 
       {/* キャストバック率関係 - データ追加モーダル */}
       <Dialog open={showBackRateAddModal} onOpenChange={setShowBackRateAddModal}>
-        <DialogContent>
+        <DialogContent className="max-w-[95vw] sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>カテゴリー追加</DialogTitle>
-            <DialogDescription>
+            <DialogTitle className="text-lg sm:text-xl">カテゴリー追加</DialogTitle>
+            <DialogDescription className="text-sm sm:text-base">
               キャストバック率関係に追加するカテゴリーを選択してください
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label htmlFor="back-rate-category-select">カテゴリー</Label>
+              <Label htmlFor="back-rate-category-select" className="text-sm sm:text-base font-medium">カテゴリー</Label>
               <Select
                 value={selectedBackRateCategory?.toString() || ''}
                 onValueChange={(value) => setSelectedBackRateCategory(parseInt(value))}
               >
-                <SelectTrigger id="back-rate-category-select">
+                <SelectTrigger id="back-rate-category-select" className="h-10 sm:h-11">
                   <SelectValue placeholder="カテゴリーを選択" />
                 </SelectTrigger>
                 <SelectContent>
@@ -1184,18 +1381,19 @@ export default function SalarySettingsPage() {
               </Select>
             </div>
 
-            <div className="flex justify-end space-x-2 pt-4">
+            <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 sm:gap-3 pt-4 border-t">
               <Button
                 variant="outline"
                 onClick={() => setShowBackRateAddModal(false)}
                 disabled={isSavingBackRate}
+                className="h-10 sm:h-11 w-full sm:w-auto"
               >
                 キャンセル
               </Button>
               <Button
                 onClick={handleAddBackRateCategory}
                 disabled={isSavingBackRate || !selectedBackRateCategory}
-                className="bg-blue-600 hover:bg-blue-700"
+                className="bg-blue-600 hover:bg-blue-700 h-10 sm:h-11 w-full sm:w-auto"
               >
                 <Save className="w-4 h-4 mr-2" />
                 {isSavingBackRate ? '保存中...' : '保存'}
@@ -1207,21 +1405,21 @@ export default function SalarySettingsPage() {
 
       {/* 100%給与反映 - データ追加モーダル */}
       <Dialog open={showFullReflectAddModal} onOpenChange={setShowFullReflectAddModal}>
-        <DialogContent>
+        <DialogContent className="max-w-[95vw] sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>カテゴリー追加</DialogTitle>
-            <DialogDescription>
+            <DialogTitle className="text-lg sm:text-xl">カテゴリー追加</DialogTitle>
+            <DialogDescription className="text-sm sm:text-base">
               100%給与反映に追加するカテゴリーを選択してください
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label htmlFor="full-reflect-category-select">カテゴリー</Label>
+              <Label htmlFor="full-reflect-category-select" className="text-sm sm:text-base font-medium">カテゴリー</Label>
               <Select
                 value={selectedFullReflectCategory?.toString() || ''}
                 onValueChange={(value) => setSelectedFullReflectCategory(parseInt(value))}
               >
-                <SelectTrigger id="full-reflect-category-select">
+                <SelectTrigger id="full-reflect-category-select" className="h-10 sm:h-11">
                   <SelectValue placeholder="カテゴリーを選択" />
                 </SelectTrigger>
                 <SelectContent>
@@ -1236,18 +1434,19 @@ export default function SalarySettingsPage() {
               </Select>
             </div>
 
-            <div className="flex justify-end space-x-2 pt-4">
+            <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 sm:gap-3 pt-4 border-t">
               <Button
                 variant="outline"
                 onClick={() => setShowFullReflectAddModal(false)}
                 disabled={isSavingFullReflect}
+                className="h-10 sm:h-11 w-full sm:w-auto"
               >
                 キャンセル
               </Button>
               <Button
                 onClick={handleAddFullReflectCategory}
                 disabled={isSavingFullReflect || !selectedFullReflectCategory}
-                className="bg-blue-600 hover:bg-blue-700"
+                className="bg-blue-600 hover:bg-blue-700 h-10 sm:h-11 w-full sm:w-auto"
               >
                 <Save className="w-4 h-4 mr-2" />
                 {isSavingFullReflect ? '保存中...' : '保存'}
@@ -1259,16 +1458,16 @@ export default function SalarySettingsPage() {
 
       {/* カテゴリー削除確認モーダル */}
       <Dialog open={showDeleteCategoryModal} onOpenChange={setShowDeleteCategoryModal}>
-        <DialogContent>
+        <DialogContent className="max-w-[95vw] sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>カテゴリー削除</DialogTitle>
-            <DialogDescription>
+            <DialogTitle className="text-lg sm:text-xl">カテゴリー削除</DialogTitle>
+            <DialogDescription className="text-sm sm:text-base">
               「{categoryToDelete?.name}」カテゴリーを削除しますか？
               <br />
               この操作により、このカテゴリーに関連する全てのデータが削除されます。
             </DialogDescription>
           </DialogHeader>
-          <div className="flex justify-end space-x-2 pt-4">
+          <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 sm:gap-3 pt-4 border-t">
             <Button
               variant="outline"
               onClick={() => {
@@ -1276,13 +1475,14 @@ export default function SalarySettingsPage() {
                 setCategoryToDelete(null);
               }}
               disabled={isDeletingCategory}
+              className="h-10 sm:h-11 w-full sm:w-auto"
             >
               キャンセル
             </Button>
             <Button
               onClick={handleDeleteCategory}
               disabled={isDeletingCategory}
-              className="bg-red-600 hover:bg-red-700"
+              className="bg-red-600 hover:bg-red-700 h-10 sm:h-11 w-full sm:w-auto"
             >
               <Trash2 className="w-4 h-4 mr-2" />
               {isDeletingCategory ? '削除中...' : '削除'}
@@ -1293,16 +1493,16 @@ export default function SalarySettingsPage() {
 
       {/* 出勤日数に関係なく - 削除確認モーダル */}
       <Dialog open={showDeleteAttendayModal} onOpenChange={setShowDeleteAttendayModal}>
-        <DialogContent>
+        <DialogContent className="max-w-[95vw] sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>カテゴリー削除</DialogTitle>
-            <DialogDescription>
+            <DialogTitle className="text-lg sm:text-xl">カテゴリー削除</DialogTitle>
+            <DialogDescription className="text-sm sm:text-base">
               「{attendayCategoryToDelete?.category_name}」カテゴリーを削除しますか？
               <br />
               この操作により、このカテゴリーに関連する全ての日別金額データが削除されます。
             </DialogDescription>
           </DialogHeader>
-          <div className="flex justify-end space-x-2 pt-4">
+          <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 sm:gap-3 pt-4 border-t">
             <Button
               variant="outline"
               onClick={() => {
@@ -1310,13 +1510,14 @@ export default function SalarySettingsPage() {
                 setAttendayCategoryToDelete(null);
               }}
               disabled={isDeletingAttenday}
+              className="h-10 sm:h-11 w-full sm:w-auto"
             >
               キャンセル
             </Button>
             <Button
               onClick={handleDeleteAttendayCategory}
               disabled={isDeletingAttenday}
-              className="bg-red-600 hover:bg-red-700"
+              className="bg-red-600 hover:bg-red-700 h-10 sm:h-11 w-full sm:w-auto"
             >
               <Trash2 className="w-4 h-4 mr-2" />
               {isDeletingAttenday ? '削除中...' : '削除'}
@@ -1327,16 +1528,16 @@ export default function SalarySettingsPage() {
 
       {/* 100%給与反映 - 削除確認モーダル */}
       <Dialog open={showDeleteFullReflectModal} onOpenChange={setShowDeleteFullReflectModal}>
-        <DialogContent>
+        <DialogContent className="max-w-[95vw] sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>カテゴリー削除</DialogTitle>
-            <DialogDescription>
+            <DialogTitle className="text-lg sm:text-xl">カテゴリー削除</DialogTitle>
+            <DialogDescription className="text-sm sm:text-base">
               「{fullReflectCategoryToDelete?.name}」カテゴリーを削除しますか？
               <br />
               この操作により、このカテゴリーに関連する全てのデータが削除されます。
             </DialogDescription>
           </DialogHeader>
-          <div className="flex justify-end space-x-2 pt-4">
+          <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 sm:gap-3 pt-4 border-t">
             <Button
               variant="outline"
               onClick={() => {
@@ -1344,13 +1545,14 @@ export default function SalarySettingsPage() {
                 setFullReflectCategoryToDelete(null);
               }}
               disabled={isDeletingFullReflect}
+              className="h-10 sm:h-11 w-full sm:w-auto"
             >
               キャンセル
             </Button>
             <Button
               onClick={handleDeleteFullReflectCategory}
               disabled={isDeletingFullReflect}
-              className="bg-red-600 hover:bg-red-700"
+              className="bg-red-600 hover:bg-red-700 h-10 sm:h-11 w-full sm:w-auto"
             >
               <Trash2 className="w-4 h-4 mr-2" />
               {isDeletingFullReflect ? '削除中...' : '削除'}

@@ -354,7 +354,7 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
               <Wine className="w-6 h-6 text-white" />
             </div>
             <div>
-              <DialogTitle className="text-2xl">NightWork POS</DialogTitle>
+              <DialogTitle className="text-2xl">LNXS</DialogTitle>
               <p className="text-sm text-gray-500">システムにログイン</p>
             </div>
           </div>

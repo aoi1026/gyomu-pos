@@ -134,7 +134,7 @@ export default function CastDashboard() {
                 <Wine className="w-4 h-4 sm:w-6 sm:h-6 text-white" />
               </div>
               <div className="min-w-0">
-                <h1 className="text-lg sm:text-xl font-bold text-gray-900 truncate">NightWork POS</h1>
+                <h1 className="text-lg sm:text-xl font-bold text-gray-900 truncate">LNXS</h1>
                 <p className="text-xs sm:text-sm text-gray-500 truncate">{storeName}</p>
               </div>
             </div>

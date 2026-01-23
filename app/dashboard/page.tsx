@@ -1,12 +1,14 @@
-
 'use client';
-
+import { GrUserExpert } from "react-icons/gr"; 
+import { GrUserAdmin } from "react-icons/gr"; 
+import { FiLogOut } from "react-icons/fi"; 
+import { MdOutlineLogout } from "react-icons/md"; 
 import { MdOutlineCalendarMonth, MdOutlinePriceChange } from "react-icons/md"; 
 import { FaRegChartBar } from "react-icons/fa"; 
 import { BsFillMenuButtonWideFill } from "react-icons/bs"; 
 import { GiTimeTrap } from "react-icons/gi"; 
 import { AiFillMoneyCollect } from "react-icons/ai"; 
-import { FaPercentage } from "react-icons/fa"; 
+import { FaPowerOff } from "react-icons/fa";
 import { FiUserPlus } from "react-icons/fi"; 
 import { MdWifiCalling3 } from "react-icons/md"; 
 import { TbBellRinging } from "react-icons/tb"; 
@@ -19,7 +21,7 @@ import { getCurrentUser, hasRole, AuthUser } from '@/lib/auth';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { 
@@ -52,6 +54,7 @@ export default function Dashboard() {
   const [storeNameInput, setStoreNameInput] = useState<string>('');
   const [showBackupDialog, setShowBackupDialog] = useState(false);
   const [showRestoreDialog, setShowRestoreDialog] = useState(false);
+  const [showLogoutDialog, setShowLogoutDialog] = useState(false);
   const [backupFiles, setBackupFiles] = useState<Array<{ filename: string; size: number; created: string }>>([]);
   const [selectedBackupFile, setSelectedBackupFile] = useState<string>('');
   const [isLoadingBackups, setIsLoadingBackups] = useState(false);
@@ -380,16 +383,16 @@ export default function Dashboard() {
                 <Wine className="w-4 h-4 sm:w-6 sm:h-6 text-white" />
               </div>
               <div className="min-w-0">
-                <h1 className="text-lg sm:text-xl font-bold text-gray-900 truncate">NightWork POS</h1>
+                <h1 className="text-lg sm:text-xl font-bold text-gray-900 truncate">LNXS</h1>
                 <p className="text-xs sm:text-sm text-gray-500 truncate">{storeName}</p>
               </div>
             </div>
-            <div className="flex items-center space-x-2 sm:space-x-4">
+            <div className="flex items-center space-x-0 sm:space-x-4">
               {((adminUser && (adminUser.role === 'admin' || adminUser.role === 'super_admin' || adminUser.role === 'superadmin')) || hasRole(user, 'admin') || hasRole(user, 'super_admin') || hasRole(user, 'superadmin')) && (
                 <>
                   <BluetoothPrinterButton />
                   <Button
-                    variant="outline"
+                    variant="ghost"
                     size="sm"
                     className="text-xs sm:text-sm"
                     onClick={async () => {
@@ -397,11 +400,11 @@ export default function Dashboard() {
                       await loadBackupFiles();
                     }}
                   >
-                    <Database className="w-4 h-4 mr-1 sm:mr-2" />
-                    <span className="hidden sm:inline">バックアップ</span>
+                    <Database className="w-4 h-4 " />
+                    {/* <span className="hidden sm:inline">バックアップ</span> */}
                   </Button>
                   <Button
-                    variant="outline"
+                    variant="ghost"
                     size="sm"
                     className="text-xs sm:text-sm"
                     onClick={() => {
@@ -409,9 +412,9 @@ export default function Dashboard() {
                       setShowStoreNameDialog(true);
                     }}
                   >
-                    <Settings className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
-                    <span className="hidden sm:inline">店舗名設定</span>
-                    <span className="sm:hidden">設定</span>
+                    <Settings className="w-4 h-4 sm:w-4 sm:h-4" />
+                    {/* <span className="hidden sm:inline">店舗名設定</span>
+                    <span className="sm:hidden">設定</span> */}
                   </Button>
                 </>
               )}
@@ -441,29 +444,24 @@ export default function Dashboard() {
               <div className="sm:hidden">
                 <Badge variant="secondary" className="text-xs">
                   {adminUser ? (
-                    adminUser.role === 'admin' ? '管理者' : 
-                    (adminUser.role === 'super_admin' || adminUser.role === 'superadmin') ? 'システム管理者' : adminUser.role
+                    adminUser.role === 'admin' ? <GrUserExpert /> : 
+                    (adminUser.role === 'super_admin' || adminUser.role === 'superadmin') ? <GrUserAdmin /> : adminUser.role
                   ) : castUser ? (
                     'キャスト'
                   ) : user ? (
-                    (user.roles.includes('super_admin') || user.roles.includes('superadmin')) ? 'システム管理者' :
-                    user.roles.includes('admin') ? '管理者' : 'キャスト'
+                    (user.roles.includes('super_admin') || user.roles.includes('superadmin')) ? <GrUserAdmin /> :
+                    user.roles.includes('admin') ? <GrUserExpert /> : 'キャスト'
                   ) : 'ユーザー'}
                 </Badge>
               </div>
               <Button 
-                variant="outline" 
+                variant="ghost" 
                 size="sm"
                 className="text-xs sm:text-sm"
-                onClick={() => {
-                  localStorage.removeItem('auth_user');
-                  localStorage.removeItem('admin_auth');
-                  localStorage.removeItem('cast_auth');
-                  router.push('/login');
-                }}
+                onClick={() => setShowLogoutDialog(true)}
               >
-                <span className="hidden sm:inline">ログアウト</span>
-                <span className="sm:hidden">退出</span>
+                <span className=" hidden sm:inline"><FiLogOut /></span>
+                <span className="text-sm sm:hidden"><FiLogOut /></span>
               </Button>
             </div>
           </div>
@@ -1236,6 +1234,42 @@ export default function Dashboard() {
               </Button>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Logout Confirmation Dialog */}
+      <Dialog open={showLogoutDialog} onOpenChange={setShowLogoutDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center text-orange-600">
+              <AlertCircle className="w-5 h-5 mr-2" />
+              ログアウトの確認
+            </DialogTitle>
+            <DialogDescription>
+              ログアウトしますか？この操作により、現在のセッションが終了します。
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="mt-4">
+            <Button
+              variant="outline"
+              onClick={() => setShowLogoutDialog(false)}
+            >
+              キャンセル
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                localStorage.removeItem('auth_user');
+                localStorage.removeItem('admin_auth');
+                localStorage.removeItem('cast_auth');
+                setShowLogoutDialog(false);
+                router.push('/login');
+              }}
+            >
+              <FiLogOut className="w-4 h-4 mr-2" />
+              ログアウト
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

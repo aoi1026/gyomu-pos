@@ -85,7 +85,7 @@ export default function Home() {
                 <Wine className="w-4 h-4 sm:w-6 sm:h-6 text-white" />
               </div>
               <div className="min-w-0">
-                <h1 className="text-lg sm:text-xl font-bold text-gray-900 truncate">NightWork POS</h1>
+                <h1 className="text-lg sm:text-xl font-bold text-gray-900 truncate">LNXS</h1>
                 <p className="text-xs sm:text-sm text-gray-500 truncate">ナイトワーク特化POSシステム</p>
               </div>
             </div>
@@ -364,14 +364,14 @@ export default function Home() {
                 <div className="w-8 h-8 bg-gradient-to-br from-purple-600 to-pink-600 rounded-lg flex items-center justify-center">
                   <Wine className="w-5 h-5 text-white" />
                 </div>
-                <span className="text-xl font-bold">NightWork POS</span>
+                <span className="text-xl font-bold">LNXS</span>
               </div>
               <p className="text-gray-400 mb-4">
                 キャバクラ業界に特化したPOSシステム。
                 テーブルログインでキャストが注文を管理し、指名・バック率計算まで効率的な店舗運営をサポートします。
               </p>
               <p className="text-sm text-gray-500">
-                © 2025 NightWork POS. All rights reserved.
+                © 2025 LNXS. All rights reserved.
               </p>
             </div>
             <div>

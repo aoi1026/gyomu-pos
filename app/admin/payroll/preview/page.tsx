@@ -714,113 +714,129 @@ export default function PayrollPreviewPage() {
           </div>
         </header>
 
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="max-w-7xl mx-auto px-3 sm:px-4 md:px-6 lg:px-8 py-4 sm:py-6 md:py-8">
           {/* 期間選択（検索条件） */}
-          <Card className="mb-8">
-            <CardContent className="p-6 flex justify-center">
-              <div className="w-full max-w-4xl">
-                <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
-                  <div className="space-y-2">
-                    <div className="text-sm font-medium text-gray-700">検索条件</div>
-                    <div className="inline-flex rounded-md border bg-white overflow-hidden">
+          <Card className="mb-4 sm:mb-6 md:mb-8 shadow-sm">
+            <CardContent className="p-4 sm:p-5 md:p-6">
+              <div className="w-full max-w-4xl mx-auto">
+                <div className="flex flex-col gap-4 sm:gap-5 md:gap-6">
+                  <div className="space-y-3">
+                    <div className="text-sm sm:text-base font-medium text-gray-700">検索条件</div>
+                    <div className="inline-flex rounded-md border border-gray-300 bg-white overflow-hidden shadow-sm">
                       <button
                         type="button"
                         onClick={() => setDateMode('month')}
-                        className={`px-3 py-2 text-sm ${dateMode === 'month' ? 'bg-purple-600 text-white' : 'bg-white text-gray-700'}`}
+                        className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium transition-colors ${
+                          dateMode === 'month' 
+                            ? 'bg-purple-600 text-white' 
+                            : 'bg-white text-gray-700 hover:bg-gray-50'
+                        }`}
                       >
                         月
                       </button>
                       <button
                         type="button"
                         onClick={() => setDateMode('range')}
-                        className={`px-3 py-2 text-sm border-l ${dateMode === 'range' ? 'bg-purple-600 text-white' : 'bg-white text-gray-700'}`}
+                        className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium border-l border-gray-300 transition-colors ${
+                          dateMode === 'range' 
+                            ? 'bg-purple-600 text-white' 
+                            : 'bg-white text-gray-700 hover:bg-gray-50'
+                        }`}
                       >
                         期間
                       </button>
                       <button
                         type="button"
                         onClick={() => setDateMode('date')}
-                        className={`px-3 py-2 text-sm border-l ${dateMode === 'date' ? 'bg-purple-600 text-white' : 'bg-white text-gray-700'}`}
+                        className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium border-l border-gray-300 transition-colors ${
+                          dateMode === 'date' 
+                            ? 'bg-purple-600 text-white' 
+                            : 'bg-white text-gray-700 hover:bg-gray-50'
+                        }`}
                       >
                         日付
                       </button>
-                  </div>
-                    <div className="text-xs text-gray-500">※ 三項目は同時選択できません</div>
-                  </div>
-
-                  {dateMode === 'month' && (
-                    <div className="flex items-center space-x-4">
-                  <div className="flex flex-col space-y-2">
-                    <select
-                      id="year"
-                      value={selectedYear}
-                      onChange={(e) => setSelectedYear(Number(e.target.value))}
-                      className="w-24 h-10 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white cursor-pointer"
-                      disabled={payrollRun?.status === 'confirmed'}
-                    >
-                      {Array.from({ length: 16 }, (_, i) => {
-                        const year = 2020 + i;
-                        return (
-                          <option key={year} value={year}>
-                            {year}年
-                          </option>
-                        );
-                      })}
-                    </select>
-                  </div>
-                  <div className="flex flex-col space-y-2">
-                    <select
-                      id="month"
-                      value={selectedMonth}
-                      onChange={(e) => setSelectedMonth(Number(e.target.value))}
-                      className="w-24 h-10 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
-                      disabled={payrollRun?.status === 'confirmed'}
-                    >
-                      {Array.from({ length: 12 }, (_, i) => (
-                        <option key={i + 1} value={i + 1}>{i + 1}月</option>
-                      ))}
-                    </select>
-                  </div>
                     </div>
-                  )}
+                    <div className="text-xs sm:text-sm text-gray-500">※ 三項目は同時選択できません</div>
+                  </div>
 
-                  {dateMode === 'range' && (
-                    <div className="flex flex-col sm:flex-row sm:items-end gap-3">
-                      <div className="space-y-1">
-                        <Label htmlFor="range-start">開始日</Label>
+                  <div className="flex flex-col sm:flex-row sm:items-end gap-3 sm:gap-4">
+                    {dateMode === 'month' && (
+                      <div className="flex items-center gap-3 sm:gap-4">
+                        <div className="flex flex-col space-y-1 sm:space-y-2">
+                          <Label htmlFor="year" className="text-xs sm:text-sm">年</Label>
+                          <select
+                            id="year"
+                            value={selectedYear}
+                            onChange={(e) => setSelectedYear(Number(e.target.value))}
+                            className="w-20 sm:w-24 h-9 sm:h-10 px-2 sm:px-3 py-1 sm:py-2 text-sm sm:text-base border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white cursor-pointer"
+                            disabled={payrollRun?.status === 'confirmed'}
+                          >
+                            {Array.from({ length: 16 }, (_, i) => {
+                              const year = 2020 + i;
+                              return (
+                                <option key={year} value={year}>
+                                  {year}年
+                                </option>
+                              );
+                            })}
+                          </select>
+                        </div>
+                        <div className="flex flex-col space-y-1 sm:space-y-2">
+                          <Label htmlFor="month" className="text-xs sm:text-sm">月</Label>
+                          <select
+                            id="month"
+                            value={selectedMonth}
+                            onChange={(e) => setSelectedMonth(Number(e.target.value))}
+                            className="w-20 sm:w-24 h-9 sm:h-10 px-2 sm:px-3 py-1 sm:py-2 text-sm sm:text-base border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white cursor-pointer"
+                            disabled={payrollRun?.status === 'confirmed'}
+                          >
+                            {Array.from({ length: 12 }, (_, i) => (
+                              <option key={i + 1} value={i + 1}>{i + 1}月</option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                    )}
+
+                    {dateMode === 'range' && (
+                      <div className="flex flex-col sm:flex-row sm:items-end gap-3 sm:gap-4">
+                        <div className="space-y-1 sm:space-y-2 flex-1 sm:flex-none">
+                          <Label htmlFor="range-start" className="text-xs sm:text-sm">開始日</Label>
+                          <Input
+                            id="range-start"
+                            type="date"
+                            value={periodStart}
+                            onChange={(e) => setPeriodStart(e.target.value)}
+                            className="w-full sm:w-44 h-9 sm:h-10 text-sm sm:text-base"
+                          />
+                        </div>
+                        <div className="space-y-1 sm:space-y-2 flex-1 sm:flex-none">
+                          <Label htmlFor="range-end" className="text-xs sm:text-sm">終了日</Label>
+                          <Input
+                            id="range-end"
+                            type="date"
+                            value={periodEnd}
+                            onChange={(e) => setPeriodEnd(e.target.value)}
+                            className="w-full sm:w-44 h-9 sm:h-10 text-sm sm:text-base"
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {dateMode === 'date' && (
+                      <div className="space-y-1 sm:space-y-2">
+                        <Label htmlFor="single-date" className="text-xs sm:text-sm">日付</Label>
                         <Input
-                          id="range-start"
+                          id="single-date"
                           type="date"
-                          value={periodStart}
-                          onChange={(e) => setPeriodStart(e.target.value)}
-                          className="w-44"
+                          value={singleDate}
+                          onChange={(e) => setSingleDate(e.target.value)}
+                          className="w-full sm:w-44 h-9 sm:h-10 text-sm sm:text-base"
                         />
                       </div>
-                      <div className="space-y-1">
-                        <Label htmlFor="range-end">終了日</Label>
-                        <Input
-                          id="range-end"
-                          type="date"
-                          value={periodEnd}
-                          onChange={(e) => setPeriodEnd(e.target.value)}
-                          className="w-44"
-                        />
-                      </div>
-                    </div>
-                  )}
-
-                  {dateMode === 'date' && (
-                    <div className="space-y-1">
-                      <Label htmlFor="single-date">日付</Label>
-                      <Input
-                        id="single-date"
-                        type="date"
-                        value={singleDate}
-                        onChange={(e) => setSingleDate(e.target.value)}
-                        className="w-44"
-                      />
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
                 {/* <Button 
                   onClick={calculatePayroll}
@@ -842,91 +858,98 @@ export default function PayrollPreviewPage() {
               </div>
             </CardContent>
           </Card>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-                <Card className="bg-blue-50 border-blue-200">
-                  <CardContent className="p-4">
-                    <div className="flex items-center">
-                      <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center mr-3">
-                        <DollarSign className="w-4 h-4 text-blue-600" />
-                      </div>
-                      <div>
-                        <p className="text-sm text-blue-700">総支給額</p>
-                        <p className="text-xl font-bold text-blue-900">
-                          {formatCurrency(castTotals.sumPay)}
-                        </p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
+          {/* 統計カード */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 md:gap-6 mb-4 sm:mb-6 md:mb-8">
+            <Card className="bg-blue-50 border-blue-200 shadow-sm hover:shadow-md transition-shadow">
+              <CardContent className="p-4 sm:p-5">
+                <div className="flex items-center">
+                  <div className="w-10 h-10 sm:w-12 sm:h-12 bg-blue-100 rounded-lg flex items-center justify-center mr-3 sm:mr-4 flex-shrink-0">
+                    <DollarSign className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs sm:text-sm text-blue-700 font-medium mb-1">総支給額</p>
+                    <p className="text-lg sm:text-xl md:text-2xl font-bold text-blue-900 truncate">
+                      {formatCurrency(castTotals.sumPay)}
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
 
-                <Card className="bg-green-50 border-green-200">
-                  <CardContent className="p-4">
-                    <div className="flex items-center">
-                      <div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center mr-3">
-                        <Users className="w-4 h-4 text-green-600" />
-                      </div>
-                      <div>
-                        <p className="text-sm text-green-700">対象スタッフ</p>
-                        <p className="text-xl font-bold text-green-900">
-                          {castTotals.staffCount}名
-                        </p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
+            <Card className="bg-green-50 border-green-200 shadow-sm hover:shadow-md transition-shadow">
+              <CardContent className="p-4 sm:p-5">
+                <div className="flex items-center">
+                  <div className="w-10 h-10 sm:w-12 sm:h-12 bg-green-100 rounded-lg flex items-center justify-center mr-3 sm:mr-4 flex-shrink-0">
+                    <Users className="w-5 h-5 sm:w-6 sm:h-6 text-green-600" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs sm:text-sm text-green-700 font-medium mb-1">対象スタッフ</p>
+                    <p className="text-lg sm:text-xl md:text-2xl font-bold text-green-900">
+                      {castTotals.staffCount}名
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
 
-                <Card className="bg-purple-50 border-purple-200">
-                  <CardContent className="p-4">
-                    <div className="flex items-center">
-                      <div className="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center mr-3">
-                        <Clock className="w-4 h-4 text-purple-600" />
-                      </div>
-                      <div>
-                        <p className="text-sm text-purple-700">総労働時間</p>
-                        <p className="text-xl font-bold text-purple-900">
-                          {castTotals.sumHours.toFixed(1)}h
-                        </p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
+            <Card className="bg-purple-50 border-purple-200 shadow-sm hover:shadow-md transition-shadow">
+              <CardContent className="p-4 sm:p-5">
+                <div className="flex items-center">
+                  <div className="w-10 h-10 sm:w-12 sm:h-12 bg-purple-100 rounded-lg flex items-center justify-center mr-3 sm:mr-4 flex-shrink-0">
+                    <Clock className="w-5 h-5 sm:w-6 sm:h-6 text-purple-600" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs sm:text-sm text-purple-700 font-medium mb-1">総労働時間</p>
+                    <p className="text-lg sm:text-xl md:text-2xl font-bold text-purple-900">
+                      {castTotals.sumHours.toFixed(1)}h
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
 
-                <Card className="bg-orange-50 border-orange-200">
-                  <CardContent className="p-4">
-                    <div className="flex items-center">
-                      <div className="w-8 h-8 bg-orange-100 rounded-lg flex items-center justify-center mr-3">
-                        <TrendingUp className="w-4 h-4 text-orange-600" />
-                      </div>
-                      <div>
-                        <p className="text-sm text-orange-700">総指名数</p>
-                        <p className="text-xl font-bold text-orange-900">
-                          {castTotals.sumNominations}件
-                        </p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
+            <Card className="bg-orange-50 border-orange-200 shadow-sm hover:shadow-md transition-shadow">
+              <CardContent className="p-4 sm:p-5">
+                <div className="flex items-center">
+                  <div className="w-10 h-10 sm:w-12 sm:h-12 bg-orange-100 rounded-lg flex items-center justify-center mr-3 sm:mr-4 flex-shrink-0">
+                    <TrendingUp className="w-5 h-5 sm:w-6 sm:h-6 text-orange-600" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs sm:text-sm text-orange-700 font-medium mb-1">総指名数</p>
+                    <p className="text-lg sm:text-xl md:text-2xl font-bold text-orange-900">
+                      {castTotals.sumNominations}件
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
         {/* キャスト別給与計算表 */}
-        <Card className="mb-8">
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle>キャスト別 給与計算</CardTitle>
-              <div className="flex items-center space-x-2">
+        <Card className="mb-4 sm:mb-6 md:mb-8 shadow-sm">
+          <CardHeader className="pb-3 sm:pb-4">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
+              <CardTitle className="text-lg sm:text-xl md:text-2xl">キャスト別 給与計算</CardTitle>
+              <div className="flex flex-wrap items-center gap-2">
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={handlePrintMonthlyAll}
                   disabled={isPrinting}
+                  className="h-9 sm:h-10 text-xs sm:text-sm"
                 >
-                  <PrinterIcon className="w-4 h-4 mr-1" /> 印刷
+                  <PrinterIcon className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
+                  <span className="hidden sm:inline">印刷</span>
+                  <span className="sm:hidden">印刷</span>
                 </Button>
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={downloadCsv}
+                  className="h-9 sm:h-10 text-xs sm:text-sm"
                 >
-                  <Download className="w-4 h-4 mr-1" /> CSVダウンロード
+                  <Download className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
+                  <span className="hidden sm:inline">CSV</span>
+                  <span className="sm:hidden">CSV</span>
                 </Button>
                 <Button
                   variant="outline"
@@ -937,35 +960,37 @@ export default function PayrollPreviewPage() {
                     await fetchMonthlyRows(selectedYear, selectedMonth, true);
                   }}
                   disabled={dateMode !== 'month'}
+                  className="h-9 sm:h-10 text-xs sm:text-sm"
                 >
-                  初期値に戻す
+                  <span className="hidden sm:inline">初期値に戻す</span>
+                  <span className="sm:hidden">リセット</span>
                 </Button>
               </div>
             </div>
           </CardHeader>
-          <CardContent>
-            <div className="overflow-x-auto">
-              <table className="min-w-full text-sm">
-                <thead>
+          <CardContent className="p-0 sm:p-4 md:p-6">
+            {/* テーブル表示（全画面サイズで水平スクロール） */}
+            <div className="w-full max-w-full overflow-x-auto">
+              <div className="inline-block align-middle">
+                <table className="text-xs sm:text-sm divide-y divide-gray-200" style={{ minWidth: 'max-content' }}>
+                <thead className="bg-gray-50">
                   <tr className="text-left text-gray-600">
-                    <th className="p-2">キャスト</th>
-                    
-                    <th className="p-2 text-center">基本時間</th>
-                    <th className="p-2 text-center">基本給</th>
-                    <th className="p-2 text-center">本指名数</th>
-                    <th className="p-2 text-center">本指名料</th>
-                    <th className="p-2 text-center">場内指名数</th>
-                    <th className="p-2 text-center">場内指名料</th>
-                    <th className="p-2 text-center">同伴者</th>
-                    <th className="p-2 text-center">同伴料</th>
-                    <th className="p-2 text-center">売上バック</th>
-                    <th className="p-2 text-center">残業代</th>
-                    <th className="p-2 text-center">控除</th>
-                    <th className="p-2 text-center min-w-[6rem]">支給額</th>
-                    <th className="p-2 text-center min-w-[7rem]">前払い</th>
-                    <th className="p-2 text-center min-w-[7rem]">総額</th>
-                    <th className="p-2 text-center">印刷</th>
-                    {/* <th className="p-2">変更</th> */}
+                    <th className="p-2 sm:p-3 font-semibold sticky left-0 bg-gray-50 z-20 min-w-[100px] sm:min-w-[120px] border-r border-gray-200">キャスト</th>
+                    <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[70px] sm:min-w-[80px]">基本時間</th>
+                    <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[70px] sm:min-w-[80px]">基本給</th>
+                    <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[70px] sm:min-w-[80px]">本指名数</th>
+                    <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[70px] sm:min-w-[80px]">本指名料</th>
+                    <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[70px] sm:min-w-[80px]">場内指名数</th>
+                    <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[70px] sm:min-w-[80px]">場内指名料</th>
+                    <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[60px] sm:min-w-[70px]">同伴者</th>
+                    <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[70px] sm:min-w-[80px]">同伴料</th>
+                    <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[80px] sm:min-w-[100px]">売上バック</th>
+                    <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[80px] sm:min-w-[100px]">残業代</th>
+                    <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[80px] sm:min-w-[100px]">控除</th>
+                    <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[80px] sm:min-w-[100px]">支給額</th>
+                    <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[90px] sm:min-w-[110px]">前払い</th>
+                    <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[90px] sm:min-w-[110px]">総額</th>
+                    <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[70px] sm:min-w-[80px]">印刷</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -995,80 +1020,91 @@ export default function PayrollPreviewPage() {
                     };
                     const isUnlocked = dateMode === 'month' ? !!rowUnlocked[row.user_id] : false;
                     return (
-                      <tr key={row.user_id} className="border-t">
-                        <td className="p-2 whitespace-nowrap">
+                      <tr key={row.user_id} className="border-t hover:bg-gray-50 transition-colors">
+                        <td className="p-2 sm:p-3 whitespace-nowrap sticky left-0 bg-white z-20 border-r border-gray-200">
                           <div className="flex flex-col items-start space-y-1">
-                            <div className="font-medium">{row.name}</div>
+                            <div className="font-medium text-sm">{row.name}</div>
                             {dateMode === 'month' && (
                             <button
                               type="button"
-                              className={`inline-flex items-center text-xs px-2 py-1 rounded border ${isUnlocked ? 'text-green-700 border-green-300' : 'text-gray-600 border-gray-300'}`}
+                              className={`inline-flex items-center text-xs px-2 py-1 rounded border transition-colors ${
+                                isUnlocked 
+                                  ? 'text-green-700 border-green-300 bg-green-50 hover:bg-green-100' 
+                                  : 'text-gray-600 border-gray-300 bg-gray-50 hover:bg-gray-100'
+                              }`}
                               onClick={() => toggleRowLock(row.user_id)}
                               title={isUnlocked ? 'ロック（編集不可）' : 'ロック解除（編集可）'}
                             >
                               {isUnlocked ? <Unlock className="w-3 h-3 mr-1" /> : <Lock className="w-3 h-3 mr-1" />}
-                              {/* {isUnlocked ? '解除中' : 'ロック中'} */}
                             </button>
                             )}
                           </div>
                         </td>
-                        
-                        <td className="p-2 text-center">
-                          <div className="space-y-1">
-                            {/* <Input type="text" value={row.basic_hours ?? 0}
-                              className="px-1"
-                              onChange={(e) => { if (!isUnlocked) return; updateField('basic_hours', Number(e.target.value)); ensureAutoRelock(row.user_id); }}
-                              disabled={!isUnlocked}
-                            /> */}
-                            <div className="text-xs text-gray-500">{formatHours(row.basic_hours)}</div>
-                          </div>
+                        <td className="p-2 sm:p-3 text-center whitespace-nowrap">
+                          <div className="text-xs sm:text-sm text-gray-700">{formatHours(row.basic_hours)}</div>
                         </td>
-                        <td className="p-2 text-center">{formatCurrency(row.base_pay || 0)}</td>
-                        <td className="p-2 text-center">
+                        <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap">{formatCurrency(row.base_pay || 0)}</td>
+                        <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap">
                           {Number(row.main_nomination_count || 0)}
                         </td>
-                        <td className="p-2 text-center">{formatCurrency(row.main_nomination_fee || 0)}</td>
-                        <td className="p-2 text-center">
+                        <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap">{formatCurrency(row.main_nomination_fee || 0)}</td>
+                        <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap">
                           {Number(row.inside_nomination_count || 0)}
                         </td>
-                        <td className="p-2 text-center">{formatCurrency(row.inside_nomination_fee || 0)}</td>
-                        <td className="p-2 text-center">
+                        <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap">{formatCurrency(row.inside_nomination_fee || 0)}</td>
+                        <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap">
                           {Number(row.together_nomination_count || 0)}
                         </td>
-                        <td className="p-2 text-center">{formatCurrency(row.together_nomination_fee || 0)}</td>
-                        <td className="p-2 text-center min-w-[6rem]">
-                          <Input type="text" value={row.sales_back_yen ?? 0}
-                            className="px-1 text-center"
+                        <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap">{formatCurrency(row.together_nomination_fee || 0)}</td>
+                        <td className="p-2 sm:p-3 text-center whitespace-nowrap">
+                          <Input 
+                            type="text" 
+                            value={row.sales_back_yen ?? 0}
+                            className="px-1.5 py-1 text-center h-8 sm:h-9 text-xs sm:text-sm w-full min-w-[70px] sm:min-w-[90px]"
                             inputMode="decimal"
                             pattern="[0-9]*[.,]?[0-9]*"
-                            onChange={(e) => { if (!isUnlocked) return; updateField('sales_back_yen', Number((e.target.value || '').replace(',', '.'))); ensureAutoRelock(row.user_id); }}
+                            onChange={(e) => { 
+                              if (!isUnlocked) return; 
+                              updateField('sales_back_yen', Number((e.target.value || '').replace(',', '.'))); 
+                              ensureAutoRelock(row.user_id); 
+                            }}
                             disabled={!isUnlocked}
                           />
                         </td>
-                        <td className="p-2 text-center min-w-[6rem]">
-                          <Input type="text" value={row.overtime_wage_yen ?? 0}
-                            className="px-1 text-center"
+                        <td className="p-2 sm:p-3 text-center whitespace-nowrap">
+                          <Input 
+                            type="text" 
+                            value={row.overtime_wage_yen ?? 0}
+                            className="px-1.5 py-1 text-center h-8 sm:h-9 text-xs sm:text-sm w-full min-w-[70px] sm:min-w-[90px]"
                             inputMode="decimal"
                             pattern="[0-9]*[.,]?[0-9]*"
-                            onChange={(e) => { if (!isUnlocked) return; updateField('overtime_wage_yen', Number((e.target.value || '').replace(',', '.'))); ensureAutoRelock(row.user_id); }}
+                            onChange={(e) => { 
+                              if (!isUnlocked) return; 
+                              updateField('overtime_wage_yen', Number((e.target.value || '').replace(',', '.'))); 
+                              ensureAutoRelock(row.user_id); 
+                            }}
                             disabled={!isUnlocked}
                           />
                         </td>
-                        <td className="p-2 text-center min-w-[6rem]">
-                          <div className="flex items-center justify-end space-x-1">
-                            <span className="text-red-600 text-center">-</span>
+                        <td className="p-2 sm:p-3 text-center whitespace-nowrap">
+                          <div className="flex items-center justify-center space-x-1">
+                            <span className="text-red-600 text-xs">-</span>
                             <Input
                               type="text"
-                              className="text-red-600 px-1 text-center"
+                              className="text-red-600 px-1.5 py-1 text-center h-8 sm:h-9 text-xs sm:text-sm w-full min-w-[70px] sm:min-w-[90px]"
                               value={row.deduction_yen ?? 0}
                               inputMode="decimal"
                               pattern="[0-9]*[.,]?[0-9]*"
-                              onChange={(e) => { if (!isUnlocked) return; updateField('deduction_yen', Number((e.target.value || '').replace(',', '.'))); ensureAutoRelock(row.user_id); }}
+                              onChange={(e) => { 
+                                if (!isUnlocked) return; 
+                                updateField('deduction_yen', Number((e.target.value || '').replace(',', '.'))); 
+                                ensureAutoRelock(row.user_id); 
+                              }}
                               disabled={!isUnlocked}
                             />
                           </div>
                         </td>
-                        <td className="text-center font-semibold ">
+                        <td className="p-2 sm:p-3 text-center font-semibold text-xs sm:text-sm whitespace-nowrap">
                           {formatCurrency(
                             Number(row.base_pay || 0) +
                             Number(row.main_nomination_fee || 0) +
@@ -1079,18 +1115,22 @@ export default function PayrollPreviewPage() {
                             Number(row.deduction_yen || 0)
                           )}
                         </td>
-                        <td className="p-2 text-center min-w-[7rem]">
+                        <td className="p-2 sm:p-3 text-center whitespace-nowrap">
                           <Input
                             type="text"
                             value={row.paid_price ?? 0}
                             inputMode="decimal"
                             pattern="[0-9]*[.,]?[0-9]*"
-                            onChange={(e) => { if (!isUnlocked) return; updateField('paid_price', Number((e.target.value || '').replace(',', '.'))); ensureAutoRelock(row.user_id); }}
-                            className="px-1 text-center"
+                            onChange={(e) => { 
+                              if (!isUnlocked) return; 
+                              updateField('paid_price', Number((e.target.value || '').replace(',', '.'))); 
+                              ensureAutoRelock(row.user_id); 
+                            }}
+                            className="px-1.5 py-1 text-center h-8 sm:h-9 text-xs sm:text-sm w-full min-w-[80px] sm:min-w-[100px]"
                             disabled={!isUnlocked}
                           />
                         </td>
-                        <td className="text-center font-semibold min-w-[7rem]">
+                        <td className="p-2 sm:p-3 text-center font-semibold text-xs sm:text-sm whitespace-nowrap">
                           {formatCurrency(
                             (Number(row.base_pay || 0) +
                               Number(row.main_nomination_fee || 0) +
@@ -1102,16 +1142,16 @@ export default function PayrollPreviewPage() {
                               Number(row.paid_price || 0)
                           )}
                         </td>
-                        {/* 追加: 行印刷（キャスト別） */}
-                        <td className="p-2 text-center">
+                        <td className="p-2 sm:p-3 text-center whitespace-nowrap">
                           <Button
                             size="sm"
                             variant="outline"
                             onClick={() => handlePrintMonthlyRow(row)}
                             disabled={isPrinting}
+                            className="h-8 sm:h-9 text-xs px-2 sm:px-3"
                           >
-                            <PrinterIcon className="w-4 h-4 mr-1" />
-                            印刷
+                            <PrinterIcon className="w-3 h-3 sm:w-4 sm:h-4" />
+                            <span className="hidden xl:inline ml-1">印刷</span>
                           </Button>
                         </td>
                         {/* <td className="p-2">
@@ -1122,43 +1162,43 @@ export default function PayrollPreviewPage() {
                   })}
                 </tbody>
                 <tfoot className="bg-gray-50 sticky bottom-0">
-                  <tr className="border-t font-semibold">
-                    <td className="p-2">合計</td>
+                  <tr className="border-t-2 border-gray-300 font-semibold">
+                    <td className="p-2 sm:p-3 sticky left-0 bg-gray-50 z-20 border-r border-gray-200">合計</td>
                     {/* <td className="p-2" /> */}
-                    <td className="p-2 text-center">
+                    <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap">
                       {formatHours(monthlyRows.reduce((sum, r) => sum + Number(r.basic_hours || 0), 0))}
                     </td>
-                    <td className="p-2 text-center">
+                    <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap">
                       {formatCurrency(monthlyRows.reduce((sum, r) => sum + Number(r.base_pay || 0), 0))}
                     </td>
-                    <td className="p-2 text-center">
+                    <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap">
                       {monthlyRows.reduce((sum, r) => sum + Number(r.main_nomination_count || 0), 0)}
                     </td>
-                    <td className="p-2 text-center">
+                    <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap">
                       {formatCurrency(monthlyRows.reduce((sum, r) => sum + Number(r.main_nomination_fee || 0), 0))}
                     </td>
-                    <td className="p-2 text-center">
+                    <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap">
                       {monthlyRows.reduce((sum, r) => sum + Number(r.inside_nomination_count || 0), 0)}
                     </td>
-                    <td className="p-2 text-center">
+                    <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap">
                       {formatCurrency(monthlyRows.reduce((sum, r) => sum + Number(r.inside_nomination_fee || 0), 0))}
                     </td>
-                    <td className="p-2 text-center">
+                    <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap">
                       {monthlyRows.reduce((sum, r) => sum + Number(r.together_nomination_count || 0), 0)}
                     </td>
-                    <td className="p-2 text-center">
+                    <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap">
                       {formatCurrency(monthlyRows.reduce((sum, r) => sum + Number(r.together_nomination_fee || 0), 0))}
                     </td>
-                    <td className="p-2 text-center min-w-[6rem]">
+                    <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap">
                       {formatCurrency(monthlyRows.reduce((sum, r) => sum + Number(r.sales_back_yen || 0), 0))}
                     </td>
-                    <td className="p-2 text-center min-w-[6rem]">
+                    <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap">
                       {formatCurrency(monthlyRows.reduce((sum, r) => sum + Number(r.overtime_wage_yen || 0), 0))}
                     </td>
-                    <td className="p-2 text-center min-w-[6rem] text-red-600">
+                    <td className="p-2 sm:p-3 text-center text-xs sm:text-sm text-red-600 whitespace-nowrap">
                       -{formatCurrency(monthlyRows.reduce((sum, r) => sum + Number(r.deduction_yen || 0), 0))}
                     </td>
-                    <td className="text-center font-semibold ">
+                    <td className="p-2 sm:p-3 text-center font-semibold text-xs sm:text-sm whitespace-nowrap">
                       {formatCurrency(
                         monthlyRows.reduce((sum, r) => (
                           sum +
@@ -1172,10 +1212,10 @@ export default function PayrollPreviewPage() {
                         ), 0)
                       )}
                     </td>
-                    <td className="p-2 text-center min-w-[7rem]">
+                    <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap">
                       {formatCurrency(monthlyRows.reduce((sum, r) => sum + Number(r.paid_price || 0), 0))}
                     </td>
-                    <td className="text-center font-semibold min-w-[7rem]">
+                    <td className="p-2 sm:p-3 text-center font-semibold text-xs sm:text-sm whitespace-nowrap">
                       {formatCurrency(
                         monthlyRows.reduce((sum, r) => (
                           sum +
@@ -1190,20 +1230,22 @@ export default function PayrollPreviewPage() {
                         ), 0)
                       )}
                     </td>
-                    <td className="p-2 text-center">
+                    <td className="p-2 sm:p-3 text-center whitespace-nowrap">
                       <Button
                         size="sm"
                         variant="outline"
                         onClick={handlePrintMonthlyTotals}
                         disabled={isPrinting}
+                        className="h-8 sm:h-9 text-xs px-2 sm:px-3"
                       >
-                        <PrinterIcon className="w-4 h-4 mr-1" />
-                        印刷
+                        <PrinterIcon className="w-3 h-3 sm:w-4 sm:h-4" />
+                        <span className="hidden xl:inline ml-1">印刷</span>
                       </Button>
                     </td>
                   </tr>
                 </tfoot>
-              </table>
+                </table>
+              </div>
             </div>
           </CardContent>
         </Card>

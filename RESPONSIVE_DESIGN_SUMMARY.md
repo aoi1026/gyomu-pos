@@ -201,4 +201,4 @@ xl: 1280px  /* Large desktops */
 - ✅ **Typography**: Responsive text sizing and spacing
 - ✅ **Interactive Elements**: Buttons, forms, cards, tables
 
-The entire codebase now provides a seamless, responsive experience across all device sizes while maintaining the sophisticated design aesthetic and functionality of the NightWork POS system.
+The entire codebase now provides a seamless, responsive experience across all device sizes while maintaining the sophisticated design aesthetic and functionality of the LNXS system.
