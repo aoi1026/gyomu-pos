@@ -103,6 +103,31 @@ export default function AdminAttendancePage() {
     return () => clearInterval(interval);
   }, []);
 
+  // モーダルが開いている間、時間設定要素に現在時刻を反映
+  useEffect(() => {
+    if (isModalOpen && selectedCast) {
+      const updateTimeValue = () => {
+        const now = new Date();
+        // datetime-local形式に変換 (YYYY-MM-DDTHH:mm)
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const day = String(now.getDate()).padStart(2, '0');
+        const hours = String(now.getHours()).padStart(2, '0');
+        const minutes = String(now.getMinutes()).padStart(2, '0');
+        const datetimeLocal = `${year}-${month}-${day}T${hours}:${minutes}`;
+        setTimeValue(datetimeLocal);
+      };
+
+      // モーダルを開いた時に現在時刻を設定
+      updateTimeValue();
+      
+      // 1分ごとに更新（秒単位の更新は不要）
+      const interval = setInterval(updateTimeValue, 60000);
+
+      return () => clearInterval(interval);
+    }
+  }, [isModalOpen, selectedCast]);
+
   const loadCasts = async () => {
     try {
       const response = await fetch('/api/users?role=cast');
@@ -194,6 +219,17 @@ export default function AdminAttendancePage() {
 
       const result = await response.json();
       if (result.success) {
+        // 出勤状態を1に設定
+        try {
+          await fetch(`/api/casts/${selectedCast.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ attendance_status: 1 })
+          });
+        } catch (err) {
+          console.error('出勤状態更新エラー:', err);
+        }
+        
         success('出勤記録完了', `${selectedCast.name}さんの出勤を記録しました`);
         setIsModalOpen(false);
         loadActiveAttendances();
@@ -242,6 +278,17 @@ export default function AdminAttendancePage() {
 
       const result = await response.json();
       if (result.success) {
+        // 出勤状態を0に設定
+        try {
+          await fetch(`/api/casts/${selectedCast.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ attendance_status: 0 })
+          });
+        } catch (err) {
+          console.error('出勤状態更新エラー:', err);
+        }
+        
         success('退勤記録完了', `${selectedCast.name}さんの退勤を記録しました`);
         setIsModalOpen(false);
         loadActiveAttendances();
@@ -554,9 +601,9 @@ export default function AdminAttendancePage() {
 
               <div>
                 <Label htmlFor="time">時間</Label>
-                <div className="mb-2 text-sm text-gray-600">
+                {/* <div className="mb-2 text-sm text-gray-600">
                   現在時刻: {currentTime}
-                </div>
+                </div> */}
                 <Input
                   id="time"
                   type="datetime-local"
