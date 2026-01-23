@@ -4,7 +4,7 @@ import { pool } from '@/lib/database';
 export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
   try {
     const { id } = params;
-    const { total_work_hours, comment, status, approved_by } = await request.json();
+    const { clock_out, total_work_hours, comment, status, approved_by } = await request.json();
 
     const client = await pool.connect();
     
@@ -18,6 +18,8 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
           id,
           staff_id,
           status,
+          clock_in,
+          clock_out,
           total_work_hours,
           EXTRACT(YEAR FROM clock_in)::int AS year,
           EXTRACT(MONTH FROM clock_in)::int AS month
@@ -39,19 +41,44 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
       const before = beforeRes.rows[0];
       const prevStatus = String(before.status || 'pending');
 
-      const result = await client.query(
-        `
+      // clock_outが指定されている場合、total_work_hoursを自動計算
+      let finalTotalWorkHours = total_work_hours;
+      if (clock_out && before.clock_in) {
+        const clockInTime = new Date(before.clock_in);
+        const clockOutTime = new Date(clock_out);
+        const diffMs = clockOutTime.getTime() - clockInTime.getTime();
+        const diffHours = diffMs / (1000 * 60 * 60); // ミリ秒を時間に変換
+        finalTotalWorkHours = Math.round(diffHours * 100) / 100; // 小数点2桁まで
+      }
+
+      // UPDATEクエリを構築（clock_outが指定されている場合のみ更新）
+      let updateQuery = `
         UPDATE attendance
            SET total_work_hours = $1,
                comment = $2,
                status = $3,
                approved_by = $4,
                approved_at = CURRENT_TIMESTAMP
-         WHERE id = $5
-         RETURNING *
-        `,
-        [total_work_hours, comment, status, approved_by, id]
-      );
+      `;
+      const updateParams: any[] = [finalTotalWorkHours, comment, status, approved_by];
+
+      if (clock_out) {
+        updateQuery = `
+          UPDATE attendance
+             SET clock_out = $5,
+                 total_work_hours = $1,
+                 comment = $2,
+                 status = $3,
+                 approved_by = $4,
+                 approved_at = CURRENT_TIMESTAMP
+        `;
+        updateParams.push(clock_out);
+      }
+
+      updateQuery += ` WHERE id = $${updateParams.length + 1} RETURNING *`;
+      updateParams.push(id);
+
+      const result = await client.query(updateQuery, updateParams);
 
       if (result.rows.length === 0) {
         await client.query('ROLLBACK');

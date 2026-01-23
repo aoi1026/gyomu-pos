@@ -22,7 +22,7 @@ export default function AdminLayout({
         aria-label="リアルタイムテーブル状態"
       >
         <Table className="w-6 h-6" />
-        <span className="hidden sm:inline font-medium">テーブル状態</span>
+        {/* <span className="hidden sm:inline font-medium">テーブル状態</span> */}
       </button>
       
       <RealTimeTableStatus 

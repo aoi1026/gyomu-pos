@@ -18,9 +18,11 @@ export async function GET(request: NextRequest) {
         SELECT 
           a.*,
           u.name as staff_name,
-          u.mail as staff_email
+          u.mail as staff_email,
+          approver.name as approved_by_name
         FROM attendance a
         JOIN "user" u ON a.staff_id = u.id
+        LEFT JOIN "user" approver ON a.approved_by = approver.id
         ${where}
         ORDER BY a.created_at DESC
       `, params);

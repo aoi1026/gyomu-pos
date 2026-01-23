@@ -719,7 +719,7 @@ export default function PayrollPreviewPage() {
           <Card className="mb-4 sm:mb-6 md:mb-8 shadow-sm">
             <CardContent className="p-4 sm:p-5 md:p-6">
               <div className="w-full max-w-4xl mx-auto">
-                <div className="flex flex-col gap-4 sm:gap-5 md:gap-6">
+                <div className="flex justify-between gap-4 sm:gap-5 md:gap-6">
                   <div className="space-y-3">
                     <div className="text-sm sm:text-base font-medium text-gray-700">検索条件</div>
                     <div className="inline-flex rounded-md border border-gray-300 bg-white overflow-hidden shadow-sm">
@@ -757,7 +757,6 @@ export default function PayrollPreviewPage() {
                         日付
                       </button>
                     </div>
-                    <div className="text-xs sm:text-sm text-gray-500">※ 三項目は同時選択できません</div>
                   </div>
 
                   <div className="flex flex-col sm:flex-row sm:items-end gap-3 sm:gap-4">

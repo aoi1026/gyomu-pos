@@ -2,51 +2,62 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
 import { 
-  ArrowLeft, Bell, Clock, CheckCircle, XCircle, Eye, 
-  Save, User, Mail, Calendar, Timer, MessageSquare, Clock3
+  ArrowLeft, Clock, User, Calendar, Timer, MessageSquare, LogIn, LogOut, Search
 } from 'lucide-react';
 import { useNotificationContext } from '@/lib/notification-context';
 
-interface AttendanceData {
+interface Cast {
+  id: number;
+  name: string;
+  mail: string;
+}
+
+interface AttendanceRecord {
   id: number;
   staff_id: number;
   staff_name: string;
-  staff_email: string;
   clock_in: string;
   clock_out: string | null;
-  total_work_hours: number;
+  total_work_hours: number | null;
   comment: string | null;
-  detailed_times: any;
+  approved_by: number | null;
+  approved_by_name: string | null;
   status: string;
   created_at: string;
+}
+
+interface ActiveAttendance {
+  id: number;
+  staff_id: number;
+  clock_in: string;
 }
 
 export default function AdminAttendancePage() {
   const [adminUser, setAdminUser] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [attendanceData, setAttendanceData] = useState<AttendanceData[]>([]);
-  const [selectedAttendance, setSelectedAttendance] = useState<AttendanceData | null>(null);
-  const [isDetailDialogOpen, setIsDetailDialogOpen] = useState(false);
-  const [isTimeDetailDialogOpen, setIsTimeDetailDialogOpen] = useState(false);
+  const [casts, setCasts] = useState<Cast[]>([]);
+  const [activeAttendances, setActiveAttendances] = useState<Map<number, ActiveAttendance>>(new Map());
+  const [attendanceHistory, setAttendanceHistory] = useState<AttendanceRecord[]>([]);
+  const [selectedCast, setSelectedCast] = useState<Cast | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isUpdating, setIsUpdating] = useState(false);
-  const [lastUpdateTime, setLastUpdateTime] = useState<string>(new Date().toISOString());
-  const [newAttendanceIds, setNewAttendanceIds] = useState<Set<number>>(new Set());
-  
-  const [editForm, setEditForm] = useState({
-    total_work_hours: '',
-    comment: '',
-    status: 'pending'
-  });
+  const [timeValue, setTimeValue] = useState('');
+  const [commentValue, setCommentValue] = useState('');
+  const [showActiveOnly, setShowActiveOnly] = useState(false);
+  const [showInactiveOnly, setShowInactiveOnly] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [currentTime, setCurrentTime] = useState<string>('');
 
   const router = useRouter();
   const { success, error } = useNotificationContext();
@@ -59,94 +70,171 @@ export default function AdminAttendancePage() {
         const parsedAdminAuth = JSON.parse(adminAuth);
         setAdminUser(parsedAdminAuth);
         setIsLoading(false);
-        fetchAttendanceData();
-        // 注文監視と同様に短周期ポーリングで即時反映
-        const interval = setInterval(() => {
-          loadAttendanceSilently();
-        }, 500);
-        return () => clearInterval(interval);
-        return;
+        loadCasts();
+        loadActiveAttendances();
+        loadAttendanceHistory();
       } catch (err) {
         console.error('管理者認証情報の解析に失敗しました:', err);
         localStorage.removeItem('admin_auth');
+        router.push('/login');
       }
+    } else {
+      router.push('/login');
     }
-    
-    // 管理者認証情報がない場合はログインページにリダイレクト
-    router.push('/login');
   }, [router]);
 
-  const fetchAttendanceData = async () => {
+  // 現在時刻をリアルタイムで更新
+  useEffect(() => {
+    const updateCurrentTime = () => {
+      const now = new Date();
+      setCurrentTime(now.toLocaleString('ja-JP', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+      }));
+    };
+
+    updateCurrentTime();
+    const interval = setInterval(updateCurrentTime, 1000);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  const loadCasts = async () => {
     try {
-      const response = await fetch('/api/attendance');
+      const response = await fetch('/api/users?role=cast');
       const result = await response.json();
       if (result.success) {
-        const sorted = [...result.data].sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-        setAttendanceData(sorted as AttendanceData[]);
-        // 最新の作成時刻を追跡
-        const latest = sorted.length > 0 ? sorted[0].created_at : new Date().toISOString();
-        setLastUpdateTime(latest);
+        setCasts(result.data);
       } else {
-        error('エラー', '勤怠データの取得に失敗しました');
+        error('エラー', 'キャストデータの取得に失敗しました');
       }
     } catch (err) {
-      console.error('勤怠データ取得エラー:', err);
-      error('エラー', '勤怠データの取得に失敗しました');
+      console.error('キャストデータ取得エラー:', err);
+      error('エラー', 'キャストデータの取得に失敗しました');
     }
   };
 
-  const loadAttendanceSilently = async () => {
+  const loadActiveAttendances = async () => {
     try {
-      setIsUpdating(true);
       const response = await fetch('/api/attendance');
       const result = await response.json();
       if (result.success) {
-        const sorted = [...result.data].sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-        // 新規追加分を検出（作成時刻で判定）
-        const newOnes = sorted.filter((a: any) => new Date(a.created_at).getTime() > new Date(lastUpdateTime).getTime());
-        if (newOnes.length > 0) {
-          const idSet = new Set<number>(newOnes.map((x: any) => x.id));
-          setNewAttendanceIds(idSet);
-          // 数秒後にハイライト解除
-          setTimeout(() => setNewAttendanceIds(new Set()), 3000);
-        }
-        setAttendanceData(sorted as AttendanceData[]);
-        const latest = sorted.length > 0 ? sorted[0].created_at : lastUpdateTime;
-        setLastUpdateTime(latest);
+        // clock_outがnullの最新レコードを取得
+        const activeMap = new Map<number, ActiveAttendance>();
+        result.data.forEach((record: any) => {
+          if (!record.clock_out) {
+            const existing = activeMap.get(record.staff_id);
+            if (!existing || new Date(record.clock_in) > new Date(existing.clock_in)) {
+              activeMap.set(record.staff_id, {
+                id: record.id,
+                staff_id: record.staff_id,
+                clock_in: record.clock_in
+              });
+            }
+          }
+        });
+        setActiveAttendances(activeMap);
       }
     } catch (err) {
-      // サイレント失敗は握りつぶす
-    } finally {
-      setTimeout(() => setIsUpdating(false), 200);
+      console.error('出勤データ取得エラー:', err);
     }
   };
 
-  const handleViewDetails = (attendance: AttendanceData) => {
-    setSelectedAttendance(attendance);
-    setEditForm({
-      total_work_hours: attendance.total_work_hours?.toString() || '',
-      comment: attendance.comment || '',
-      status: attendance.status
-    });
-    setIsDetailDialogOpen(true);
+  const loadAttendanceHistory = async () => {
+    try {
+      const response = await fetch('/api/attendance');
+      const result = await response.json();
+      if (result.success) {
+        // statusが'saved'のレコードのみを取得（APIからapproved_by_nameも取得済み）
+        const savedRecords = result.data.filter((r: any) => r.status === 'saved');
+
+        // 作成日時で降順ソート
+        savedRecords.sort((a: any, b: any) => 
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        );
+
+        setAttendanceHistory(savedRecords);
+      } else {
+        error('エラー', '勤怠履歴の取得に失敗しました');
+      }
+    } catch (err) {
+      console.error('勤怠履歴取得エラー:', err);
+      error('エラー', '勤怠履歴の取得に失敗しました');
+    }
   };
 
-  const handleViewTimeDetails = (attendance: AttendanceData) => {
-    setSelectedAttendance(attendance);
-    setIsTimeDetailDialogOpen(true);
+  const handleCastClick = (cast: Cast) => {
+    setSelectedCast(cast);
+    setTimeValue(new Date().toISOString().slice(0, 16)); // YYYY-MM-DDTHH:mm形式
+    setCommentValue('');
+    setIsModalOpen(true);
   };
 
-  const handleQuickApprove = async (attendance: AttendanceData) => {
-    if (attendance.status === 'saved') return;
-    
+  const handleClockIn = async () => {
+    if (!selectedCast || !timeValue) {
+      error('エラー', '時間を入力してください');
+      return;
+    }
+
     setIsSubmitting(true);
     try {
-      const response = await fetch(`/api/attendance/${attendance.id}`, {
+      const clockInTime = new Date(timeValue).toISOString();
+      const response = await fetch('/api/attendance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          staff_id: selectedCast.id,
+          clock_in: clockInTime
+        })
+      });
+
+      const result = await response.json();
+      if (result.success) {
+        success('出勤記録完了', `${selectedCast.name}さんの出勤を記録しました`);
+        setIsModalOpen(false);
+        loadActiveAttendances();
+        loadAttendanceHistory();
+      } else {
+        error('エラー', result.error || '出勤記録に失敗しました');
+      }
+    } catch (err) {
+      console.error('出勤記録エラー:', err);
+      error('エラー', '出勤記録に失敗しました');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleClockOut = async () => {
+    if (!selectedCast || !timeValue) {
+      error('エラー', '時間を入力してください');
+      return;
+    }
+
+    const activeAttendance = activeAttendances.get(selectedCast.id);
+    if (!activeAttendance) {
+      error('エラー', '出勤記録が見つかりません');
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const clockOutTime = new Date(timeValue).toISOString();
+      const clockInTime = new Date(activeAttendance.clock_in);
+      const diffMs = new Date(clockOutTime).getTime() - clockInTime.getTime();
+      const diffHours = diffMs / (1000 * 60 * 60);
+
+      const response = await fetch(`/api/attendance/${activeAttendance.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          total_work_hours: attendance.total_work_hours,
-          comment: attendance.comment,
+          clock_out: clockOutTime,
+          total_work_hours: Math.round(diffHours * 100) / 100,
+          comment: commentValue || null,
           status: 'saved',
           approved_by: adminUser.id
         })
@@ -154,56 +242,16 @@ export default function AdminAttendancePage() {
 
       const result = await response.json();
       if (result.success) {
-        success('保存完了', '勤怠データが正常に保存されました');
-        fetchAttendanceData();
+        success('退勤記録完了', `${selectedCast.name}さんの退勤を記録しました`);
+        setIsModalOpen(false);
+        loadActiveAttendances();
+        loadAttendanceHistory();
       } else {
-        error('エラー', result.error || '勤怠データの保存に失敗しました');
+        error('エラー', result.error || '退勤記録に失敗しました');
       }
     } catch (err) {
-      console.error('勤怠データ保存エラー:', err);
-      error('エラー', '勤怠データの保存に失敗しました');
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handleSaveApproval = async () => {
-    if (!selectedAttendance) return;
-
-    const totalHours = parseFloat(editForm.total_work_hours);
-    if (isNaN(totalHours) || totalHours < 0) {
-      error('エラー', '勤務時間は0以上の数値を入力してください');
-      return;
-    }
-
-    setIsSubmitting(true);
-    try {
-      const response = await fetch(`/api/attendance/${selectedAttendance.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          total_work_hours: totalHours,
-          comment: editForm.comment,
-          status: editForm.status === 'approved' ? 'saved' : editForm.status,
-          approved_by: adminUser.id
-        })
-      });
-
-      const result = await response.json();
-      if (result.success) {
-        if (editForm.status === 'approved') {
-          success('保存完了', '勤怠データが正常に保存されました');
-        } else {
-          success('更新完了', '勤怠データが正常に更新されました');
-        }
-        setIsDetailDialogOpen(false);
-        fetchAttendanceData();
-      } else {
-        error('エラー', result.error || '勤怠データの保存に失敗しました');
-      }
-    } catch (err) {
-      console.error('勤怠データ保存エラー:', err);
-      error('エラー', '勤怠データの保存に失敗しました');
+      console.error('退勤記録エラー:', err);
+      error('エラー', '退勤記録に失敗しました');
     } finally {
       setIsSubmitting(false);
     }
@@ -216,55 +264,23 @@ export default function AdminAttendancePage() {
       month: '2-digit',
       day: '2-digit',
       hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit'
+      minute: '2-digit'
     });
   };
 
-  const formatTime = (hours: number) => {
+  const formatTime = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleTimeString('ja-JP', {
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
+  const formatWorkHours = (hours: number | null) => {
+    if (hours === null) return '-';
     const h = Math.floor(hours);
     const m = Math.floor((hours - h) * 60);
     return `${h}時間${m}分`;
-  };
-
-  // 詳細時間記録から総勤務時間を計算
-  const calculateTotalWorkHours = (detailedTimes: any[]) => {
-    if (!detailedTimes || detailedTimes.length === 0) return 0;
-    
-    const totalSeconds = detailedTimes.reduce((sum, record) => {
-      return sum + (record.duration || 0);
-    }, 0);
-    
-    return totalSeconds / 3600; // 秒を時間に変換
-  };
-
-  // 最後の記録の終了時間を取得
-  const getLastRecordEndTime = (detailedTimes: any[]) => {
-    if (!detailedTimes || detailedTimes.length === 0) return null;
-    
-    // 終了時間がある記録の中で最後のものを取得
-    const completedRecords = detailedTimes.filter(record => record.endTime);
-    if (completedRecords.length === 0) return null;
-    
-    // 開始時間でソートして最後の記録を取得
-    const sortedRecords = completedRecords.sort((a, b) => 
-      new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
-    );
-    
-    return sortedRecords[sortedRecords.length - 1].endTime;
-  };
-
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'approved':
-        return <Badge className="bg-green-100 text-green-800">承認済み</Badge>;
-      case 'rejected':
-        return <Badge className="bg-red-100 text-red-800">却下</Badge>;
-      case 'saved':
-        return <Badge className="bg-blue-100 text-blue-800">保存済み</Badge>;
-      default:
-        return <Badge className="bg-yellow-100 text-yellow-800">承認待ち</Badge>;
-    }
   };
 
   if (isLoading) {
@@ -277,7 +293,19 @@ export default function AdminAttendancePage() {
 
   if (!adminUser) return null;
 
-  const pendingCount = attendanceData.filter((a) => String(a.status) === 'pending').length;
+  // フィルタリング適用
+  const filteredCasts = casts.filter(cast => {
+    const isActive = activeAttendances.has(cast.id);
+    if (showActiveOnly && !isActive) return false;
+    if (showInactiveOnly && isActive) return false;
+    return true;
+  });
+
+  // キャストを5列のグリッドに配置
+  const castRows: Cast[][] = [];
+  for (let i = 0; i < filteredCasts.length; i += 5) {
+    castRows.push(filteredCasts.slice(i, i + 5));
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-pink-50 to-blue-50">
@@ -297,425 +325,292 @@ export default function AdminAttendancePage() {
                 <span className="sm:hidden">戻る</span>
               </Button>
               <div className="flex flex-col sm:flex-row sm:items-center space-y-1 sm:space-y-0 sm:space-x-3">
-                <h1 className="text-lg sm:text-xl font-bold text-gray-900">勤怠承認</h1>
-                <p className="text-xs sm:text-sm text-gray-500">キャストの勤怠データ承認</p>
+                <h1 className="text-lg sm:text-xl font-bold text-gray-900">出勤管理</h1>
+                <p className="text-xs sm:text-sm text-gray-500">キャストの出勤・退勤記録</p>
               </div>
-            </div>
-            <div className="flex items-center space-x-4">
-              {pendingCount > 0 && (
-                <div className="relative" title={`承認待ち ${pendingCount}件`}>
-                  <Bell className="w-6 h-6 text-red-500 animate-pulse" />
-                  <div className="absolute -top-2 -right-2 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
-                    {pendingCount}
-                  </div>
-                </div>
-              )}
-              <Button onClick={() => fetchAttendanceData()} variant="outline">
-                <Clock3 className="w-4 h-4 mr-2" />
-                更新
-              </Button>
             </div>
           </div>
         </div>
       </header>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* 説明カード */}
-        <Card className="mb-8">
-          <CardHeader>
-            <CardTitle className="flex items-center text-purple-800">
-              <Clock className="w-5 h-5 mr-2" />
-              勤怠承認管理
-            </CardTitle>
-            <CardDescription>
-              キャストから送信された勤怠データを確認し、承認または却下を行います。
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-              <div className="flex items-center space-x-2">
-                <CheckCircle className="w-4 h-4 text-green-600" />
-                <span>承認済み</span>
-              </div>
-              <div className="flex items-center space-x-2">
-                <XCircle className="w-4 h-4 text-red-600" />
-                <span>却下</span>
-              </div>
-              <div className="flex items-center space-x-2">
-                <Clock className="w-4 h-4 text-yellow-600" />
-                <span>承認待ち</span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+        <Tabs defaultValue="record" className="w-full">
+          <TabsList className="grid w-full grid-cols-2 mb-6">
+            <TabsTrigger value="record">出勤・退勤記録</TabsTrigger>
+            <TabsTrigger value="history">出勤・退勤履歴</TabsTrigger>
+          </TabsList>
 
-        {/* 勤怠データ一覧 */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center justify-between">
-              <span className="flex items-center">
-                <Clock className="w-5 h-5 mr-2" />
-                勤怠データ一覧 {isUpdating && <span className="ml-2 w-2 h-2 bg-blue-500 rounded-full animate-pulse" />}
-              </span>
-              <Badge variant="outline" className="text-sm">
-                {attendanceData.length}件
-              </Badge>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {attendanceData.length === 0 ? (
-              <div className="text-center py-8">
-                <Clock className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                <p className="text-gray-500">勤怠データがありません</p>
-              </div>
-            ) : (
-              <div className="h-[60vh] overflow-y-auto pr-1">
-                <div className="overflow-x-auto">
-                  <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-16 text-center">番号</TableHead>
-                      <TableHead>キャスト名</TableHead>
-                      <TableHead>出勤時間</TableHead>
-                      <TableHead>退勤時間</TableHead>
-                      <TableHead>勤務時間</TableHead>
-                      <TableHead>ステータス</TableHead>
-                      <TableHead className="text-center">操作</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {attendanceData.map((attendance, index) => (
-                      <TableRow key={attendance.id} className={`${newAttendanceIds.has(attendance.id) ? 'bg-blue-50' : ''}`}>
-                        <TableCell className="text-center">
-                          <span className="text-sm font-medium text-gray-600">
-                            {index + 1}
-                          </span>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex flex-col">
-                            <div className="font-medium text-gray-900">{attendance.staff_name}</div>
-                            <div className="text-sm text-gray-500 flex items-center">
-                              <Mail className="w-3 h-3 mr-1" />
-                              {attendance.staff_email}
-                            </div>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center space-x-2">
-                            <Calendar className="w-4 h-4 text-gray-400" />
-                            <span className="text-sm">{formatDateTime(attendance.clock_in)}</span>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          {(() => {
-                            const lastEndTime = getLastRecordEndTime(attendance.detailed_times);
-                            return lastEndTime ? (
+          {/* タブ1: 出勤・退勤記録 */}
+          <TabsContent value="record">
+            <Card>
+              <CardHeader>
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                  <CardTitle className="flex items-center">
+                    <Clock className="w-5 h-5 mr-2" />
+                    キャスト一覧
+                  </CardTitle>
+                  <div className="flex items-center space-x-4 flex-wrap">
+                    <div className="flex items-center space-x-2">
+                      <Checkbox
+                        id="show-active"
+                        checked={showActiveOnly}
+                        onCheckedChange={(checked) => {
+                          setShowActiveOnly(checked as boolean);
+                          if (checked) setShowInactiveOnly(false);
+                        }}
+                      />
+                      <Label htmlFor="show-active" className="text-sm font-normal cursor-pointer whitespace-nowrap">
+                        出勤中のみ
+                      </Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <Checkbox
+                        id="show-inactive"
+                        checked={showInactiveOnly}
+                        onCheckedChange={(checked) => {
+                          setShowInactiveOnly(checked as boolean);
+                          if (checked) setShowActiveOnly(false);
+                        }}
+                      />
+                      <Label htmlFor="show-inactive" className="text-sm font-normal cursor-pointer whitespace-nowrap">
+                        欠勤のみ
+                      </Label>
+                    </div>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                {filteredCasts.length === 0 ? (
+                  <div className="text-center py-8">
+                    <User className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                    <p className="text-gray-500">
+                      {casts.length === 0 
+                        ? 'キャストが登録されていません' 
+                        : '該当するキャストがありません'}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {castRows.map((row, rowIndex) => (
+                      <div key={rowIndex} className="grid grid-cols-5 gap-4">
+                        {row.map((cast) => {
+                          const isActive = activeAttendances.has(cast.id);
+                          const activeAttendance = isActive ? activeAttendances.get(cast.id) : null;
+                          return (
+                            <Button
+                              key={cast.id}
+                              variant={isActive ? "default" : "outline"}
+                              className={`h-24 flex flex-col items-center justify-center ${
+                                isActive 
+                                  ? 'bg-green-600 hover:bg-green-700 text-white' 
+                                  : 'bg-white hover:bg-gray-50'
+                              }`}
+                              onClick={() => handleCastClick(cast)}
+                            >
+                              <div className="font-medium text-sm sm:text-base">{cast.name}</div>
+                              {isActive && activeAttendance && (
+                                <div className="mt-1 flex flex-col items-center">
+                                  <Badge variant="secondary" className="bg-green-100 text-green-800 mb-1">
+                                    出勤中
+                                  </Badge>
+                                  <div className="text-xs opacity-90">
+                                  出勤時間 {formatTime(activeAttendance.clock_in)}
+                                  </div>
+                                </div>
+                              )}
+                            </Button>
+                          );
+                        })}
+                        {/* 空のセルを埋める */}
+                        {Array.from({ length: 5 - row.length }).map((_, idx) => (
+                          <div key={`empty-${idx}`} className="h-24" />
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* タブ2: 出勤・退勤履歴 */}
+          <TabsContent value="history">
+            <Card>
+              <CardHeader>
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                  <CardTitle className="flex items-center">
+                    <Calendar className="w-5 h-5 mr-2" />
+                    出勤・退勤履歴
+                  </CardTitle>
+                  <div className="relative w-full sm:w-64">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <Input
+                      type="text"
+                      placeholder="キャスト名で検索..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="pl-10"
+                    />
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                {(() => {
+                  const filteredHistory = attendanceHistory.filter(record =>
+                    !searchQuery || record.staff_name.toLowerCase().includes(searchQuery.toLowerCase())
+                  );
+                  
+                  return filteredHistory.length === 0 ? (
+                    <div className="text-center py-8">
+                      <Calendar className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                      <p className="text-gray-500">
+                        {searchQuery ? '検索結果がありません' : '履歴がありません'}
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>キャスト名</TableHead>
+                            <TableHead>出勤時間</TableHead>
+                            <TableHead>退勤時間</TableHead>
+                            <TableHead>担当管理者</TableHead>
+                            <TableHead>備考</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {filteredHistory.map((record) => (
+                          <TableRow key={record.id}>
+                            <TableCell className="font-medium">{record.staff_name}</TableCell>
+                            <TableCell>
                               <div className="flex items-center space-x-2">
                                 <Calendar className="w-4 h-4 text-gray-400" />
-                                <span className="text-sm">{formatDateTime(lastEndTime)}</span>
+                                <span>{formatDateTime(record.clock_in)}</span>
                               </div>
-                            ) : (
-                              <span className="text-gray-400 text-sm">-</span>
-                            );
-                          })()}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center space-x-2">
-                            <Timer className="w-4 h-4 text-gray-400" />
-                            <span className="text-sm font-medium">
-                              {(() => {
-                                const calculatedHours = calculateTotalWorkHours(attendance.detailed_times);
-                                return calculatedHours > 0 ? 
-                                  `${Math.floor(calculatedHours)}h ${Math.floor((calculatedHours % 1) * 60)}m ${Math.floor(((calculatedHours % 1) * 60 % 1) * 60)}s` : 
-                                  '未計算';
-                              })()}
-                            </span>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          {getStatusBadge(attendance.status)}
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <div className="flex flex-col space-y-2">
-                            <div className="flex space-x-2">
-                              {/* <Button 
-                                size="sm" 
-                                variant="outline" 
-                                onClick={() => handleViewDetails(attendance)}
-                              >
-                                <Eye className="w-4 h-4 mr-1" />
-                                詳細
-                              </Button> */}
-                              {attendance.detailed_times && attendance.detailed_times.length > 0 && (
-                                <Button 
-                                  size="sm" 
-                                  variant="outline" 
-                                  onClick={() => handleViewTimeDetails(attendance)}
-                                  className="bg-blue-50 hover:bg-blue-100 text-blue-700"
-                                >
-                                  <Clock className="w-4 h-4 mr-1" />
-                                  時間詳細
-                                </Button>
+                            </TableCell>
+                            <TableCell>
+                              {record.clock_out ? (
+                                <div className="flex items-center space-x-2">
+                                  <Calendar className="w-4 h-4 text-gray-400" />
+                                  <span>{formatDateTime(record.clock_out)}</span>
+                                </div>
+                              ) : (
+                                <span className="text-gray-400">-</span>
                               )}
-                              <Button 
-                              size="sm" 
-                              variant={attendance.status === 'saved' ? 'outline' : 'default'}
-                              onClick={() => handleQuickApprove(attendance)}
-                              disabled={attendance.status === 'saved'}
-                              className={attendance.status === 'saved' ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : 'bg-purple-600 hover:bg-purple-700 text-white'}
-                            >
-                              <Save className="w-4 h-4 mr-1" />
-                              {attendance.status === 'saved' ? '保存済み' : '承認・保存'}
-                            </Button>
-                            </div>
-                            
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                  </Table>
-                </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+                            </TableCell>
+                            <TableCell>
+                              {record.approved_by_name || '-'}
+                            </TableCell>
+                            <TableCell>
+                              {record.comment ? (
+                                <div className="flex items-center space-x-2 max-w-xs">
+                                  <MessageSquare className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                                  <span className="text-sm truncate">{record.comment}</span>
+                                </div>
+                              ) : (
+                                <span className="text-gray-400">-</span>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                  );
+                })()}
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
       </div>
 
-      {/* 詳細・承認ダイアログ */}
-      <Dialog open={isDetailDialogOpen} onOpenChange={setIsDetailDialogOpen}>
-        <DialogContent className="sm:max-w-2xl">
+      {/* 出勤/退勤モーダル */}
+      <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
+        <DialogContent>
           <DialogHeader>
             <DialogTitle className="flex items-center">
-              <Eye className="w-5 h-5 mr-2" />
-              勤怠詳細・承認
+              {selectedCast && activeAttendances.has(selectedCast.id) ? (
+                <>
+                  <LogOut className="w-5 h-5 mr-2" />
+                  退勤記録
+                </>
+              ) : (
+                <>
+                  <LogIn className="w-5 h-5 mr-2" />
+                  出勤記録
+                </>
+              )}
             </DialogTitle>
           </DialogHeader>
-          {selectedAttendance && (
-            <div className="space-y-6">
-              {/* キャスト情報 */}
+          {selectedCast && (
+            <div className="space-y-4">
               <div className="bg-gray-50 p-4 rounded-lg">
-                <h3 className="font-semibold mb-2">キャスト情報</h3>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="flex items-center space-x-2">
-                    <User className="w-4 h-4 text-gray-400" />
-                    <span className="text-sm">{selectedAttendance.staff_name}</span>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <Mail className="w-4 h-4 text-gray-400" />
-                    <span className="text-sm">{selectedAttendance.staff_email}</span>
-                  </div>
+                <div className="flex items-center space-x-2">
+                  <User className="w-4 h-4 text-gray-400" />
+                  <span className="font-medium">{selectedCast.name}</span>
                 </div>
               </div>
 
-              {/* 勤務時間情報 */}
-              <div className="space-y-4">
-                <div>
-                  <Label htmlFor="total-hours">勤務時間（時間）</Label>
-                  <Input
-                    id="total-hours"
-                    type="number"
-                    step="0.1"
-                    value={editForm.total_work_hours}
-                    onChange={(e) => setEditForm(prev => ({ ...prev, total_work_hours: e.target.value }))}
-                  />
+              <div>
+                <Label htmlFor="time">時間</Label>
+                <div className="mb-2 text-sm text-gray-600">
+                  現在時刻: {currentTime}
                 </div>
-                
+                <Input
+                  id="time"
+                  type="datetime-local"
+                  value={timeValue}
+                  onChange={(e) => setTimeValue(e.target.value)}
+                  className="mt-1"
+                />
+              </div>
+
+              {activeAttendances.has(selectedCast.id) && (
                 <div>
-                  <Label htmlFor="comment">コメント</Label>
+                  <Label htmlFor="comment">備考（任意）</Label>
                   <Textarea
                     id="comment"
-                    value={editForm.comment}
-                    onChange={(e) => setEditForm(prev => ({ ...prev, comment: e.target.value }))}
+                    value={commentValue}
+                    onChange={(e) => setCommentValue(e.target.value)}
                     rows={3}
+                    className="mt-1"
+                    placeholder="備考を入力してください"
                   />
                 </div>
-
-                <div>
-                  <Label htmlFor="status">ステータス</Label>
-                  <select
-                    id="status"
-                    value={editForm.status}
-                    onChange={(e) => setEditForm(prev => ({ ...prev, status: e.target.value }))}
-                    className="w-full p-2 border border-gray-300 rounded-md"
-                  >
-                    <option value="pending">承認待ち</option>
-                    <option value="approved">承認</option>
-                    <option value="rejected">却下</option>
-                    <option value="saved">保存済み</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* 詳細時間記録 */}
-              {selectedAttendance.detailed_times && (
-                <div>
-                  <h3 className="font-semibold mb-3 flex items-center">
-                    <Clock3 className="w-4 h-4 mr-2" />
-                    詳細時間記録
-                  </h3>
-                  <div className="space-y-2 max-h-40 overflow-y-auto">
-                    {selectedAttendance.detailed_times.map((record: any, index: number) => (
-                      <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border">
-                        <div className="flex-1">
-                          <div className="text-sm font-medium text-gray-900">
-                            {formatDateTime(record.startTime)}
-                          </div>
-                          {record.endTime && (
-                            <div className="text-xs text-gray-500 mt-1">
-                              ～ {formatDateTime(record.endTime)}
-                            </div>
-                          )}
-                          {!record.endTime && (
-                            <div className="text-xs text-green-600 font-medium mt-1">
-                              進行中
-                            </div>
-                          )}
-                        </div>
-                        <div className="text-sm font-bold text-blue-600 ml-4">
-                          {Math.floor(record.duration / 3600)}時間{Math.floor((record.duration % 3600) / 60)}分{record.duration % 60}秒
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
               )}
 
-              <div className="flex justify-end space-x-2">
-                <Button variant="outline" onClick={() => setIsDetailDialogOpen(false)}>
+              <DialogFooter>
+                <Button
+                  variant="outline"
+                  onClick={() => setIsModalOpen(false)}
+                  disabled={isSubmitting}
+                >
                   キャンセル
                 </Button>
-                <Button 
-                  onClick={handleSaveApproval} 
-                  disabled={isSubmitting || editForm.status === 'saved'}
-                  className={editForm.status === 'saved' ? 'bg-gray-400 cursor-not-allowed' : 'bg-purple-600 hover:bg-purple-700'}
+                <Button
+                  onClick={activeAttendances.has(selectedCast.id) ? handleClockOut : handleClockIn}
+                  disabled={isSubmitting}
+                  className={activeAttendances.has(selectedCast.id) 
+                    ? 'bg-orange-600 hover:bg-orange-700' 
+                    : 'bg-green-600 hover:bg-green-700'
+                  }
                 >
-                  <Save className="w-4 h-4 mr-2" />
-                  {isSubmitting ? '保存中...' : (editForm.status === 'saved' ? '保存済み' : '承認・保存')}
+                  {isSubmitting ? (
+                    '処理中...'
+                  ) : activeAttendances.has(selectedCast.id) ? (
+                    <>
+                      <LogOut className="w-4 h-4 mr-2" />
+                      退勤
+                    </>
+                  ) : (
+                    <>
+                      <LogIn className="w-4 h-4 mr-2" />
+                      出勤
+                    </>
+                  )}
                 </Button>
-              </div>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
-
-      {/* 詳細時間表示ダイアログ */}
-      <Dialog open={isTimeDetailDialogOpen} onOpenChange={setIsTimeDetailDialogOpen}>
-        <DialogContent className="sm:max-w-4xl">
-          <DialogHeader>
-            <DialogTitle className="flex items-center">
-              <Clock className="w-5 h-5 mr-2" />
-              詳細時間記録
-            </DialogTitle>
-          </DialogHeader>
-          {selectedAttendance && (
-            <div className="space-y-6">
-              {/* キャスト情報 */}
-              <div className="bg-gray-50 p-4 rounded-lg">
-                <h3 className="font-semibold mb-2 flex items-center">
-                  <User className="w-4 h-4 mr-2" />
-                  キャスト情報
-                </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="flex items-center space-x-2">
-                    <User className="w-4 h-4 text-gray-400" />
-                    <span className="text-sm font-medium">{selectedAttendance.staff_name}</span>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <Mail className="w-4 h-4 text-gray-400" />
-                    <span className="text-sm text-gray-600">{selectedAttendance.staff_email}</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* 勤務時間サマリー */}
-              <div className="bg-blue-50 p-4 rounded-lg">
-                <h3 className="font-semibold mb-2 flex items-center">
-                  <Timer className="w-4 h-4 mr-2" />
-                  勤務時間サマリー
-                </h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="text-center">
-                    <div className="text-2xl font-bold text-blue-600">
-                      {(() => {
-                        const calculatedHours = calculateTotalWorkHours(selectedAttendance.detailed_times);
-                        return calculatedHours > 0 ? 
-                          `${Math.floor(calculatedHours)}時間${Math.floor((calculatedHours % 1) * 60)}分${Math.floor(((calculatedHours % 1) * 60 % 1) * 60)}秒` : 
-                          '未計算';
-                      })()}
-                    </div>
-                    <div className="text-sm text-gray-600">総勤務時間</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-lg font-medium text-gray-800">
-                      {formatDateTime(selectedAttendance.clock_in)}
-                    </div>
-                    <div className="text-sm text-gray-600">出勤時間</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-lg font-medium text-gray-800">
-                      {(() => {
-                        const lastEndTime = getLastRecordEndTime(selectedAttendance.detailed_times);
-                        return lastEndTime ? formatDateTime(lastEndTime) : '未退勤';
-                      })()}
-                    </div>
-                    <div className="text-sm text-gray-600">退勤時間</div>
-                  </div>
-                </div>
-              </div>
-
-              {/* 詳細時間記録 */}
-              {selectedAttendance.detailed_times && selectedAttendance.detailed_times.length > 0 && (
-                <div>
-                  <h3 className="font-semibold mb-3 flex items-center">
-                    <Clock className="w-4 h-4 mr-2" />
-                    詳細時間記録
-                  </h3>
-                  <div className="space-y-3 max-h-96 overflow-y-auto">
-                    {selectedAttendance.detailed_times.map((record: any, index: number) => (
-                      <div key={index} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border">
-                        <div className="flex-1">
-                          <div className="text-sm font-medium text-gray-900">
-                            {formatDateTime(record.startTime)}
-                          </div>
-                          {record.endTime && (
-                            <div className="text-xs text-gray-500 mt-1">
-                              ～ {formatDateTime(record.endTime)}
-                            </div>
-                          )}
-                          {!record.endTime && (
-                            <div className="text-xs text-green-600 font-medium mt-1">
-                              進行中
-                            </div>
-                          )}
-                        </div>
-                        <div className="text-sm font-bold text-blue-600 ml-4">
-                          {Math.floor(record.duration / 3600)}時間{Math.floor((record.duration % 3600) / 60)}分{record.duration % 60}秒
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* コメント */}
-              {selectedAttendance.comment && (
-                <div>
-                  <h3 className="font-semibold mb-2 flex items-center">
-                    <MessageSquare className="w-4 h-4 mr-2" />
-                    コメント
-                  </h3>
-                  <div className="p-3 bg-gray-50 rounded-lg">
-                    <p className="text-sm text-gray-700">{selectedAttendance.comment}</p>
-                  </div>
-                </div>
-              )}
-
-              <div className="flex justify-end">
-                <Button variant="outline" onClick={() => setIsTimeDetailDialogOpen(false)}>
-                  閉じる
-                </Button>
-              </div>
+              </DialogFooter>
             </div>
           )}
         </DialogContent>
