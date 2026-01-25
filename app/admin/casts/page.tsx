@@ -213,7 +213,7 @@ export default function CastsPage() {
       if (result.success) {
         success('追加完了', 'スタッフが正常に追加されました');
         setIsAddDialogOpen(false);
-        setAddForm({ name: '', mail: '', password: '', other: '' });
+        setAddForm({ name: '', mail: '', password: '', other: '', gender: '' });
         fetchCasts();
       } else {
         error('エラー', result.error || 'スタッフの追加に失敗しました');
