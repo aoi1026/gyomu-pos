@@ -11,8 +11,13 @@ export const runtime = 'nodejs';
 export async function GET() {
   const client = await pool.connect();
   try {
+    // genderカラムが存在するか確認し、存在しない場合は追加
+    await client.query(`
+      ALTER TABLE "user" ADD COLUMN IF NOT EXISTS gender VARCHAR(10)
+    `);
+
     const result = await client.query(
-      `SELECT id, name, mail, other, created_at
+      `SELECT id, name, mail, other, gender, created_at
        FROM "user"
        WHERE role = $1
        ORDER BY id ASC`,
@@ -42,6 +47,7 @@ export async function POST(request: NextRequest) {
     const mail = body?.mail ?? body?.email; // 互換: emailでも受ける
     const password = body?.password;
     const other = body?.other ?? '';
+    const gender = body?.gender;
 
     if (!name || !mail || !password) {
       return NextResponse.json(
@@ -54,9 +60,14 @@ export async function POST(request: NextRequest) {
     try {
       const hashedPassword = hashPassword(password);
 
+      // genderカラムが存在するか確認し、存在しない場合は追加
+      await client.query(`
+        ALTER TABLE "user" ADD COLUMN IF NOT EXISTS gender VARCHAR(10)
+      `);
+
       const result = await client.query(
-        'INSERT INTO "user" (name, mail, password, other, role) VALUES ($1, $2, $3, $4, $5) RETURNING id, name, mail, other, created_at',
-        [name, mail, hashedPassword, other, 'admin']
+        'INSERT INTO "user" (name, mail, password, other, gender, role) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, name, mail, other, gender, created_at',
+        [name, mail, hashedPassword, other, gender || null, 'admin']
       );
 
       return NextResponse.json({

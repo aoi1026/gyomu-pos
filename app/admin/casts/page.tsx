@@ -11,6 +11,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { 
   ArrowLeft, Users, Plus, Edit, Trash2, Save, X, 
   UserPlus, Mail, Calendar, FileText
@@ -22,6 +23,7 @@ interface CastData {
   name: string;
   mail: string;
   other: string | null;
+  gender: string | null;
   created_at: string;
 }
 
@@ -30,6 +32,7 @@ interface AdminData {
   name: string;
   mail: string;
   other: string | null;
+  gender: string | null;
   created_at: string;
 }
 
@@ -50,14 +53,16 @@ export default function CastsPage() {
     name: '',
     mail: '',
     password: '',
-    other: ''
+    other: '',
+    gender: ''
   });
   
   const [editForm, setEditForm] = useState({
     name: '',
     mail: '',
     password: '',
-    other: ''
+    other: '',
+    gender: ''
   });
 
   const [admins, setAdmins] = useState<AdminData[]>([]);
@@ -71,14 +76,16 @@ export default function CastsPage() {
     name: '',
     mail: '',
     password: '',
-    other: ''
+    other: '',
+    gender: ''
   });
 
   const [editAdminForm, setEditAdminForm] = useState({
     name: '',
     mail: '',
     password: '',
-    other: ''
+    other: '',
+    gender: ''
   });
 
   const router = useRouter();
@@ -137,7 +144,7 @@ export default function CastsPage() {
   };
 
   const handleAdd = () => {
-    setAddForm({ name: '', mail: '', password: '', other: '' });
+    setAddForm({ name: '', mail: '', password: '', other: '', gender: '' });
     setIsAddDialogOpen(true);
   };
 
@@ -147,7 +154,8 @@ export default function CastsPage() {
       name: cast.name,
       mail: cast.mail,
       password: '', // パスワードは空で開始
-      other: cast.other || ''
+      other: cast.other || '',
+      gender: cast.gender || ''
     });
     setIsEditDialogOpen(true);
   };
@@ -158,7 +166,7 @@ export default function CastsPage() {
   };
 
   const handleAddAdmin = () => {
-    setAddAdminForm({ name: '', mail: '', password: '', other: '' });
+    setAddAdminForm({ name: '', mail: '', password: '', other: '', gender: '' });
     setIsAddAdminDialogOpen(true);
   };
 
@@ -168,7 +176,8 @@ export default function CastsPage() {
       name: admin.name,
       mail: admin.mail,
       password: '',
-      other: admin.other || ''
+      other: admin.other || '',
+      gender: admin.gender || ''
     });
     setIsEditAdminDialogOpen(true);
   };
@@ -294,7 +303,7 @@ export default function CastsPage() {
       if (result.success) {
         success('登録完了', '管理者が正常に登録されました');
         setIsAddAdminDialogOpen(false);
-        setAddAdminForm({ name: '', mail: '', password: '', other: '' });
+        setAddAdminForm({ name: '', mail: '', password: '', other: '', gender: '' });
         fetchAdmins();
       } else {
         error('エラー', result.error || '管理者の登録に失敗しました');
@@ -494,6 +503,7 @@ export default function CastsPage() {
                           <TableHead>ID</TableHead>
                           <TableHead>スタッフ名</TableHead>
                           <TableHead>メールアドレス</TableHead>
+                          <TableHead>性別</TableHead>
                           <TableHead>備考</TableHead>
                           <TableHead>登録日時</TableHead>
                           <TableHead className="text-center">操作</TableHead>
@@ -520,10 +530,25 @@ export default function CastsPage() {
                               </div>
                             </TableCell>
                             <TableCell>
-                              {cast.other ? (
+                              {cast.gender ? (
+                                <Badge variant="secondary" className={
+                                  cast.gender === 'male' ? 'bg-blue-100 text-blue-800' :
+                                  cast.gender === 'female' ? 'bg-pink-100 text-pink-800' :
+                                  'bg-gray-100 text-gray-800'
+                                }>
+                                  {cast.gender === 'male' ? '男性' :
+                                   cast.gender === 'female' ? '女性' :
+                                   cast.gender === 'other' ? 'その他' : cast.gender}
+                                </Badge>
+                              ) : (
+                                <span className="text-gray-400 text-sm">-</span>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              {cast.other && String(cast.other).trim() ? (
                                 <div className="flex items-center space-x-2">
                                   <FileText className="w-4 h-4 text-gray-400" />
-                                  <span className="text-sm">{cast.other}</span>
+                                  <span className="text-sm">{String(cast.other)}</span>
                                 </div>
                               ) : (
                                 <span className="text-gray-400 text-sm">-</span>
@@ -594,6 +619,7 @@ export default function CastsPage() {
                             <TableHead>番号</TableHead>
                             <TableHead>管理者名</TableHead>
                             <TableHead>管理者メール</TableHead>
+                            <TableHead>性別</TableHead>
                             <TableHead>備考</TableHead>
                             <TableHead className="text-center">操作</TableHead>
                           </TableRow>
@@ -610,10 +636,25 @@ export default function CastsPage() {
                                 </div>
                               </TableCell>
                               <TableCell>
-                                {admin.other ? (
+                                {admin.gender ? (
+                                  <Badge variant="secondary" className={
+                                    admin.gender === 'male' ? 'bg-blue-100 text-blue-800' :
+                                    admin.gender === 'female' ? 'bg-pink-100 text-pink-800' :
+                                    'bg-gray-100 text-gray-800'
+                                  }>
+                                    {admin.gender === 'male' ? '男性' :
+                                     admin.gender === 'female' ? '女性' :
+                                     admin.gender === 'other' ? 'その他' : admin.gender}
+                                  </Badge>
+                                ) : (
+                                  <span className="text-gray-400 text-sm">-</span>
+                                )}
+                              </TableCell>
+                              <TableCell>
+                                {admin.other && String(admin.other).trim() ? (
                                   <div className="flex items-center space-x-2">
                                     <FileText className="w-4 h-4 text-gray-400" />
-                                    <span className="text-sm">{admin.other}</span>
+                                    <span className="text-sm">{String(admin.other)}</span>
                                   </div>
                                 ) : (
                                   <span className="text-gray-400 text-sm">-</span>
@@ -689,6 +730,22 @@ export default function CastsPage() {
               />
             </div>
             <div className="space-y-2">
+              <Label htmlFor="add-gender">性別</Label>
+              <Select
+                value={addForm.gender}
+                onValueChange={(value) => setAddForm(prev => ({ ...prev, gender: value }))}
+              >
+                <SelectTrigger id="add-gender">
+                  <SelectValue placeholder="性別を選択（任意）" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="male">男性</SelectItem>
+                  <SelectItem value="female">女性</SelectItem>
+                  <SelectItem value="other">その他</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
               <Label htmlFor="add-other">備考</Label>
               <Input
                 id="add-other"
@@ -750,6 +807,22 @@ export default function CastsPage() {
                 placeholder="新しいパスワード（変更する場合のみ）"
               />
               <p className="text-xs text-gray-500">空の場合は現在のパスワードを維持します</p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-gender">性別</Label>
+              <Select
+                value={editForm.gender}
+                onValueChange={(value) => setEditForm(prev => ({ ...prev, gender: value }))}
+              >
+                <SelectTrigger id="edit-gender">
+                  <SelectValue placeholder="性別を選択（任意）" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="male">男性</SelectItem>
+                  <SelectItem value="female">女性</SelectItem>
+                  <SelectItem value="other">その他</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-2">
               <Label htmlFor="edit-other">備考</Label>
@@ -836,6 +909,22 @@ export default function CastsPage() {
               />
             </div>
             <div className="space-y-2">
+              <Label htmlFor="add-admin-gender">性別</Label>
+              <Select
+                value={addAdminForm.gender}
+                onValueChange={(value) => setAddAdminForm(prev => ({ ...prev, gender: value }))}
+              >
+                <SelectTrigger id="add-admin-gender">
+                  <SelectValue placeholder="性別を選択（任意）" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="male">男性</SelectItem>
+                  <SelectItem value="female">女性</SelectItem>
+                  <SelectItem value="other">その他</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
               <Label htmlFor="add-admin-other">備考</Label>
               <Input
                 id="add-admin-other"
@@ -897,6 +986,22 @@ export default function CastsPage() {
                 placeholder="新しいパスワード（変更する場合のみ）"
               />
               <p className="text-xs text-gray-500">空の場合は現在のパスワードを維持します</p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-admin-gender">性別</Label>
+              <Select
+                value={editAdminForm.gender}
+                onValueChange={(value) => setEditAdminForm(prev => ({ ...prev, gender: value }))}
+              >
+                <SelectTrigger id="edit-admin-gender">
+                  <SelectValue placeholder="性別を選択（任意）" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="male">男性</SelectItem>
+                  <SelectItem value="female">女性</SelectItem>
+                  <SelectItem value="other">その他</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-2">
               <Label htmlFor="edit-admin-other">備考</Label>

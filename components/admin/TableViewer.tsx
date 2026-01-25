@@ -112,6 +112,7 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
   const [isPaymentCompleted, setIsPaymentCompleted] = useState<boolean>(false);
   const [paidAmount, setPaidAmount] = useState<number>(0);
   const [isSuperAdmin, setIsSuperAdmin] = useState<boolean>(false);
+  const [isProcessingStoreCreditCardPayment, setIsProcessingStoreCreditCardPayment] = useState<boolean>(false);
 
   const tryAutoPrintReceipts = async () => {
     // Only auto-print when a printer is already connected from the dashboard button.
@@ -1291,11 +1292,15 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
   };
 
   const handleStoreCreditCardPaymentConfirm = async () => {
+    if (isProcessingStoreCreditCardPayment) return;
+    
     const amount = parseFloat(storeCreditCardPaymentAmount);
     if (isNaN(amount) || amount <= 0 || !session) return;
 
     const totalAmount = calculateTotal();
     if (amount < totalAmount) return;
+    
+    setIsProcessingStoreCreditCardPayment(true);
     
     try {
       // セッションの現在のcostを取得
@@ -1341,6 +1346,9 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
       await tryAutoPrintReceipts();
     } catch (err) {
       console.error('店舗用クレジットカード決済エラー:', err);
+      error('エラー', '決済処理中にエラーが発生しました');
+    } finally {
+      setIsProcessingStoreCreditCardPayment(false);
     }
   };
 
@@ -2551,11 +2559,20 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
               </Button>
               <Button
                 onClick={handleStoreCreditCardPaymentConfirm}
-                disabled={!storeCreditCardPaymentAmount || parseFloat(storeCreditCardPaymentAmount) < calculateTotal()}
+                disabled={isProcessingStoreCreditCardPayment || !storeCreditCardPaymentAmount || parseFloat(storeCreditCardPaymentAmount) < calculateTotal()}
                 className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
               >
-                <CheckCircle className="w-4 h-4 mr-2" />
-                確認
+                {isProcessingStoreCreditCardPayment ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                    処理中...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle className="w-4 h-4 mr-2" />
+                    確認
+                  </>
+                )}
               </Button>
             </div>
           </div>

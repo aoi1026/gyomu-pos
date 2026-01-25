@@ -7,12 +7,17 @@ import { hashPassword } from '@/lib/hash';
 export async function GET(request: NextRequest) {
   const client = await pool.connect();
   try {
+    // genderカラムが存在するか確認し、存在しない場合は追加
+    await client.query(`
+      ALTER TABLE "user" ADD COLUMN IF NOT EXISTS gender VARCHAR(10)
+    `);
+
     // クエリパラメータで出勤中のキャストのみをフィルタリングするかどうかを確認
     const { searchParams } = new URL(request.url);
     const onlyActive = searchParams.get('only_active') === 'true';
     
     let query = `
-      SELECT id, name, mail, other, created_at, attendance_status
+      SELECT id, name, mail, other, gender, created_at, attendance_status
       FROM "user"
       WHERE role = 'cast'
     `;
@@ -42,7 +47,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const { name, mail, password, other } = await request.json();
+    const { name, mail, password, other, gender } = await request.json();
 
     if (!name || !mail || !password) {
       return NextResponse.json(
@@ -55,9 +60,14 @@ export async function POST(request: NextRequest) {
     try {
       const hashedPassword = hashPassword(password);
 
+      // genderカラムが存在するか確認し、存在しない場合は追加
+      await client.query(`
+        ALTER TABLE "user" ADD COLUMN IF NOT EXISTS gender VARCHAR(10)
+      `);
+
       const result = await client.query(
-        'INSERT INTO "user" (name, mail, password, other, role) VALUES ($1, $2, $3, $4, $5) RETURNING id, name, mail, other, created_at',
-        [name, mail, hashedPassword, other || '', 'cast']
+        'INSERT INTO "user" (name, mail, password, other, gender, role) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, name, mail, other, gender, created_at',
+        [name, mail, hashedPassword, other || '', gender || null, 'cast']
       );
 
       return NextResponse.json({

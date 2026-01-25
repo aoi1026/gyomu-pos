@@ -52,7 +52,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
 
 export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const { name, mail, password, other } = await request.json();
+    const { name, mail, password, other, gender } = await request.json();
     const castId = params.id;
 
     if (!name || !mail) {
@@ -65,6 +65,11 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     const client = await pool.connect();
     
     try {
+      // genderカラムが存在するか確認し、存在しない場合は追加
+      await client.query(`
+        ALTER TABLE "user" ADD COLUMN IF NOT EXISTS gender VARCHAR(10)
+      `);
+
       let query, values;
       
       if (password) {
@@ -72,12 +77,12 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
         const { hashPassword } = await import('@/lib/hash');
         const hashedPassword = hashPassword(password);
         
-        query = 'UPDATE "user" SET name = $1, mail = $2, password = $3, other = $4, updated_at = CURRENT_TIMESTAMP WHERE id = $5 AND role = $6 RETURNING id, name, mail, other, created_at';
-        values = [name, mail, hashedPassword, other || '', castId, 'cast'];
+        query = 'UPDATE "user" SET name = $1, mail = $2, password = $3, other = $4, gender = $5, updated_at = CURRENT_TIMESTAMP WHERE id = $6 AND role = $7 RETURNING id, name, mail, other, gender, created_at';
+        values = [name, mail, hashedPassword, other || '', gender || null, castId, 'cast'];
       } else {
         // パスワードは更新しない場合
-        query = 'UPDATE "user" SET name = $1, mail = $2, other = $3, updated_at = CURRENT_TIMESTAMP WHERE id = $4 AND role = $5 RETURNING id, name, mail, other, created_at';
-        values = [name, mail, other || '', castId, 'cast'];
+        query = 'UPDATE "user" SET name = $1, mail = $2, other = $3, gender = $4, updated_at = CURRENT_TIMESTAMP WHERE id = $5 AND role = $6 RETURNING id, name, mail, other, gender, created_at';
+        values = [name, mail, other || '', gender || null, castId, 'cast'];
       }
 
       const result = await client.query(query, values);

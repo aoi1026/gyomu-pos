@@ -17,6 +17,7 @@ import {
   Users, ShoppingCart, DollarSign, Calendar,
   Download, RefreshCw, Filter, FileSpreadsheet, FileText
 } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   formatCurrency, formatDate,
   formatNumber
@@ -40,6 +41,14 @@ export default function DailySalesPage() {
 	const [productSales, setProductSales] = useState<any[]>([]);
   const [hourlySales, setHourlySales] = useState<any[]>([]);
   const [deducts, setDeducts] = useState<any[]>([]);
+  const [additionalStats, setAdditionalStats] = useState<any>({
+    card_payments: 0,
+    cash_payments: 0,
+    cast_count: 0,
+    male_attendance_count: 0,
+    female_attendance_count: 0,
+    monthly_gross_profit: 0
+  });
   const [isDeductLoading, setIsDeductLoading] = useState(false);
   const [isAddDeductOpen, setIsAddDeductOpen] = useState(false);
   const [deductForm, setDeductForm] = useState<{ date: string; value: string; reason: string; other: string }>({
@@ -125,7 +134,12 @@ export default function DailySalesPage() {
       const res = await fetch(`/api/admin/sales/daily?date=${date}`);
       const result = await res.json();
       if (result.success) {
-				const { total_sales, order_count, visitor_count, avg_cost, sessions_total_cost, table_sales, cast_sales, product_sales, hourly_sales } = result.data;
+				const { 
+          total_sales, order_count, visitor_count, avg_cost, sessions_total_cost, 
+          total_payments, card_payments, cash_payments, cast_count,
+          male_attendance_count, female_attendance_count, monthly_gross_profit,
+          table_sales, cast_sales, product_sales, hourly_sales 
+        } = result.data;
         setSalesData({
           subtotal_yen: 0,
           service_charge_yen: 0,
@@ -135,7 +149,16 @@ export default function DailySalesPage() {
           order_count: order_count,
           customer_count: visitor_count,
           avg_cost: avg_cost,
-          sessions_total_cost: sessions_total_cost
+          sessions_total_cost: sessions_total_cost,
+          total_payments: total_payments || 0
+        });
+        setAdditionalStats({
+          card_payments: card_payments || 0,
+          cash_payments: cash_payments || 0,
+          cast_count: cast_count || 0,
+          male_attendance_count: male_attendance_count || 0,
+          female_attendance_count: female_attendance_count || 0,
+          monthly_gross_profit: monthly_gross_profit || 0
         });
         setTableSales(table_sales || []);
         setCastSales(cast_sales || []);
@@ -568,63 +591,255 @@ export default function DailySalesPage() {
             </Card>
           </div>
 
-		  <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-			  {/* 製品別売上 */}
-            <Card className="flex flex-col">
-              <CardHeader>
-                <CardTitle>製品別売上</CardTitle>
-              </CardHeader>
-			  <CardContent className="flex-1 overflow-hidden">
-				  <div className="space-y-3 max-h-96 overflow-y-auto">
-					  {productSales.map((row: any) => (
-						  <div key={row.product_id} className="flex justify-between items-center">
-							  <span className="text-gray-700">{row.product_name}</span>
-							  <span className="font-medium">{formatNumber(Math.round(Number(row.quantity) || 0))}件</span>
-						  </div>
-					  ))}
-				  </div>
-			  </CardContent>
-            </Card>
-
-            {/* キャスト別売上 */}
-            <Card className="flex flex-col">
-              <CardHeader>
-                <CardTitle>キャスト別売上</CardTitle>
-              </CardHeader>
-              <CardContent className="flex-1 overflow-hidden">
-                <div className="space-y-3 max-h-96 overflow-y-auto">
-                  {castSales.map((cast: any) => (
-                    <div key={cast.cast_id} className="flex justify-between items-center">
-                      <span className="text-gray-700">{cast.cast_name}</span>
-                      <span className="font-medium">{formatCurrency(cast.total_sales)}</span>
+          {/* 左側統計情報と右側タブ表示 */}
+          <div className="grid grid-cols-1 lg:grid-cols-4 gap-8 mb-8">
+            {/* 左側: 統計情報リスト（1/4幅） */}
+            <div className="lg:col-span-1">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">統計情報</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    <div>
+                      <div className="text-sm text-gray-500 mb-1">総額</div>
+                      <div className="text-lg font-bold">{formatCurrency(salesData?.sessions_total_cost || 0)}</div>
                     </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-            {/* テーブル別売上 */}
-            <Card className="flex flex-col">
-              <CardHeader>
-                <CardTitle>テーブル別売上</CardTitle>
-              </CardHeader>
-              <CardContent className="flex-1 overflow-hidden">
-                <div className="space-y-3 max-h-96 overflow-y-auto">
-                  {tableSales.map((row: any) => (
-                    <div key={row.table_id} className="flex justify-between items-center">
-                      <div className="flex items-center space-x-3">
-                        <span className="text-gray-700">{row.table_name}</span>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => router.push(`/admin/sales/daily/table/${row.table_id}?date=${encodeURIComponent(selectedDate)}`)}
-                        >
-                          詳細表示
+                    <div>
+                      <div className="text-sm text-gray-500 mb-1">製品売上高</div>
+                      <div className="text-lg font-bold">{formatCurrency(salesData?.total_yen || 0)}</div>
+                    </div>
+                    <div>
+                      <div className="text-sm text-gray-500 mb-1">カード売上</div>
+                      <div className="text-lg font-bold">{formatCurrency(additionalStats.card_payments || 0)}</div>
+                    </div>
+                    <div>
+                      <div className="text-sm text-gray-500 mb-1">現金売上</div>
+                      <div className="text-lg font-bold">{formatCurrency(additionalStats.cash_payments || 0)}</div>
+                    </div>
+                    <div>
+                      <div className="text-sm text-gray-500 mb-1">キャスト人数</div>
+                      <div className="text-lg font-bold">{formatNumber(additionalStats.cast_count || 0)}名</div>
+                    </div>
+                    <div>
+                      <div className="text-sm text-gray-500 mb-1">勤務人員数(男性)</div>
+                      <div className="text-lg font-bold">{formatNumber(additionalStats.male_attendance_count || 0)}名</div>
+                    </div>
+                    <div>
+                      <div className="text-sm text-gray-500 mb-1">勤務人員数(女性)</div>
+                      <div className="text-lg font-bold">{formatNumber(additionalStats.female_attendance_count || 0)}名</div>
+                    </div>
+                    <div>
+                      <div className="text-sm text-gray-500 mb-1">出金合計</div>
+                      <div className="text-lg font-bold">{formatCurrency(totalDeduct)}</div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* 右側: タブ表示（3/4幅） */}
+            <div className="lg:col-span-3">
+              <Tabs defaultValue="deducts" className="w-full">
+                <TabsList className="grid w-full grid-cols-5">
+                  <TabsTrigger value="deducts">経費金額一覧</TabsTrigger>
+                  <TabsTrigger value="products">製品別売上</TabsTrigger>
+                  <TabsTrigger value="casts">キャスト別売上</TabsTrigger>
+                  <TabsTrigger value="tables">テーブル別売上</TabsTrigger>
+                  <TabsTrigger value="hourly">時間別売上</TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="deducts" className="mt-4">
+                  <Card>
+                    <CardHeader>
+                      <div className="flex items-center justify-between">
+                        <CardTitle>経費金額一覧</CardTitle>
+                        <Button size="sm" onClick={openAddDeduct}>
+                          経費追加
                         </Button>
                       </div>
-                      <span className="font-medium">{formatCurrency(row.total_sales)}</span>
-                    </div>
-                  ))}
+                    </CardHeader>
+                    <CardContent>
+                      {isDeductLoading ? (
+                        <div className="text-sm text-gray-500">読み込み中...</div>
+                      ) : deducts.length === 0 ? (
+                        <div className="text-sm text-gray-500">この日の経費はありません</div>
+                      ) : (
+                        <div className="overflow-x-auto">
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead className="w-32">日付</TableHead>
+                                <TableHead className="text-right w-32">金額</TableHead>
+                                <TableHead>理由</TableHead>
+                                <TableHead>備考</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {deducts.map((d: any) => (
+                                <TableRow key={d.id}>
+                                  <TableCell>{String(d.date ?? '')}</TableCell>
+                                  <TableCell className="text-right font-medium">{formatCurrency(Number(d.value) || 0)}</TableCell>
+                                  <TableCell className="whitespace-pre-wrap">{d.reason || '-'}</TableCell>
+                                  <TableCell className="whitespace-pre-wrap">{d.other || '-'}</TableCell>
+                                </TableRow>
+                              ))}
+                              <TableRow>
+                                <TableCell className="font-semibold">合計</TableCell>
+                                <TableCell className="text-right font-bold">{formatCurrency(totalDeduct)}</TableCell>
+                                <TableCell />
+                                <TableCell />
+                              </TableRow>
+                            </TableBody>
+                          </Table>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+
+                <TabsContent value="products" className="mt-4">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>製品別売上</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-3 max-h-96 overflow-y-auto">
+                        {productSales.length === 0 ? (
+                          <div className="text-sm text-gray-500">データがありません</div>
+                        ) : (
+                          productSales.map((row: any) => (
+                            <div key={row.product_id} className="flex justify-between items-center">
+                              <span className="text-gray-700">{row.product_name}</span>
+                              <span className="font-medium">{formatCurrency(row.total_sales)} ({formatNumber(Math.round(Number(row.quantity) || 0))}件)</span>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+
+                <TabsContent value="casts" className="mt-4">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>キャスト別売上</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-3 max-h-96 overflow-y-auto">
+                        {castSales.length === 0 ? (
+                          <div className="text-sm text-gray-500">データがありません</div>
+                        ) : (
+                          castSales.map((cast: any) => (
+                            <div key={cast.cast_id} className="flex justify-between items-center">
+                              <span className="text-gray-700">{cast.cast_name}</span>
+                              <span className="font-medium">{formatCurrency(cast.total_sales)}</span>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+
+                <TabsContent value="tables" className="mt-4">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>テーブル別売上</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-3 max-h-96 overflow-y-auto">
+                        {tableSales.length === 0 ? (
+                          <div className="text-sm text-gray-500">データがありません</div>
+                        ) : (
+                          tableSales.map((row: any) => (
+                            <div key={row.table_id} className="flex justify-between items-center">
+                              <div className="flex items-center space-x-3">
+                                <span className="text-gray-700">{row.table_name}</span>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => router.push(`/admin/sales/daily/table/${row.table_id}?date=${encodeURIComponent(selectedDate)}`)}
+                                >
+                                  詳細表示
+                                </Button>
+                              </div>
+                              <span className="font-medium">{formatCurrency(row.total_sales)}</span>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+
+                <TabsContent value="hourly" className="mt-4">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>売上分析 - 時間別要素</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      {hourlySales.length === 0 ? (
+                        <div className="text-sm text-gray-500">データがありません</div>
+                      ) : (
+                        <div className="space-y-4">
+                          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+                            {hourlySales.map((row: any) => {
+                              const sales = Number(row.total_sales) || 0;
+                              const count = Number(row.order_count) || 0;
+                              return (
+                                <div key={row.hour} className="bg-gray-50 rounded-lg p-3">
+                                  <div className="text-sm font-medium text-gray-700">{row.hour || 0}時</div>
+                                  <div className="text-lg font-bold text-purple-600 mt-1">{formatCurrency(sales)}</div>
+                                  <div className="text-xs text-gray-500 mt-1">{count}件</div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+              </Tabs>
+            </div>
+          </div>
+
+          {/* 最下部: 当日現金、月間残高総額、粗利益 */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
+              <CardHeader>
+                <CardTitle className="text-blue-800">当日現金</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-blue-900">
+                  {formatCurrency(salesData?.total_payments || 0)}
                 </div>
+                <div className="text-sm text-blue-700 mt-1">管理者ダッシュボードの本日売上</div>
+              </CardContent>
+            </Card>
+
+            <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200">
+              <CardHeader>
+                <CardTitle className="text-green-800">月間残高総額</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-green-900">
+                  {formatCurrency(additionalStats.monthly_gross_profit || 0)}
+                </div>
+                <div className="text-sm text-green-700 mt-1">該当月の1日から現在までの粗利益の合計</div>
+              </CardContent>
+            </Card>
+
+            <Card className="bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200">
+              <CardHeader>
+                <CardTitle className="text-purple-800">粗利益</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-purple-900">
+                  {formatCurrency((salesData?.total_payments || 0) - totalDeduct)}
+                </div>
+                <div className="text-sm text-purple-700 mt-1">当日現金から出金合計を差し引いた額</div>
               </CardContent>
             </Card>
           </div>
@@ -683,56 +898,6 @@ export default function DailySalesPage() {
             </CardContent>
           </Card> */}
 
-          {/* 経費一覧（売上分析 - 時間別 の上に表示） */}
-          <Card className="mt-8">
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle className="flex items-center">
-                  <FileText className="w-5 h-5 mr-2" />
-                  経費金額一覧
-                </CardTitle>
-                <Button size="sm" onClick={openAddDeduct}>
-                  経費追加
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent>
-              {isDeductLoading ? (
-                <div className="text-sm text-gray-500">読み込み中...</div>
-              ) : deducts.length === 0 ? (
-                <div className="text-sm text-gray-500">この日の経費はありません</div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="w-32">日付</TableHead>
-                        <TableHead className="text-right w-32">金額</TableHead>
-                        <TableHead>理由</TableHead>
-                        <TableHead>備考</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {deducts.map((d: any) => (
-                        <TableRow key={d.id}>
-                          <TableCell>{String(d.date ?? '')}</TableCell>
-                          <TableCell className="text-right font-medium">{formatCurrency(Number(d.value) || 0)}</TableCell>
-                          <TableCell className="whitespace-pre-wrap">{d.reason || '-'}</TableCell>
-                          <TableCell className="whitespace-pre-wrap">{d.other || '-'}</TableCell>
-                        </TableRow>
-                      ))}
-                      <TableRow>
-                        <TableCell className="font-semibold">合計</TableCell>
-                        <TableCell className="text-right font-bold">{formatCurrency(totalDeduct)}</TableCell>
-                        <TableCell />
-                        <TableCell />
-                      </TableRow>
-                    </TableBody>
-                  </Table>
-                </div>
-              )}
-            </CardContent>
-          </Card>
 
           <Dialog open={isAddDeductOpen} onOpenChange={setIsAddDeductOpen}>
             <DialogContent>

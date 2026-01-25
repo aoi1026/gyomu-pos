@@ -50,11 +50,101 @@ export async function GET(request: NextRequest) {
 			[date]
 		);
 
+		// session_paymentsテーブルから本日のamount合計を取得
+		const sessionPaymentsAgg = await client.query(
+			`
+			SELECT 
+				COALESCE(SUM(amount), 0) AS total_payments,
+				COALESCE(SUM(CASE WHEN pay_type IN (0, 2) THEN amount ELSE 0 END), 0) AS card_payments,
+				COALESCE(SUM(CASE WHEN pay_type = 1 THEN amount ELSE 0 END), 0) AS cash_payments
+			FROM session_payments
+			WHERE created_at >= $1::date
+			  AND created_at < ($1::date + INTERVAL '1 day')
+			`,
+			[date]
+		);
+
+		// キャスト人数を取得
+		const castCountResult = await client.query(
+			`
+			SELECT COUNT(*)::int AS cast_count
+			FROM "user"
+			WHERE role = 'cast'
+			`
+		);
+
+		// 本日出勤したキャストの性別別人数を取得
+		// userテーブルにgenderカラムが存在するか確認
+		await client.query(`
+			ALTER TABLE "user" ADD COLUMN IF NOT EXISTS gender VARCHAR(10)
+		`);
+
+		const attendanceGenderResult = await client.query(
+			`
+			SELECT 
+				COALESCE(COUNT(DISTINCT CASE WHEN u.gender = 'male' THEN a.staff_id END), 0)::int AS male_count,
+				COALESCE(COUNT(DISTINCT CASE WHEN u.gender = 'female' THEN a.staff_id END), 0)::int AS female_count
+			FROM attendance a
+			INNER JOIN "user" u ON u.id = a.staff_id
+			WHERE DATE(a.clock_in) = $1::date
+			  AND a.status = 'saved'
+			  AND u.role = 'cast'
+			`,
+			[date]
+		);
+
+		// 月間残高総額（該当月の1日から現在までの粗利益の合計）を計算
+		const firstDayOfMonth = date.substring(0, 7) + '-01';
+		
+		// deductテーブルの存在確認と作成
+		await client.query(`
+			CREATE TABLE IF NOT EXISTS deduct (
+				id SERIAL PRIMARY KEY,
+				date DATE NOT NULL,
+				value DECIMAL(12,2) NOT NULL CHECK (value >= 0),
+				reason TEXT,
+				other TEXT,
+				created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+				updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+			)
+		`);
+
+		const monthlyPaymentsResult = await client.query(
+			`
+			SELECT 
+				COALESCE(SUM(amount), 0) AS monthly_total_payments
+			FROM session_payments
+			WHERE created_at >= $1::date
+			  AND created_at <= $2::date
+			`,
+			[firstDayOfMonth, date]
+		);
+
+		const monthlyDeductsResult = await client.query(
+			`
+			SELECT 
+				COALESCE(SUM(value), 0) AS monthly_total_deducts
+			FROM deduct
+			WHERE date >= $1::date
+			  AND date <= $2::date
+			`,
+			[firstDayOfMonth, date]
+		);
+
 		const total_sales = Number(ordersAgg.rows[0]?.total_sales || 0);
 		const order_count = Number(ordersAgg.rows[0]?.order_count || 0);
 		const visitor_count = Number(sessionsAgg.rows[0]?.visitor_count || 0);
 		const avg_cost = Number(sessionsAgg.rows[0]?.avg_cost || 0);
 		const sessions_total_cost = Number(sessionsAgg.rows[0]?.sessions_total_cost || 0);
+		const total_payments = Number(sessionPaymentsAgg.rows[0]?.total_payments || 0);
+		const card_payments = Number(sessionPaymentsAgg.rows[0]?.card_payments || 0);
+		const cash_payments = Number(sessionPaymentsAgg.rows[0]?.cash_payments || 0);
+		const cast_count = Number(castCountResult.rows[0]?.cast_count || 0);
+		const male_attendance_count = Number(attendanceGenderResult.rows[0]?.male_count || 0);
+		const female_attendance_count = Number(attendanceGenderResult.rows[0]?.female_count || 0);
+		const monthly_total_payments = Number(monthlyPaymentsResult.rows[0]?.monthly_total_payments || 0);
+		const monthly_total_deducts = Number(monthlyDeductsResult.rows[0]?.monthly_total_deducts || 0);
+		const monthly_gross_profit = monthly_total_payments - monthly_total_deducts;
 
 		// テーブル別売上集計
 		const tableSalesResult = await client.query(
@@ -156,6 +246,13 @@ export async function GET(request: NextRequest) {
 				visitor_count,
 				avg_cost,
 				sessions_total_cost,
+				total_payments,
+				card_payments,
+				cash_payments,
+				cast_count,
+				male_attendance_count,
+				female_attendance_count,
+				monthly_gross_profit,
 				table_sales: tableSalesResult.rows,
 				cast_sales: castSalesResult.rows,
 				product_sales: productSalesResult.rows,

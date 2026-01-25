@@ -334,8 +334,10 @@ export default function Dashboard() {
         .then((res) => res.json())
         .then((result) => {
           if (result?.success) {
-            const { total_sales, visitor_count, order_count } = result.data || {};
-            setTodaySalesKpi({ total_yen: Number(total_sales || 0), customer_count: Number(visitor_count || 0), order_count: Number(order_count || 0) });
+            const { total_sales, visitor_count, order_count, total_payments } = result.data || {};
+            // session_paymentsテーブルの本日のamount合計を表示
+            const displayTotal = total_payments !== undefined ? total_payments : 0;
+            setTodaySalesKpi({ total_yen: Number(displayTotal || 0), customer_count: Number(visitor_count || 0), order_count: Number(order_count || 0) });
           } else {
             setTodaySalesKpi({ total_yen: 0, customer_count: 0, order_count: 0 });
           }

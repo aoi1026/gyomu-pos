@@ -308,10 +308,30 @@ export default function DailyTableDetailPage({ params }: { params: { tableId: st
                                 const itemKey = String(it?.item_key || '');
                                 const k = getEditKey(s.id, itemKey);
                                 const row = editMap[k];
+                                
+                                // 指名の場合、キャスト名を取得
+                                let displayName = it.name || '';
+                                if (it.category === '指名' && castList.length > 0) {
+                                  // item_keyやcast_idから該当するキャストを探す
+                                  const castId = it.cast_id || it.nomination_id;
+                                  const matchedCast = castList.find((c: any) => 
+                                    c.cast_id === castId || 
+                                    String(c.cast_id) === String(castId) ||
+                                    String(c.nomination_id) === String(it.nomination_id)
+                                  );
+                                  if (matchedCast && matchedCast.cast_name) {
+                                    displayName = `${it.name || '指名'}（${matchedCast.cast_name}）`;
+                                  }
+                                }
+                                
+                                // vip_room、song_room、bottle_keepの場合はカテゴリーを「サービス」に変更
+                                const serviceTypes = ['vip_room', 'song_room', 'bottle_keep'];
+                                const displayCategory = serviceTypes.includes(String(it.name || '')) ? 'サービス' : it.category;
+                                
                                 return (
                                 <TableRow key={idx}>
-                                  <TableCell className="font-medium">{it.category}</TableCell>
-                                  <TableCell>{it.name}</TableCell>
+                                  <TableCell className="font-medium">{displayCategory}</TableCell>
+                                  <TableCell>{displayName}</TableCell>
                                   <TableCell className="text-right">
                                     {isSuperAdmin && itemKey ? (
                                       <Input
@@ -391,95 +411,15 @@ export default function DailyTableDetailPage({ params }: { params: { tableId: st
                                 <TableCell className="text-right font-bold">{formatCurrency(subtotal)}</TableCell>
                                 {isSuperAdmin ? <TableCell /> : null}
                               </TableRow>
-
-                              {paymentItems.length > 0 && (
-                                <TableRow>
-                                  <TableCell colSpan={5} className="bg-gray-50 text-sm font-semibold text-gray-700">
-                                    決済
-                                  </TableCell>
-                                  {isSuperAdmin ? <TableCell className="bg-gray-50" /> : null}
-                                </TableRow>
-                              )}
-
-                              {paymentItems.map((it: any, idx: number) => {
-                                const itemKey = String(it?.item_key || '');
-                                const k = getEditKey(s.id, itemKey);
-                                const row = editMap[k];
-                                return (
-                                <TableRow key={`pay-${idx}`}>
-                                  <TableCell className="font-medium">{it.category}</TableCell>
-                                  <TableCell>{it.name}</TableCell>
-                                  <TableCell className="text-right">
-                                    {isSuperAdmin && itemKey ? (
-                                      <Input
-                                        className="text-right"
-                                        inputMode="decimal"
-                                        value={row?.unit_price ?? String(it.unit_price ?? '')}
-                                        onFocus={() => ensureEditRow(s.id, it)}
-                                        onChange={(e) =>
-                                          setEditMap((prev) => ({
-                                            ...prev,
-                                            [k]: { ...(prev[k] || { unit_price: '', quantity: '', total: '' }), unit_price: e.target.value }
-                                          }))
-                                        }
-                                      />
-                                    ) : (
-                                      formatCurrency(Number(it.unit_price) || 0)
-                                    )}
-                                    {it?.unit_price_note ? <span className="ml-1 text-xs text-gray-600">{String(it.unit_price_note)}</span> : null}
-                                  </TableCell>
-                                  <TableCell className="text-right">
-                                    {isSuperAdmin && itemKey ? (
-                                      <Input
-                                        className="text-right"
-                                        inputMode="numeric"
-                                        value={row?.quantity ?? String(it.quantity ?? '')}
-                                        onFocus={() => ensureEditRow(s.id, it)}
-                                        onChange={(e) =>
-                                          setEditMap((prev) => ({
-                                            ...prev,
-                                            [k]: { ...(prev[k] || { unit_price: '', quantity: '', total: '' }), quantity: e.target.value }
-                                          }))
-                                        }
-                                      />
-                                    ) : (
-                                      formatNumber(Number(it.quantity) || 0)
-                                    )}
-                                  </TableCell>
-                                  <TableCell className="text-right font-medium">
-                                    {isSuperAdmin && itemKey ? (
-                                      <Input
-                                        className="text-right font-medium"
-                                        inputMode="decimal"
-                                        value={row?.total ?? String(it.total ?? '')}
-                                        onFocus={() => ensureEditRow(s.id, it)}
-                                        onChange={(e) =>
-                                          setEditMap((prev) => ({
-                                            ...prev,
-                                            [k]: { ...(prev[k] || { unit_price: '', quantity: '', total: '' }), total: e.target.value }
-                                          }))
-                                        }
-                                      />
-                                    ) : (
-                                      formatCurrency(Number(it.total) || 0)
-                                    )}
-                                  </TableCell>
-                                  {isSuperAdmin ? (
-                                    <TableCell className="text-right">
-                                      {itemKey ? (
-                                        <Button size="sm" variant="outline" disabled={isSaving} onClick={() => saveOverride(s.id, it)}>
-                                          {isSaving ? '保存中…' : '保存'}
-                                        </Button>
-                                      ) : (
-                                        <span className="text-xs text-gray-400">-</span>
-                                      )}
-                                    </TableCell>
-                                  ) : null}
-                                </TableRow>
-                                );
-                              })}
-
-                              {paymentItems.length > 0 && (
+                              <TableRow>
+                                <TableCell className="font-semibold">合計</TableCell>
+                                <TableCell />
+                                <TableCell />
+                                <TableCell />
+                                <TableCell className="text-right font-bold text-blue-600">{formatCurrency(subtotal * 1.1)}</TableCell>
+                                {isSuperAdmin ? <TableCell /> : null}
+                              </TableRow>
+                              {/* {paymentItems.length > 0 && (
                                 <TableRow>
                                   <TableCell className="font-semibold">決済合計</TableCell>
                                   <TableCell />
@@ -488,26 +428,11 @@ export default function DailyTableDetailPage({ params }: { params: { tableId: st
                                   <TableCell className="text-right font-bold">{formatCurrency(paymentTotal)}</TableCell>
                                   {isSuperAdmin ? <TableCell /> : null}
                                 </TableRow>
-                              )}
+                              )} */}
                             </TableBody>
                           </Table>
                         </div>
 
-                        {/* 指名キャスト一覧 */}
-                        <div className="mt-4 border rounded-lg bg-white p-4">
-                          <div className="text-sm font-semibold text-gray-900 mb-2">指名キャスト一覧</div>
-                          {castList.length === 0 ? (
-                            <div className="text-sm text-gray-500">指名なし</div>
-                          ) : (
-                            <div className="flex flex-wrap gap-2">
-                              {castList.map((c: any, idx: number) => (
-                                <Badge key={idx} variant="secondary" className="bg-purple-100 text-purple-900">
-                                  {c.cast_name ? `${c.cast_name} (#${c.cast_id})` : `#${c.cast_id}`} / {c.type_id}
-                                </Badge>
-                              ))}
-                            </div>
-                          )}
-                        </div>
                       </div>
                     </div>
                   </CardContent>
