@@ -3446,8 +3446,8 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                   onClick={() => setLeftMode('nomination')}
                 >
                   <BiUserPin className="w-4 h-4 sm:w-5 sm:h-5" />
-                  <span className="hidden sm:inline">指定</span>
-                  <span className="sm:hidden text-[10px]">指定</span>
+                  <span className="hidden sm:inline">指名</span>
+                  <span className="sm:hidden text-[10px]">指名</span>
                 </Button>
                 <Button
                   variant="ghost"
