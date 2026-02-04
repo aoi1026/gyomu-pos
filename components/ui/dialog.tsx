@@ -33,13 +33,13 @@ const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
 >(({ className, children, ...props }, ref) => {
-  const contentRef = React.useRef<HTMLDivElement>(null);
+  const contentRef = React.useRef<HTMLDivElement | null>(null);
   const combinedRef = React.useCallback(
     (node: HTMLDivElement | null) => {
       if (typeof ref === 'function') {
         ref(node);
       } else if (ref) {
-        ref.current = node;
+        (ref as React.MutableRefObject<HTMLDivElement | null>).current = node;
       }
       contentRef.current = node;
     },
@@ -52,8 +52,9 @@ const DialogContent = React.forwardRef<
       if (!contentRef.current || !target) return;
 
       const scrollIntoView = () => {
+        if (!contentRef.current) return;
+        
         const rect = target.getBoundingClientRect();
-        const contentRect = contentRef.current!.getBoundingClientRect();
         const viewportHeight = window.innerHeight;
         
         // visualViewport APIが利用可能な場合（モバイル/タブレット）
