@@ -7,7 +7,7 @@ import { SiBuymeacoffee } from "react-icons/si";
 import { FaHome } from "react-icons/fa";
 import { AiFillHome } from "react-icons/ai";
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -234,6 +234,154 @@ export default function TableDashboard({ params }: { params: { tableId: string }
   const [availableCasts, setAvailableCasts] = useState<any[]>([]);
 
   useEffect(() => {
+    // テーブルログイン（tableロール）の場合をチェック
+    const tableUserAuth = typeof window !== 'undefined' ? localStorage.getItem('table_auth') : null;
+    let tableUser = null;
+    if (tableUserAuth) {
+      try {
+        const parsed = JSON.parse(tableUserAuth);
+        // tableロールのユーザーの場合
+        if (parsed.role === 'table') {
+          tableUser = parsed;
+        }
+      } catch (e) {
+        // パースエラーは無視
+      }
+    }
+
+    // テーブルログイン（tableロール）の場合
+    if (tableUser) {
+      // テーブル情報を取得してTableAuth形式に変換
+      fetch('/api/tables')
+        .then(res => res.json())
+        .then(result => {
+          if (result.success) {
+            const tableInfo = result.tables.find((table: any) => table.id.toString() === params.tableId);
+            if (tableInfo) {
+              const currentTable: TableAuth = {
+                table_id: params.tableId,
+                table_label: tableInfo.name,
+                area: tableInfo.area || 'メインフロア',
+                capacity: tableInfo.capacity,
+                status: 'available',
+                login_time: new Date().toISOString()
+              };
+              setTableAuth(currentTable);
+              
+              // このテーブルのセッションが存在するかチェック
+              fetch('/api/sessions')
+                .then(res => res.json())
+                .then(sessionsResult => {
+                  if (sessionsResult.data) {
+                    const activeSession = sessionsResult.data.find((s: any) => 
+                      s.table_id.toString() === params.tableId && s.status === 1
+                    );
+                    
+                    if (activeSession) {
+                      // このテーブルのセッションが存在する場合、そのセッションIDを使用
+                      if (typeof window !== 'undefined') {
+                        // 他のテーブルのデータをクリア
+                        const currentSessionId = localStorage.getItem('current_session_id');
+                        if (currentSessionId && currentSessionId !== activeSession.id.toString()) {
+                          // 前のテーブルのセッションIDと異なる場合、クリア
+                          localStorage.removeItem('current_session_id');
+                          localStorage.removeItem('guest_count');
+                          localStorage.removeItem('set_count');
+                          localStorage.removeItem('set_extensions');
+                          localStorage.removeItem('set_extension_start_time');
+                          localStorage.removeItem('set_extension_total_seconds');
+                          localStorage.removeItem('nomination_charges');
+                          localStorage.removeItem('additional_services');
+                          localStorage.removeItem('payment_completed');
+                          localStorage.removeItem('paid_amount');
+                          localStorage.removeItem('cost');
+                          localStorage.removeItem('fullcost');
+                          localStorage.removeItem('nomination_type');
+                          localStorage.removeItem('service_orders');
+                          localStorage.removeItem('cart_orders');
+                          
+                          // セッションIDベースのキーもクリア
+                          Object.keys(localStorage).forEach(key => {
+                            if (key.startsWith('cart_orders_') || key.startsWith('service_orders_')) {
+                              localStorage.removeItem(key);
+                            }
+                          });
+                        }
+                        
+                        // このテーブルのセッションデータを設定
+                        localStorage.setItem('current_session_id', activeSession.id.toString());
+                        localStorage.setItem('guest_count', (activeSession.client || 0).toString());
+                        localStorage.setItem('set_count', (activeSession.set_count || 1).toString());
+                        if (activeSession.set_extensions) {
+                          localStorage.setItem('set_extensions', JSON.stringify(activeSession.set_extensions));
+                        }
+                      }
+                      setIsSessionActive(true);
+                    } else {
+                      // セッションが存在しない場合、ローカルストレージをクリア
+                      if (typeof window !== 'undefined') {
+                        const currentSessionId = localStorage.getItem('current_session_id');
+                        if (currentSessionId) {
+                          localStorage.removeItem('current_session_id');
+                          localStorage.removeItem('guest_count');
+                          localStorage.removeItem('set_count');
+                          localStorage.removeItem('set_extensions');
+                          localStorage.removeItem('set_extension_start_time');
+                          localStorage.removeItem('set_extension_total_seconds');
+                          localStorage.removeItem('nomination_charges');
+                          localStorage.removeItem('additional_services');
+                          localStorage.removeItem('payment_completed');
+                          localStorage.removeItem('paid_amount');
+                          localStorage.removeItem('cost');
+                          localStorage.removeItem('fullcost');
+                          localStorage.removeItem('nomination_type');
+                          localStorage.removeItem('service_orders');
+                          localStorage.removeItem('cart_orders');
+                          
+                          // セッションIDベースのキーもクリア
+                          Object.keys(localStorage).forEach(key => {
+                            if (key.startsWith('cart_orders_') || key.startsWith('service_orders_')) {
+                              localStorage.removeItem(key);
+                            }
+                          });
+                        }
+                      }
+                      setIsSessionActive(false);
+                    }
+                  } else {
+                    setIsSessionActive(false);
+                  }
+                  setIsLoading(false);
+                  loadMenuData();
+                  loadServices();
+                  loadCasts();
+                  loadAddCharges();
+                })
+                .catch(() => {
+                  setIsSessionActive(false);
+                  setIsLoading(false);
+                  loadMenuData();
+                  loadServices();
+                  loadCasts();
+                  loadAddCharges();
+                });
+            } else {
+              error('エラー', 'テーブルが見つかりません');
+              router.push('/table-list');
+            }
+          } else {
+            error('エラー', 'テーブル情報の取得に失敗しました');
+            router.push('/table-list');
+          }
+        })
+        .catch(() => {
+          error('エラー', 'テーブル情報の取得に失敗しました');
+          router.push('/table-list');
+        });
+      return;
+    }
+
+    // 従来のテーブルログイン（テーブル選択）の場合
     const currentTable = getCurrentTable();
     if (!currentTable || currentTable.table_id !== params.tableId) {
       router.push('/');
@@ -241,18 +389,103 @@ export default function TableDashboard({ params }: { params: { tableId: string }
     }
 
     setTableAuth(currentTable);
-    // 既存の未完了セッションがある場合は復元してセッション中として扱う
-    const existingSessionId = typeof window !== 'undefined' ? localStorage.getItem('current_session_id') : null;
-    if (existingSessionId) {
-      setIsSessionActive(true);
-    } else {
-      setIsSessionActive(currentTable.status === 'occupied');
-    }
-    setIsLoading(false);
-    loadMenuData();
-    loadServices();
-    loadCasts();
-    loadAddCharges();
+    
+    // このテーブルのセッションが存在するかチェック
+    fetch('/api/sessions')
+      .then(res => res.json())
+      .then(sessionsResult => {
+        if (sessionsResult.data) {
+          const activeSession = sessionsResult.data.find((s: any) => 
+            s.table_id.toString() === params.tableId && s.status === 1
+          );
+          
+          if (activeSession) {
+            // このテーブルのセッションが存在する場合、そのセッションIDを使用
+            if (typeof window !== 'undefined') {
+              const currentSessionId = localStorage.getItem('current_session_id');
+              if (currentSessionId && currentSessionId !== activeSession.id.toString()) {
+                // 前のテーブルのセッションIDと異なる場合、クリア
+                localStorage.removeItem('current_session_id');
+                localStorage.removeItem('guest_count');
+                localStorage.removeItem('set_count');
+                localStorage.removeItem('set_extensions');
+                localStorage.removeItem('set_extension_start_time');
+                localStorage.removeItem('set_extension_total_seconds');
+                localStorage.removeItem('nomination_charges');
+                localStorage.removeItem('additional_services');
+                localStorage.removeItem('payment_completed');
+                localStorage.removeItem('paid_amount');
+                localStorage.removeItem('cost');
+                localStorage.removeItem('fullcost');
+                localStorage.removeItem('nomination_type');
+                localStorage.removeItem('service_orders');
+                localStorage.removeItem('cart_orders');
+                
+                // セッションIDベースのキーもクリア
+                Object.keys(localStorage).forEach(key => {
+                  if (key.startsWith('cart_orders_') || key.startsWith('service_orders_')) {
+                    localStorage.removeItem(key);
+                  }
+                });
+              }
+              
+              // このテーブルのセッションデータを設定
+              localStorage.setItem('current_session_id', activeSession.id.toString());
+              localStorage.setItem('guest_count', (activeSession.client || 0).toString());
+              localStorage.setItem('set_count', (activeSession.set_count || 1).toString());
+              if (activeSession.set_extensions) {
+                localStorage.setItem('set_extensions', JSON.stringify(activeSession.set_extensions));
+              }
+            }
+            setIsSessionActive(true);
+          } else {
+            // セッションが存在しない場合、ローカルストレージをクリア
+            if (typeof window !== 'undefined') {
+              const currentSessionId = localStorage.getItem('current_session_id');
+              if (currentSessionId) {
+                localStorage.removeItem('current_session_id');
+                localStorage.removeItem('guest_count');
+                localStorage.removeItem('set_count');
+                localStorage.removeItem('set_extensions');
+                localStorage.removeItem('set_extension_start_time');
+                localStorage.removeItem('set_extension_total_seconds');
+                localStorage.removeItem('nomination_charges');
+                localStorage.removeItem('additional_services');
+                localStorage.removeItem('payment_completed');
+                localStorage.removeItem('paid_amount');
+                localStorage.removeItem('cost');
+                localStorage.removeItem('fullcost');
+                localStorage.removeItem('nomination_type');
+                localStorage.removeItem('service_orders');
+                localStorage.removeItem('cart_orders');
+                
+                // セッションIDベースのキーもクリア
+                Object.keys(localStorage).forEach(key => {
+                  if (key.startsWith('cart_orders_') || key.startsWith('service_orders_')) {
+                    localStorage.removeItem(key);
+                  }
+                });
+              }
+            }
+            setIsSessionActive(currentTable.status === 'occupied');
+          }
+        } else {
+          setIsSessionActive(currentTable.status === 'occupied');
+        }
+        setIsLoading(false);
+        loadMenuData();
+        loadServices();
+        loadCasts();
+        loadAddCharges();
+      })
+      .catch(() => {
+        setIsSessionActive(currentTable.status === 'occupied');
+        setIsLoading(false);
+        loadMenuData();
+        loadServices();
+        loadCasts();
+        loadAddCharges();
+      });
   }, [params.tableId, router]);
 
   // tableAuthが設定された後にカートを読み込む
@@ -380,6 +613,11 @@ export default function TableDashboard({ params }: { params: { tableId: string }
 
   // セッション情報を取得
   const [session, setSession] = useState<{ id: number; created_at: string; set_count: number; set_extensions?: Array<{ count: number; timestamp: number }>; is_paused?: boolean; paused_at?: string; paused_elapsed?: number } | null>(null);
+  
+  // セッション開始通知を一度だけ表示するためのフラグ（セッションIDごと）
+  const sessionStartNotifiedRef = useRef<{ [sessionId: number]: boolean }>({});
+  // セッション終了時のリダイレクトを制御するフラグ
+  const isEndingSessionRef = useRef<boolean>(false);
 
   const loadSession = async () => {
     if (!tableAuth) return;
@@ -397,6 +635,10 @@ export default function TableDashboard({ params }: { params: { tableId: string }
 
         // 管理者ページからセッションが開始された場合（isSessionActiveがfalseだが、アクティブなセッションが存在する）
         if (!isSessionActive && tableActiveSession) {
+          // このセッションIDの通知が既に表示されているかチェック
+          const sessionIdNum = tableActiveSession.id;
+          const hasNotified = sessionStartNotifiedRef.current[sessionIdNum];
+          
           // セッションを開始
           localStorage.setItem('current_session_id', tableActiveSession.id.toString());
           localStorage.setItem('set_count', (tableActiveSession.set_count || 1).toString());
@@ -421,8 +663,20 @@ export default function TableDashboard({ params }: { params: { tableId: string }
             console.error('テーブルセッション開始エラー:', err);
           }
 
-          success('セッション開始', 'セッションが開始されました');
+          // 通知がまだ表示されていない場合のみ表示
+          if (!hasNotified) {
+            sessionStartNotifiedRef.current[sessionIdNum] = true;
+            success('セッション開始', 'セッションが開始されました');
+          }
           return;
+        }
+        
+        // セッションが終了した場合、通知フラグをクリア
+        if (isSessionActive && !tableActiveSession) {
+          const currentSessionId = localStorage.getItem('current_session_id');
+          if (currentSessionId) {
+            delete sessionStartNotifiedRef.current[parseInt(currentSessionId)];
+          }
         }
 
         // 既存のセッションIDがある場合
@@ -460,19 +714,37 @@ export default function TableDashboard({ params }: { params: { tableId: string }
             setIsPaymentCompleted(false);
             setCurrentNominationType(null);
 
-            success('セッション終了', 'セッションが終了されました');
+            // endSession関数から呼ばれた場合でない場合のみ、リダイレクトを実行
+            if (!isEndingSessionRef.current) {
+              success('セッション終了', 'セッションが終了されました');
+              setTimeout(() => {
+                router.push('/table-list');
+              }, 500);
+            }
             return;
           }
 
-          const activeSession = result.data.find((s: any) => s.id.toString() === sessionId && s.status === 1);
-          if (activeSession) {
-            setSession(activeSession);
-            // セット延長情報を同期
-            if (activeSession.set_extensions) {
-              setSetExtensions(activeSession.set_extensions);
-              localStorage.setItem('set_extensions', JSON.stringify(activeSession.set_extensions));
+          // セッションがアクティブな場合のみ更新（isSessionActiveがfalseの場合は更新しない）
+          if (isSessionActive) {
+            const activeSession = result.data.find((s: any) => s.id.toString() === sessionId && s.status === 1);
+            if (activeSession) {
+              setSession(activeSession);
+              // セット延長情報を同期
+              if (activeSession.set_extensions) {
+                setSetExtensions(activeSession.set_extensions);
+                localStorage.setItem('set_extensions', JSON.stringify(activeSession.set_extensions));
+              }
+            } else if (!sessionData) {
+              // セッションが存在しない場合（削除された場合など）、セッション情報をクリア
+              setSession(null);
+              setSetExtensionCountdown(0);
             }
           }
+        } else if (isSessionActive && session) {
+          // sessionIdが存在しないが、isSessionActiveがtrueの場合、セッション情報をクリア
+          setIsSessionActive(false);
+          setSession(null);
+          setSetExtensionCountdown(0);
         }
       }
     } catch (err) {
@@ -1325,6 +1597,8 @@ export default function TableDashboard({ params }: { params: { tableId: string }
       'セッション終了',
       'セッションを終了しますか？',
       async () => {
+        // リダイレクトフラグを設定
+        isEndingSessionRef.current = true;
         try {
           const sessionId = localStorage.getItem('current_session_id');
           const setCount = localStorage.getItem('set_count');
@@ -1352,12 +1626,12 @@ export default function TableDashboard({ params }: { params: { tableId: string }
             }
           }
 
-          // ローカルストレージを初期化
+          // ローカルストレージを初期化（セッションIDを先に削除してタイマーの再開を防ぐ）
           if (sessionId) {
             localStorage.removeItem(`cart_orders_${sessionId}`);
             localStorage.removeItem(`service_orders_${sessionId}`);
           }
-          localStorage.removeItem('current_session_id');
+          localStorage.removeItem('current_session_id'); // 先に削除してloadSession()がセッション情報を更新しないようにする
           localStorage.removeItem('nomination_type');
           localStorage.removeItem('service_orders');
           localStorage.removeItem('cart_orders');
@@ -1367,10 +1641,14 @@ export default function TableDashboard({ params }: { params: { tableId: string }
           localStorage.removeItem('payment_completed');
           localStorage.removeItem('set_count');
 
+          // セッション情報をクリア（セット延長タイマーを即座に停止）
+          setIsSessionActive(false);
+          setSession(null);
+          setSetExtensionCountdown(0);
+
           // テーブルセッションを終了
           const updatedTable = await endTableSession(tableAuth.table_id);
           setTableAuth(updatedTable);
-          setIsSessionActive(false);
 
           // 状態をリセット
           setCartOrders([]);
@@ -1385,7 +1663,6 @@ export default function TableDashboard({ params }: { params: { tableId: string }
           localStorage.removeItem('set_extension_start_time');
           localStorage.removeItem('set_extension_total_seconds');
           localStorage.removeItem('set_extensions');
-          setSetExtensionCountdown(0);
 
           // DBにset_extensionsをクリア
           if (sessionId) {
@@ -1408,9 +1685,15 @@ export default function TableDashboard({ params }: { params: { tableId: string }
           localStorage.removeItem('additional_services');
 
           success('セッション終了', 'セッションを終了しました');
+          
+          // テーブル一覧ページにリダイレクト
+          setTimeout(() => {
+            router.push('/table-list');
+          }, 500);
         } catch (err) {
           console.error('セッション終了エラー:', err);
           error('エラー', `セッション終了に失敗しました: ${err instanceof Error ? err.message : '不明なエラー'}`);
+          isEndingSessionRef.current = false;
         }
       }
     );
@@ -2811,7 +3094,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => router.push('/')}
+                onClick={() => router.push('/table-list')}
                 className="self-start sm:self-auto"
               >
                 <ArrowLeft className="w-4 h-4 mr-2" />

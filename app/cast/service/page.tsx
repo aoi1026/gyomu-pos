@@ -318,10 +318,10 @@ export default function ServicePage() {
                 <Button 
                   variant="ghost" 
                   size="sm"
-                  onClick={() => router.push('/dashboard')}
+                  onClick={() => router.push('/table-list')}
                 >
                   <ArrowLeft className="w-4 h-4 mr-2" />
-                  ダッシュボード
+                  戻る
                 </Button>
                 <div>
                   <h1 className="text-xl font-bold text-gray-900">サービス注文</h1>

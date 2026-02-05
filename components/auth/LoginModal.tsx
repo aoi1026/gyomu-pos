@@ -41,7 +41,7 @@ interface RoleConfig {
 }
 
 export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
-  const [step, setStep] = useState<'role' | 'login' | 'table'>('role');
+  const [step, setStep] = useState<'role' | 'login' | 'table'>('login');
   const [selectedRole, setSelectedRole] = useState<UserRole | null>(null);
   const [showPassword, setShowPassword] = useState(false);
   const [credentials, setCredentials] = useState({
@@ -212,115 +212,129 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
   };
 
   const handleLogin = async () => {
-    if (!selectedRole || !credentials.email || !credentials.password) return;
+    if (!credentials.email || !credentials.password) {
+      error('入力エラー', 'メールアドレスとパスワードを入力してください。');
+      return;
+    }
     
     setIsLoading(true);
     
     try {
-      if (selectedRole === 'admin') {
-        // 管理者ログイン: データベース認証を使用
-        const response = await fetch('/api/auth/admin-login', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            email: credentials.email,
-            password: credentials.password
-          })
-        });
-
-        const result = await response.json();
-        
-        if (result.success) {
-          // 管理者認証情報をローカルストレージに保存
-          const adminAuth = {
-            id: result.user.id,
-            name: result.user.name,
-            email: result.user.email,
-            role: result.user.role,
-            login_time: new Date().toISOString()
-          };
-          
-          localStorage.setItem('admin_auth', JSON.stringify(adminAuth));
-          
-          success('ログイン成功', '管理者としてログインしました');
-          onClose();
-          
-          // Reset form
-          setStep('role');
-          setSelectedRole(null);
-          setCredentials({ email: '', password: '' });
-          
-          // ダッシュボードにリダイレクト
-          window.location.href = '/dashboard';
-        } else {
-          error('ログインに失敗しました', result.error || 'メールアドレスまたはパスワードが正しくありません。');
-        }
-      } else if (selectedRole === 'cast') {
-        // キャストログイン: データベース認証を使用
-        const response = await fetch('/api/auth/cast-login', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            email: credentials.email,
-            password: credentials.password
-          })
-        });
-
-        const result = await response.json();
-        
-        if (result.success) {
-          // キャスト認証情報をローカルストレージに保存
-          const castAuth = {
-            id: result.user.id,
-            name: result.user.name,
-            email: result.user.email,
-            role: result.user.role,
-            drink_back: result.user.drink_back,
-            food_back: result.user.food_back,
-            main_nomination: result.user.main_nomination,
-            inside_nomination: result.user.inside_nomination,
-            login_time: new Date().toISOString()
-          };
-          
-          localStorage.setItem('cast_auth', JSON.stringify(castAuth));
-          
-          success('ログイン成功', 'キャストとしてログインしました');
-          onClose();
-          
-          // Reset form
-          setStep('role');
-          setSelectedRole(null);
-          setCredentials({ email: '', password: '' });
-          
-          // キャストダッシュボードにリダイレクト
-          window.location.href = '/cast/dashboard';
-        } else {
-          error('ログインに失敗しました', result.error || 'メールアドレスまたはパスワードが正しくありません。');
-        }
-      } else {
-        // スーパー管理者ログイン: 従来の認証システムを使用
-        const { login } = await import('@/lib/auth');
-        await login({
+      // まず、キャストログインを試行
+      let response = await fetch('/api/auth/cast-login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
           email: credentials.email,
-          password: credentials.password,
-          role: selectedRole as 'superadmin'
-        });
+          password: credentials.password
+        })
+      });
+
+      let result = await response.json();
+      
+      if (result.success) {
+        // キャスト認証情報をローカルストレージに保存
+        const castAuth = {
+          id: result.user.id,
+          name: result.user.name,
+          email: result.user.email,
+          role: result.user.role,
+          drink_back: result.user.drink_back,
+          food_back: result.user.food_back,
+          main_nomination: result.user.main_nomination,
+          inside_nomination: result.user.inside_nomination,
+          login_time: new Date().toISOString()
+        };
         
-        success('ログイン成功', 'ログインしました');
+        localStorage.setItem('cast_auth', JSON.stringify(castAuth));
+        
+        success('ログイン成功', 'キャストとしてログインしました');
         onClose();
         
         // Reset form
-        setStep('role');
-        setSelectedRole(null);
+        setCredentials({ email: '', password: '' });
+        
+        // キャストダッシュボードにリダイレクト
+        window.location.href = '/cast/dashboard';
+        return;
+      }
+
+      // キャストログインが失敗した場合、管理者ログインを試行
+      response = await fetch('/api/auth/admin-login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: credentials.email,
+          password: credentials.password
+        })
+      });
+
+      result = await response.json();
+      
+      if (result.success) {
+        // 管理者認証情報をローカルストレージに保存
+        const adminAuth = {
+          id: result.user.id,
+          name: result.user.name,
+          email: result.user.email,
+          role: result.user.role,
+          login_time: new Date().toISOString()
+        };
+        
+        localStorage.setItem('admin_auth', JSON.stringify(adminAuth));
+        
+        success('ログイン成功', '管理者としてログインしました');
+        onClose();
+        
+        // Reset form
         setCredentials({ email: '', password: '' });
         
         // ダッシュボードにリダイレクト
         window.location.href = '/dashboard';
+        return;
       }
+
+      // 管理者ログインが失敗した場合、テーブルログインを試行
+      response = await fetch('/api/auth/table-login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: credentials.email,
+          password: credentials.password
+        })
+      });
+
+      result = await response.json();
+      
+      if (result.success) {
+        // テーブル管理ユーザー認証情報をローカルストレージに保存
+        const tableAuth = {
+          id: result.user.id,
+          name: result.user.name,
+          email: result.user.email,
+          role: result.user.role,
+          login_time: new Date().toISOString()
+        };
+        
+        localStorage.setItem('table_auth', JSON.stringify(tableAuth));
+        
+        success('ログイン成功', 'テーブル管理としてログインしました');
+        onClose();
+        
+        // Reset form
+        setCredentials({ email: '', password: '' });
+        
+        // テーブル一覧ページにリダイレクト
+        window.location.href = '/table-list';
+        return;
+      }
+
+      // すべてのログイン試行が失敗した場合
+      error('ログインに失敗しました', 'メールアドレスまたはパスワードが正しくありません。');
       
     } catch (err) {
       console.error('ログインエラー:', err);
-      error('ログインに失敗しました', 'メールアドレスとパスワードを確認してください。');
+      error('ログインに失敗しました', 'システムエラーが発生しました。');
     } finally {
       setIsLoading(false);
     }
@@ -656,7 +670,7 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
         )}
 
 
-        {step === 'login' && selectedRoleConfig && (
+        {step === 'login' && (
           <div className="space-y-6">
             {/* Professional Header */}
             <div className="relative h-24 rounded-lg overflow-hidden mb-6">
@@ -668,19 +682,9 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
               <div className="absolute inset-0 bg-gradient-to-r from-black/60 to-transparent"></div>
               <div className="absolute inset-0 flex items-center px-6">
                 <div className="text-white">
-                  <h3 className="font-bold text-lg">セキュアアクセス</h3>
-                  <p className="text-sm opacity-90">認証情報を入力してください</p>
+                  <h3 className="font-bold text-lg">ログイン</h3>
+                  <p className="text-sm opacity-90">メールアドレスとパスワードを入力してください</p>
                 </div>
-              </div>
-            </div>
-
-            <div className="flex items-center space-x-3 p-4 bg-gray-50 rounded-lg">
-              <div className={selectedRoleConfig.color}>
-                {selectedRoleConfig.icon}
-              </div>
-              <div>
-                <h3 className="font-semibold text-gray-900">{selectedRoleConfig.title}としてログイン</h3>
-                <p className="text-sm text-gray-600">{selectedRoleConfig.description}</p>
               </div>
             </div>
 
@@ -759,13 +763,6 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
             </div> */}
 
             <div className="flex space-x-3">
-              <Button 
-                variant="outline" 
-                onClick={handleBack}
-                className="flex-1"
-              >
-                戻る
-              </Button>
               <Button 
                 onClick={handleLogin}
                 disabled={!credentials.email || !credentials.password || isLoading}

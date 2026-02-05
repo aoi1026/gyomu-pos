@@ -1,20 +1,20 @@
 'use client';
-import { GrUserExpert } from "react-icons/gr"; 
-import { GrUserAdmin } from "react-icons/gr"; 
-import { FiLogOut } from "react-icons/fi"; 
-import { MdOutlineLogout } from "react-icons/md"; 
-import { MdOutlineCalendarMonth, MdOutlinePriceChange } from "react-icons/md"; 
-import { FaRegChartBar } from "react-icons/fa"; 
-import { BsFillMenuButtonWideFill } from "react-icons/bs"; 
-import { GiTimeTrap } from "react-icons/gi"; 
-import { AiFillMoneyCollect } from "react-icons/ai"; 
+import { GrUserExpert } from "react-icons/gr";
+import { GrUserAdmin } from "react-icons/gr";
+import { FiLogOut } from "react-icons/fi";
+import { MdOutlineLogout } from "react-icons/md";
+import { MdOutlineCalendarMonth, MdOutlinePriceChange } from "react-icons/md";
+import { FaRegChartBar } from "react-icons/fa";
+import { BsFillMenuButtonWideFill } from "react-icons/bs";
+import { GiTimeTrap } from "react-icons/gi";
+import { AiFillMoneyCollect } from "react-icons/ai";
 import { FaPowerOff } from "react-icons/fa";
-import { FiUserPlus } from "react-icons/fi"; 
-import { MdWifiCalling3 } from "react-icons/md"; 
-import { TbBellRinging } from "react-icons/tb"; 
-import { MdOutlineTableRestaurant } from "react-icons/md"; 
-import { FaUserTie } from 'react-icons/fa'; 
-import { MdRoomService } from "react-icons/md"; 
+import { FiUserPlus } from "react-icons/fi";
+import { MdWifiCalling3 } from "react-icons/md";
+import { TbBellRinging } from "react-icons/tb";
+import { MdOutlineTableRestaurant } from "react-icons/md";
+import { FaUserTie } from 'react-icons/fa';
+import { MdRoomService } from "react-icons/md";
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { getCurrentUser, hasRole, AuthUser } from '@/lib/auth';
@@ -24,7 +24,7 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { 
+import {
   Wine, Users, BarChart3, Clock, CreditCard, Settings,
   Shield, TrendingUp, Calendar, DollarSign,
   FileText, AlertCircle, Star, Bell, Crown, Table, Database, Download, Upload, CheckCircle
@@ -59,6 +59,7 @@ export default function Dashboard() {
   const [selectedBackupFile, setSelectedBackupFile] = useState<string>('');
   const [isLoadingBackups, setIsLoadingBackups] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
+  const [activeClientCount, setActiveClientCount] = useState(0);
   const router = useRouter();
   const { success, error } = useNotificationContext();
 
@@ -66,10 +67,10 @@ export default function Dashboard() {
     try {
       const response = await fetch('/api/salesorder?status=pending');
       const result = await response.json();
-      
+
       if (result.success) {
         setPendingOrderCount(result.data.length);
-      } 
+      }
     } catch (err) {
       console.error('売上注文数取得エラー:', err);
     }
@@ -79,7 +80,7 @@ export default function Dashboard() {
     try {
       const response = await fetch('/api/serviceorder?status=pending');
       const result = await response.json();
-      
+
       if (result.success) {
         const currentCount = result.data.length;
         // 新しいサービスリクエストを検出
@@ -101,7 +102,7 @@ export default function Dashboard() {
     try {
       const response = await fetch('/api/callmanager?status=pending');
       const result = await response.json();
-      
+
       if (result.success) {
         const currentCount = result.data.length;
         // 新しいスタッフ呼び出しリクエストを検出
@@ -123,7 +124,7 @@ export default function Dashboard() {
     try {
       const response = await fetch('/api/notifications?status=unread');
       const result = await response.json();
-      
+
       if (result.success) {
         setUnreadNotificationCount(result.data.length);
       }
@@ -144,6 +145,23 @@ export default function Dashboard() {
     }
   };
 
+  const loadActiveClientCount = async () => {
+    try {
+      const response = await fetch('/api/sessions');
+      const result = await response.json();
+      if (result.success && result.data) {
+        // status=1のセッションのclient値を合計
+        const activeSessions = result.data.filter((s: any) => s.status === 1);
+        const totalClients = activeSessions.reduce((sum: number, session: any) => {
+          return sum + (session.client || 0);
+        }, 0);
+        setActiveClientCount(totalClients);
+      }
+    } catch (err) {
+      console.error('アクティブ客数取得エラー:', err);
+    }
+  };
+
   useEffect(() => {
     // 管理者認証情報を確認
     const adminAuth = localStorage.getItem('admin_auth');
@@ -158,13 +176,15 @@ export default function Dashboard() {
         loadPendingServiceOrderCount(); // サービス注文リクエスト数を取得
         loadPendingManagerCallCount(); // スタッフ呼び出し数を取得
         loadPendingAttendanceCount(); // 勤怠承認待ち件数を取得
-        
+        loadActiveClientCount(); // アクティブ客数を取得
+
         // 5秒ごとに注文リクエスト数とスタッフ呼び出し数を更新（即時反映のため）
         const interval = setInterval(() => {
           loadPendingOrderCount();
           loadPendingServiceOrderCount();
           loadPendingManagerCallCount();
           loadPendingAttendanceCount();
+          loadActiveClientCount();
         }, 5000);
         return () => clearInterval(interval);
       } catch (error) {
@@ -172,7 +192,7 @@ export default function Dashboard() {
         localStorage.removeItem('admin_auth');
       }
     }
-    
+
     // キャスト認証情報を確認
     const castAuth = localStorage.getItem('cast_auth');
     if (castAuth) {
@@ -186,20 +206,20 @@ export default function Dashboard() {
         localStorage.removeItem('cast_auth');
       }
     }
-    
+
     // 従来の認証システムも確認
     const currentUser = getCurrentUser();
     if (!currentUser) {
       router.push('/login');
       return;
     }
-    
+
     // キャスト・管理者・システム管理者のみアクセス可能
     if (!currentUser.roles.some(role => ['cast', 'admin', 'super_admin', 'superadmin'].includes(role))) {
       router.push('/login');
       return;
     }
-    
+
     setUser(currentUser);
     setIsLoading(false);
   }, [router]);
@@ -328,6 +348,7 @@ export default function Dashboard() {
       loadPendingManagerCallCount();
       loadUnreadNotificationCount();
       loadStoreName();
+      loadActiveClientCount();
       // 本日KPIを日次売上APIから取得
       const today = new Date().toISOString().split('T')[0];
       fetch(`/api/admin/sales/daily?date=${today}`)
@@ -343,6 +364,13 @@ export default function Dashboard() {
           }
         })
         .catch(() => setTodaySalesKpi({ total_yen: 0, customer_count: 0, order_count: 0 }));
+      
+      // アクティブ客数を5秒ごとにリアルタイム更新
+      const activeClientInterval = setInterval(() => {
+        loadActiveClientCount();
+      }, 5000);
+      
+      return () => clearInterval(activeClientInterval);
     }
   }, [adminUser, user]);
 
@@ -361,10 +389,10 @@ export default function Dashboard() {
 
   // 今日の売上データ（API取得値）
   const todaySales = todaySalesKpi;
-  
+
   // 自分の勤怠データ
   const myAttendance = mockAttendance.find(a => a.staff_id === currentUser?.id);
-  
+
   // 在庫少の品目（残量が20%以下のボトル）
   const lowStockBottles = mockBottles.filter(bottle => {
     const percentage = (bottle.remaining_ml / bottle.total_ml) * 100;
@@ -425,8 +453,8 @@ export default function Dashboard() {
                 <div className="flex space-x-1">
                   {adminUser ? (
                     <Badge variant="secondary" className="text-xs">
-                      {adminUser.role === 'admin' ? '管理者' : 
-                       (adminUser.role === 'super_admin' || adminUser.role === 'superadmin') ? 'システム管理者' : adminUser.role}
+                      {adminUser.role === 'admin' ? '管理者' :
+                        (adminUser.role === 'super_admin' || adminUser.role === 'superadmin') ? 'システム管理者' : adminUser.role}
                     </Badge>
                   ) : castUser ? (
                     <Badge variant="secondary" className="text-xs">
@@ -435,9 +463,9 @@ export default function Dashboard() {
                   ) : user ? (
                     user.roles.map(role => (
                       <Badge key={role} variant="secondary" className="text-xs">
-                        {role === 'cast' ? 'キャスト' : 
-                         role === 'admin' ? '管理者' : 
-                         (role === 'super_admin' || role === 'superadmin') ? 'システム管理者' : role}
+                        {role === 'cast' ? 'キャスト' :
+                          role === 'admin' ? '管理者' :
+                            (role === 'super_admin' || role === 'superadmin') ? 'システム管理者' : role}
                       </Badge>
                     ))
                   ) : null}
@@ -446,18 +474,18 @@ export default function Dashboard() {
               <div className="sm:hidden">
                 <Badge variant="secondary" className="text-xs">
                   {adminUser ? (
-                    adminUser.role === 'admin' ? <GrUserExpert /> : 
-                    (adminUser.role === 'super_admin' || adminUser.role === 'superadmin') ? <GrUserAdmin /> : adminUser.role
+                    adminUser.role === 'admin' ? <GrUserExpert /> :
+                      (adminUser.role === 'super_admin' || adminUser.role === 'superadmin') ? <GrUserAdmin /> : adminUser.role
                   ) : castUser ? (
                     'キャスト'
                   ) : user ? (
                     (user.roles.includes('super_admin') || user.roles.includes('superadmin')) ? <GrUserAdmin /> :
-                    user.roles.includes('admin') ? <GrUserExpert /> : 'キャスト'
+                      user.roles.includes('admin') ? <GrUserExpert /> : 'キャスト'
                   ) : 'ユーザー'}
                 </Badge>
               </div>
-              <Button 
-                variant="ghost" 
+              <Button
+                variant="ghost"
                 size="sm"
                 className="text-xs sm:text-sm"
                 onClick={() => setShowLogoutDialog(true)}
@@ -526,8 +554,8 @@ export default function Dashboard() {
                   ) : (
                     <div className="text-center py-4">
                       <p className="text-blue-700 mb-3">まだ出勤していません</p>
-                      <Button 
-                        size="sm" 
+                      <Button
+                        size="sm"
                         className="bg-blue-600 hover:bg-blue-700"
                         onClick={() => router.push('/cast/attendance')}
                       >
@@ -630,17 +658,17 @@ export default function Dashboard() {
             <div>
               <h3 className="text-xl font-semibold text-gray-900 mb-4">主な機能</h3>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                <Button 
-                  variant="outline" 
+                <Button
+                  variant="outline"
                   className="h-24 flex-col space-y-2 hover:bg-yellow-50 hover:border-yellow-300 rounded-none"
                   onClick={() => router.push('/cast/attendance')}
                 >
                   <Clock className="w-6 h-6 text-yellow-600" />
                   <span className="text-sm font-medium">勤怠管理</span>
                 </Button>
-                
-                <Button 
-                  variant="outline" 
+
+                <Button
+                  variant="outline"
                   className="h-24 flex-col space-y-2 hover:bg-red-50 hover:border-red-300 rounded-none"
                   onClick={() => router.push('/cast/payroll')}
                 >
@@ -648,8 +676,8 @@ export default function Dashboard() {
                   <span className="text-sm font-medium">給与確認</span>
                 </Button>
 
-                <Button 
-                  variant="outline" 
+                <Button
+                  variant="outline"
                   className="h-24 flex-col space-y-2 hover:bg-green-50 hover:border-green-300 rounded-none"
                   onClick={() => router.push('/cast/back-rates')}
                 >
@@ -720,9 +748,14 @@ export default function Dashboard() {
                   <div className="text-2xl font-bold text-purple-900 mb-1">
                     {todaySales.order_count}件
                   </div>
-                  <p className="text-sm text-purple-700">
-                    平均注文額 {formatCurrency(Math.floor(todaySales.total_yen / todaySales.order_count))}
-                  </p>
+                  <div className="flex justify-between">
+                    <p className="text-sm text-purple-700">
+                      平均注文額 {formatCurrency(Math.floor(todaySales.total_yen / todaySales.order_count))}
+                    </p>
+                    <p className="text-sm text-purple-700 ">
+                      現在のアクティブ客数: {activeClientCount}名
+                    </p>
+                  </div>
                 </CardContent>
               </Card>
 
@@ -766,8 +799,8 @@ export default function Dashboard() {
             <div>
               <h3 className="text-xl font-semibold text-gray-900 mb-4">管理機能</h3>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <Button 
-                  variant="outline" 
+                <Button
+                  variant="outline"
                   className="h-24 flex-col space-y-2 hover:bg-blue-50 hover:border-blue-300"
                   onClick={() => router.push('/admin/sales/daily')}
                 >
@@ -775,9 +808,9 @@ export default function Dashboard() {
                   <span className="w-6 h-5 text-blue-600 text-xl"><FaRegChartBar /></span>
                   <span className="text-sm font-medium">日次売上</span>
                 </Button>
-                
-                <Button 
-                  variant="outline" 
+
+                <Button
+                  variant="outline"
                   className="h-24 flex-col space-y-2 hover:bg-indigo-50 hover:border-indigo-300"
                   onClick={() => router.push('/admin/sales/monthly')}
                 >
@@ -785,7 +818,7 @@ export default function Dashboard() {
                   <span className="w-6 h-5 text-indigo-600 text-2xl"><MdOutlineCalendarMonth /></span>
                   <span className="text-sm font-medium">月次売上</span>
                 </Button>
-                
+
                 {/* <Button 
                   variant="outline" 
                   className="h-24 flex-col space-y-2 hover:bg-green-50 hover:border-green-300"
@@ -794,9 +827,9 @@ export default function Dashboard() {
                   <CreditCard className="w-6 h-6 text-green-600" />
                   <span className="text-sm font-medium">レジ締め</span>
                 </Button> */}
-                
-                <Button 
-                  variant="outline" 
+
+                <Button
+                  variant="outline"
                   className="h-24 flex-col space-y-2 hover:bg-purple-50 hover:border-purple-300"
                   onClick={() => router.push('/admin/menu')}
                 >
@@ -804,7 +837,7 @@ export default function Dashboard() {
                   <span className="w-6 h-5 text-purple-600 text-xl"><BsFillMenuButtonWideFill /></span>
                   <span className="text-sm font-medium">メニュー管理</span>
                 </Button>
-                
+
                 {/* <Button 
                   variant="outline" 
                   className="h-24 flex-col space-y-2 hover:bg-orange-50 hover:border-orange-300"
@@ -813,9 +846,9 @@ export default function Dashboard() {
                   <Users className="w-6 h-6 text-orange-600" />
                   <span className="text-sm font-medium">顧客管理</span>
                 </Button> */}
-                
-                <Button 
-                  variant="outline" 
+
+                <Button
+                  variant="outline"
                   className="h-24 flex-col space-y-2 hover:bg-pink-50 hover:border-pink-300 relative"
                   onClick={() => router.push('/admin/attendance')}
                 >
@@ -828,9 +861,9 @@ export default function Dashboard() {
                     </div>
                   )}
                 </Button>
-                
-                <Button 
-                  variant="outline" 
+
+                <Button
+                  variant="outline"
                   className="h-24 flex-col space-y-2 hover:bg-yellow-50 hover:border-yellow-300"
                   onClick={() => router.push('/admin/payroll/preview')}
                 >
@@ -838,7 +871,7 @@ export default function Dashboard() {
                   <span className="w-6 h-5 text-yellow-600 text-2xl"><AiFillMoneyCollect /></span>
                   <span className="text-sm font-medium">給与計算</span>
                 </Button>
-                
+
                 {/* <Button 
                   variant="outline" 
                   className="h-24 flex-col space-y-2 hover:bg-indigo-50 hover:border-indigo-300"
@@ -847,16 +880,16 @@ export default function Dashboard() {
                   <Star className="w-6 h-6 text-indigo-600" />
                   <span className="text-sm font-medium">キャンペーン</span>
                 </Button> */}
-                
-                <Button 
-                  variant="outline" 
+
+                <Button
+                  variant="outline"
                   className="h-24 flex-col space-y-2 hover:bg-teal-50 hover:border-teal-300"
                   onClick={() => router.push('/admin/bottle-keep')}
                 >
                   <Wine className="w-6 h-6 text-teal-600" />
                   <span className="text-sm font-medium">ボトル保管管理</span>
                 </Button>
-                
+
                 {/*  <Button 
                   variant="outline" 
                   className="h-24 flex-col space-y-2 hover:bg-indigo-50 hover:border-indigo-300"
@@ -866,36 +899,36 @@ export default function Dashboard() {
                   <span className="w-6 h-5 text-indigo-600 text-2xl"><FaPercentage /></span>
                   <span className="text-sm font-medium">バック率設定</span>
                 </Button> */}
-                
-                <Button 
-                  variant="outline" 
+
+                <Button
+                  variant="outline"
                   className="h-24 flex-col space-y-2 hover:bg-cyan-50 hover:border-cyan-300"
                   onClick={() => router.push('/admin/shifts')}
                 >
                   <Calendar className="w-6 h-6 text-cyan-600" />
                   <span className="text-sm font-medium">シフト管理</span>
                 </Button>
-                
-                <Button 
-                  variant="outline" 
+
+                <Button
+                  variant="outline"
                   className="h-24 flex-col space-y-2 hover:bg-slate-50 hover:border-slate-300"
                   onClick={() => router.push('/admin/add-charges')}
                 >
                   <span className="w-6 h-5 text-slate-600 text-2xl"><MdOutlinePriceChange /></span>
                   <span className="text-sm font-medium">料金設定</span>
                 </Button>
-                
-                <Button 
-                  variant="outline" 
+
+                <Button
+                  variant="outline"
                   className="h-24 flex-col space-y-2 hover:bg-emerald-50 hover:border-emerald-300"
                   onClick={() => router.push('/admin/salary-settings')}
                 >
                   <DollarSign className="w-6 h-6 text-emerald-600" />
                   <span className="text-sm font-medium">給与項目管理</span>
                 </Button>
-                
-                <Button 
-                  variant="outline" 
+
+                <Button
+                  variant="outline"
                   className="h-24 flex-col space-y-2 hover:bg-rose-50 hover:border-rose-300"
                   onClick={() => router.push('/admin/casts')}
                 >
@@ -903,9 +936,9 @@ export default function Dashboard() {
                   <span className="w-6 h-5 text-rose-600 text-2xl"><FiUserPlus /></span>
                   <span className="text-sm font-medium">スタッフ管理</span>
                 </Button>
-                
-                <Button 
-                  variant="outline" 
+
+                <Button
+                  variant="outline"
                   className="h-24 flex-col space-y-2 hover:bg-green-50 hover:border-green-300 relative"
                   onClick={() => router.push('/admin/staff-calls')}
                 >
@@ -918,7 +951,7 @@ export default function Dashboard() {
                     </Badge>
                   )}
                 </Button>
-                
+
                 {/* <Button 
                   variant="outline" 
                   className="h-24 flex-col space-y-2 hover:bg-purple-50 hover:border-purple-300"
@@ -927,9 +960,9 @@ export default function Dashboard() {
                   <Crown className="w-6 h-6 text-purple-600" />
                   <span className="text-sm font-medium">指名管理</span>
                 </Button> */}
-                
-                <Button 
-                  variant="outline" 
+
+                <Button
+                  variant="outline"
                   className="h-24 flex-col space-y-2 hover:bg-orange-50 hover:border-orange-300 relative"
                   onClick={() => router.push('/admin/order-monitoring')}
                 >
@@ -944,9 +977,9 @@ export default function Dashboard() {
                   </div>
                   <span className="text-sm font-medium">注文監視</span>
                 </Button>
-                
-                <Button 
-                  variant="outline" 
+
+                <Button
+                  variant="outline"
                   className="h-24 flex-col space-y-2 hover:bg-cyan-50 hover:border-cyan-300"
                   onClick={() => router.push('/admin/tables')}
                 >
@@ -954,9 +987,9 @@ export default function Dashboard() {
                   <span className="w-6 h-5 text-cyan-600 text-2xl"><MdOutlineTableRestaurant /></span>
                   <span className="text-sm font-medium">テーブル管理</span>
                 </Button>
-                
-                <Button 
-                  variant="outline" 
+
+                <Button
+                  variant="outline"
                   className="h-24 flex-col space-y-2 hover:bg-green-50 hover:border-green-300"
                   onClick={() => router.push('/admin/services')}
                 >
@@ -965,16 +998,16 @@ export default function Dashboard() {
                   <span className="text-sm font-medium">サービス管理</span>
                 </Button>
 
-              <Button 
-                variant="outline" 
-                className="h-24 flex-col space-y-2 hover:bg-gray-50 hover:border-gray-300"
-                onClick={() => router.push('/admin/profile')}
-              >
-                {/* <User className="w-6 h-6 text-gray-700" /> */}
-                <span className="w-6 h-5 text-gray-700 text-xl"><FaUserTie /></span>
-                
-                <span className="text-sm font-medium">管理者情報管理</span>
-              </Button>
+                <Button
+                  variant="outline"
+                  className="h-24 flex-col space-y-2 hover:bg-gray-50 hover:border-gray-300"
+                  onClick={() => router.push('/admin/profile')}
+                >
+                  {/* <User className="w-6 h-6 text-gray-700" /> */}
+                  <span className="w-6 h-5 text-gray-700 text-xl"><FaUserTie /></span>
+
+                  <span className="text-sm font-medium">管理者情報管理</span>
+                </Button>
               </div>
             </div>
           </div>
@@ -1020,9 +1053,9 @@ export default function Dashboard() {
             <Table className="w-6 h-6" />
             {/* <span className="hidden sm:inline font-medium">テーブル状態</span> */}
           </button>
-          <RealTimeTableStatus 
-            open={showTableStatus} 
-            onClose={() => setShowTableStatus(false)} 
+          <RealTimeTableStatus
+            open={showTableStatus}
+            onClose={() => setShowTableStatus(false)}
           />
         </>
       )}
@@ -1039,7 +1072,7 @@ export default function Dashboard() {
               店舗名を変更します
             </DialogDescription>
           </DialogHeader>
-          
+
           <div className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="store-name">店舗名</Label>
@@ -1052,7 +1085,7 @@ export default function Dashboard() {
                 className="w-full"
               />
             </div>
-            
+
             <div className="flex justify-end space-x-2">
               <Button
                 variant="outline"
@@ -1087,7 +1120,7 @@ export default function Dashboard() {
               バックアップファイルの作成と復元を行います
             </DialogDescription>
           </DialogHeader>
-          
+
           <div className="space-y-4">
             <div className="flex justify-end">
               <Button
@@ -1116,9 +1149,8 @@ export default function Dashboard() {
                   {backupFiles.map((file) => (
                     <div
                       key={file.filename}
-                      className={`p-4 hover:bg-gray-50 cursor-pointer transition-colors ${
-                        selectedBackupFile === file.filename ? 'bg-blue-50 border-blue-200' : ''
-                      }`}
+                      className={`p-4 hover:bg-gray-50 cursor-pointer transition-colors ${selectedBackupFile === file.filename ? 'bg-blue-50 border-blue-200' : ''
+                        }`}
                       onClick={() => setSelectedBackupFile(file.filename)}
                     >
                       <div className="flex items-center justify-between">
@@ -1188,7 +1220,7 @@ export default function Dashboard() {
               この操作は取り消せません
             </DialogDescription>
           </DialogHeader>
-          
+
           <div className="space-y-4">
             <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
               <div className="flex items-start space-x-3">

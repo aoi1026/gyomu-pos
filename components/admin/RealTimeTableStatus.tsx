@@ -28,6 +28,7 @@ interface SessionData {
   is_paused?: boolean;
   paused_at?: string;
   paused_elapsed?: number;
+  memo?: string;
 }
 
 interface RealTimeTableStatusProps {
@@ -44,6 +45,7 @@ export default function RealTimeTableStatus({ open, onClose }: RealTimeTableStat
   const [showStartSessionDialog, setShowStartSessionDialog] = useState(false);
   const [selectedTableForSession, setSelectedTableForSession] = useState<TableData | null>(null);
   const [guestCount, setGuestCount] = useState<string>('');
+  const [sessionMemo, setSessionMemo] = useState<string>('');
   const [isStartingSession, setIsStartingSession] = useState(false);
   const [remainingTimes, setRemainingTimes] = useState<{ [tableId: number]: number }>({});
   const [showRemainingTimeDialog, setShowRemainingTimeDialog] = useState(false);
@@ -224,6 +226,7 @@ export default function RealTimeTableStatus({ open, onClose }: RealTimeTableStat
   const handleStartSessionClick = (table: TableData) => {
     setSelectedTableForSession(table);
     setGuestCount('');
+    setSessionMemo('');
     setShowStartSessionDialog(true);
   };
 
@@ -258,7 +261,8 @@ export default function RealTimeTableStatus({ open, onClose }: RealTimeTableStat
           table_id: selectedTableForSession.id,
           cost: 0,
           client: numGuestCount,
-          status: 1
+          status: 1,
+          memo: sessionMemo || null
         }),
       });
 
@@ -278,6 +282,7 @@ export default function RealTimeTableStatus({ open, onClose }: RealTimeTableStat
       const tableId = selectedTableForSession.id;
       setSelectedTableForSession(null);
       setGuestCount('');
+      setSessionMemo('');
       
       // データを更新
       await fetchData();
@@ -295,6 +300,21 @@ export default function RealTimeTableStatus({ open, onClose }: RealTimeTableStat
     }
   };
 
+  // 終了時間を計算する関数
+  const calculateEndTime = (session: SessionData): Date => {
+    const setCount = session.set_count || 1;
+    const setDuration = 3600; // 1セット = 3600秒
+    const totalSeconds = setCount * setDuration;
+    
+    const sessionStart = new Date(session.created_at).getTime();
+    const pausedElapsed = session.paused_elapsed || 0;
+    
+    // 終了時間 = 開始時間 + 総時間 + 累積停止時間
+    const endTime = new Date(sessionStart + (totalSeconds + pausedElapsed) * 1000);
+    
+    return endTime;
+  };
+
   const filteredTables = tables.filter(table => {
     const hasSession = getTableSession(table.id);
     if (activeTab === 'empty') {
@@ -303,6 +323,19 @@ export default function RealTimeTableStatus({ open, onClose }: RealTimeTableStat
       return !!hasSession;
     }
     return true; // 'all'
+  }).sort((a, b) => {
+    const sessionA = getTableSession(a.id);
+    const sessionB = getTableSession(b.id);
+    
+    // セッションがないテーブルは後ろに
+    if (!sessionA && !sessionB) return 0;
+    if (!sessionA) return 1;
+    if (!sessionB) return -1;
+    
+    // 終了時間でソート（昇順）
+    const endTimeA = calculateEndTime(sessionA).getTime();
+    const endTimeB = calculateEndTime(sessionB).getTime();
+    return endTimeA - endTimeB;
   });
 
   // 残り時間を計算する関数
@@ -329,21 +362,6 @@ export default function RealTimeTableStatus({ open, onClose }: RealTimeTableStat
     }
     
     return Math.max(0, totalSeconds - elapsed);
-  };
-
-  // 終了時間を計算する関数
-  const calculateEndTime = (session: SessionData): Date => {
-    const setCount = session.set_count || 1;
-    const setDuration = 3600; // 1セット = 3600秒
-    const totalSeconds = setCount * setDuration;
-    
-    const sessionStart = new Date(session.created_at).getTime();
-    const pausedElapsed = session.paused_elapsed || 0;
-    
-    // 終了時間 = 開始時間 + 総時間 + 累積停止時間
-    const endTime = new Date(sessionStart + (totalSeconds + pausedElapsed) * 1000);
-    
-    return endTime;
   };
 
   // 残り時間をリアルタイムで更新
@@ -421,6 +439,12 @@ export default function RealTimeTableStatus({ open, onClose }: RealTimeTableStat
                   {session.is_paused && <span className="ml-1 text-orange-600 text-xs">(停止中)</span>}
                 </span>
               </div>
+              {session.memo && (
+                <div className="flex text-xs text-gray-600 pt-1 border-t border-gray-200">
+                  <div className="font-medium text-gray-700 mb-1">メモ:</div>
+                  <div>{session.memo}</div>
+                </div>
+              )}
               <Button
                 size="sm"
                 className="w-full mt-3 bg-blue-600 hover:bg-blue-700"
@@ -545,6 +569,17 @@ export default function RealTimeTableStatus({ open, onClose }: RealTimeTableStat
                 </p>
               )}
             </div>
+            <div className="space-y-2">
+              <Label htmlFor="session-memo">メモ</Label>
+              <Input
+                id="session-memo"
+                type="text"
+                value={sessionMemo}
+                onChange={(e) => setSessionMemo(e.target.value)}
+                placeholder="メモを入力（任意）"
+                disabled={isStartingSession}
+              />
+            </div>
             <div className="flex justify-end space-x-2">
               <Button
                 variant="outline"
@@ -552,6 +587,7 @@ export default function RealTimeTableStatus({ open, onClose }: RealTimeTableStat
                   setShowStartSessionDialog(false);
                   setSelectedTableForSession(null);
                   setGuestCount('');
+                  setSessionMemo('');
                 }}
                 disabled={isStartingSession}
               >

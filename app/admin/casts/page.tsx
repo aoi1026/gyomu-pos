@@ -36,10 +36,19 @@ interface AdminData {
   created_at: string;
 }
 
+interface TableUserData {
+  id: number;
+  name: string;
+  mail: string;
+  other: string | null;
+  gender: string | null;
+  created_at: string;
+}
+
 export default function CastsPage() {
   const [adminUser, setAdminUser] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'staff' | 'admins'>('staff');
+  const [activeTab, setActiveTab] = useState<'staff' | 'admins' | 'tables'>('staff');
 
   const [casts, setCasts] = useState<CastData[]>([]);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
@@ -72,6 +81,13 @@ export default function CastsPage() {
   const [deleteAdminId, setDeleteAdminId] = useState<number | null>(null);
   const [isDeleteAdminDialogOpen, setIsDeleteAdminDialogOpen] = useState(false);
 
+  const [tableUsers, setTableUsers] = useState<TableUserData[]>([]);
+  const [isAddTableUserDialogOpen, setIsAddTableUserDialogOpen] = useState(false);
+  const [isEditTableUserDialogOpen, setIsEditTableUserDialogOpen] = useState(false);
+  const [editingTableUser, setEditingTableUser] = useState<TableUserData | null>(null);
+  const [deleteTableUserId, setDeleteTableUserId] = useState<number | null>(null);
+  const [isDeleteTableUserDialogOpen, setIsDeleteTableUserDialogOpen] = useState(false);
+
   const [addAdminForm, setAddAdminForm] = useState({
     name: '',
     mail: '',
@@ -81,6 +97,22 @@ export default function CastsPage() {
   });
 
   const [editAdminForm, setEditAdminForm] = useState({
+    name: '',
+    mail: '',
+    password: '',
+    other: '',
+    gender: ''
+  });
+
+  const [addTableUserForm, setAddTableUserForm] = useState({
+    name: '',
+    mail: '',
+    password: '',
+    other: '',
+    gender: ''
+  });
+
+  const [editTableUserForm, setEditTableUserForm] = useState({
     name: '',
     mail: '',
     password: '',
@@ -102,6 +134,7 @@ export default function CastsPage() {
         setIsLoading(false);
         fetchCasts();
         fetchAdmins();
+        fetchTableUsers();
         return;
       } catch (err) {
         console.error('管理者認証情報の解析に失敗しました:', err);
@@ -140,6 +173,21 @@ export default function CastsPage() {
     } catch (err) {
       console.error('管理者一覧取得エラー:', err);
       error('エラー', '管理者一覧の取得に失敗しました');
+    }
+  };
+
+  const fetchTableUsers = async () => {
+    try {
+      const response = await fetch('/api/table-users');
+      const result = await response.json();
+      if (result.success) {
+        setTableUsers(result.data);
+      } else {
+        error('エラー', 'テーブル管理ユーザー一覧の取得に失敗しました');
+      }
+    } catch (err) {
+      console.error('テーブル管理ユーザー一覧取得エラー:', err);
+      error('エラー', 'テーブル管理ユーザー一覧の取得に失敗しました');
     }
   };
 
@@ -190,9 +238,33 @@ export default function CastsPage() {
   const handleAddForActiveTab = () => {
     if (activeTab === 'staff' || !isSuperAdmin) {
       handleAdd();
-    } else {
+    } else if (activeTab === 'admins') {
       handleAddAdmin();
+    } else if (activeTab === 'tables') {
+      handleAddTableUser();
     }
+  };
+
+  const handleAddTableUser = () => {
+    setAddTableUserForm({ name: '', mail: '', password: '', other: '', gender: '' });
+    setIsAddTableUserDialogOpen(true);
+  };
+
+  const handleEditTableUser = (tableUser: TableUserData) => {
+    setEditingTableUser(tableUser);
+    setEditTableUserForm({
+      name: tableUser.name,
+      mail: tableUser.mail,
+      password: '',
+      other: tableUser.other || '',
+      gender: tableUser.gender || ''
+    });
+    setIsEditTableUserDialogOpen(true);
+  };
+
+  const handleDeleteTableUser = (tableUserId: number) => {
+    setDeleteTableUserId(tableUserId);
+    setIsDeleteTableUserDialogOpen(true);
   };
 
   const handleSaveAdd = async () => {
@@ -375,6 +447,96 @@ export default function CastsPage() {
     }
   };
 
+  const handleSaveAddTableUser = async () => {
+    if (!addTableUserForm.name || !addTableUserForm.mail || !addTableUserForm.password) {
+      error('エラー', '名前、メールアドレス、パスワードを入力してください');
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const response = await fetch('/api/table-users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(addTableUserForm)
+      });
+
+      const result = await response.json();
+      if (result.success) {
+        success('追加完了', 'テーブル管理ユーザーが正常に追加されました');
+        setIsAddTableUserDialogOpen(false);
+        setAddTableUserForm({ name: '', mail: '', password: '', other: '', gender: '' });
+        fetchTableUsers();
+      } else {
+        error('エラー', result.error || 'テーブル管理ユーザーの追加に失敗しました');
+      }
+    } catch (err) {
+      console.error('テーブル管理ユーザー追加エラー:', err);
+      error('エラー', 'テーブル管理ユーザーの追加に失敗しました');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleSaveEditTableUser = async () => {
+    if (!editTableUserForm.name || !editTableUserForm.mail) {
+      error('エラー', '名前とメールアドレスを入力してください');
+      return;
+    }
+
+    if (!editingTableUser) return;
+
+    setIsSubmitting(true);
+    try {
+      const response = await fetch(`/api/table-users/${editingTableUser.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(editTableUserForm)
+      });
+
+      const result = await response.json();
+      if (result.success) {
+        success('更新完了', 'テーブル管理ユーザー情報が正常に更新されました');
+        setIsEditTableUserDialogOpen(false);
+        setEditingTableUser(null);
+        fetchTableUsers();
+      } else {
+        error('エラー', result.error || 'テーブル管理ユーザーの更新に失敗しました');
+      }
+    } catch (err) {
+      console.error('テーブル管理ユーザー更新エラー:', err);
+      error('エラー', 'テーブル管理ユーザーの更新に失敗しました');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleConfirmDeleteTableUser = async () => {
+    if (!deleteTableUserId) return;
+
+    setIsSubmitting(true);
+    try {
+      const response = await fetch(`/api/table-users/${deleteTableUserId}`, {
+        method: 'DELETE'
+      });
+
+      const result = await response.json();
+      if (result.success) {
+        success('削除完了', 'テーブル管理ユーザーが正常に削除されました');
+        setIsDeleteTableUserDialogOpen(false);
+        setDeleteTableUserId(null);
+        fetchTableUsers();
+      } else {
+        error('エラー', result.error || 'テーブル管理ユーザーの削除に失敗しました');
+      }
+    } catch (err) {
+      console.error('テーブル管理ユーザー削除エラー:', err);
+      error('エラー', 'テーブル管理ユーザーの削除に失敗しました');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('ja-JP', {
       year: 'numeric',
@@ -420,7 +582,7 @@ export default function CastsPage() {
             <div className="flex items-center space-x-2">
               <Button onClick={handleAddForActiveTab} className="bg-purple-600 hover:bg-purple-700">
                 <Plus className="w-4 h-4 mr-2" />
-                {activeTab === 'staff' ? 'スタッフ追加' : '管理者登録'}
+                {activeTab === 'staff' ? 'スタッフ追加' : activeTab === 'admins' ? '管理者登録' : 'テーブル管理ユーザー追加'}
               </Button>
             </div>
           </div>
@@ -460,16 +622,17 @@ export default function CastsPage() {
         <Tabs
           value={isSuperAdmin ? activeTab : 'staff'}
           onValueChange={(v) => {
-            if (v === 'admins' && !isSuperAdmin) {
-              error('権限エラー', '管理者登録表にアクセスできるのはスーパー管理者のみです');
+            if ((v === 'admins' || v === 'tables') && !isSuperAdmin) {
+              error('権限エラー', '管理者登録表とテーブル管理にアクセスできるのはスーパー管理者のみです');
               return;
             }
-            setActiveTab(v as 'staff' | 'admins');
+            setActiveTab(v as 'staff' | 'admins' | 'tables');
           }}
         >
           <TabsList className="mb-4">
             <TabsTrigger value="staff">スタッフ</TabsTrigger>
             {isSuperAdmin && <TabsTrigger value="admins">管理者</TabsTrigger>}
+            {isSuperAdmin && <TabsTrigger value="tables">テーブル管理</TabsTrigger>}
           </TabsList>
 
           <TabsContent value="staff">
@@ -588,54 +751,54 @@ export default function CastsPage() {
           </TabsContent>
 
           {isSuperAdmin && (
-            <TabsContent value="admins">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center justify-between">
-                    <span className="flex items-center">
-                      <Users className="w-5 h-5 mr-2" />
-                      管理者登録表
-                    </span>
-                    <Badge variant="outline" className="text-sm">
-                      {admins.length}名
-                    </Badge>
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {admins.length === 0 ? (
-                    <div className="text-center py-8">
-                      <Users className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                      <p className="text-gray-500">管理者が登録されていません</p>
-                      <Button onClick={handleAddAdmin} className="mt-4">
-                        <Plus className="w-4 h-4 mr-2" />
-                        管理者を登録
-                      </Button>
-                    </div>
-                  ) : (
-                    <div className="overflow-x-auto">
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>番号</TableHead>
-                            <TableHead>管理者名</TableHead>
-                            <TableHead>管理者メール</TableHead>
+          <TabsContent value="admins">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center justify-between">
+                  <span className="flex items-center">
+                    <Users className="w-5 h-5 mr-2" />
+                    管理者登録表
+                  </span>
+                  <Badge variant="outline" className="text-sm">
+                    {admins.length}名
+                  </Badge>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {admins.length === 0 ? (
+                  <div className="text-center py-8">
+                    <Users className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                    <p className="text-gray-500">管理者が登録されていません</p>
+                    <Button onClick={handleAddAdmin} className="mt-4">
+                      <Plus className="w-4 h-4 mr-2" />
+                      管理者を登録
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>番号</TableHead>
+                          <TableHead>管理者名</TableHead>
+                          <TableHead>管理者メール</TableHead>
                             <TableHead>性別</TableHead>
-                            <TableHead>備考</TableHead>
-                            <TableHead className="text-center">操作</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {admins.map((admin, index) => (
-                            <TableRow key={admin.id}>
-                              <TableCell>{index + 1}</TableCell>
-                              <TableCell className="font-medium">{admin.name}</TableCell>
-                              <TableCell>
-                                <div className="flex items-center space-x-2">
-                                  <Mail className="w-4 h-4 text-gray-400" />
-                                  <span className="text-sm">{admin.mail}</span>
-                                </div>
-                              </TableCell>
-                              <TableCell>
+                          <TableHead>備考</TableHead>
+                          <TableHead className="text-center">操作</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {admins.map((admin, index) => (
+                          <TableRow key={admin.id}>
+                            <TableCell>{index + 1}</TableCell>
+                            <TableCell className="font-medium">{admin.name}</TableCell>
+                            <TableCell>
+                              <div className="flex items-center space-x-2">
+                                <Mail className="w-4 h-4 text-gray-400" />
+                                <span className="text-sm">{admin.mail}</span>
+                              </div>
+                            </TableCell>
+                            <TableCell>
                                 {admin.gender ? (
                                   <Badge variant="secondary" className={
                                     admin.gender === 'male' ? 'bg-blue-100 text-blue-800' :
@@ -652,9 +815,110 @@ export default function CastsPage() {
                               </TableCell>
                               <TableCell>
                                 {admin.other && String(admin.other).trim() ? (
+                                <div className="flex items-center space-x-2">
+                                  <FileText className="w-4 h-4 text-gray-400" />
+                                    <span className="text-sm">{String(admin.other)}</span>
+                                </div>
+                              ) : (
+                                <span className="text-gray-400 text-sm">-</span>
+                              )}
+                            </TableCell>
+                            <TableCell className="text-center">
+                              <div className="flex space-x-2 justify-center">
+                                <Button size="sm" variant="outline" onClick={() => handleEditAdmin(admin)}>
+                                  <Edit className="w-4 h-4 mr-1" />
+                                  変更
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => handleDeleteAdmin(admin.id)}
+                                  className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                >
+                                  <Trash2 className="w-4 h-4 mr-1" />
+                                  削除
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+          )}
+
+          {isSuperAdmin && (
+            <TabsContent value="tables">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center justify-between">
+                    <span className="flex items-center">
+                      <Users className="w-5 h-5 mr-2" />
+                      テーブル管理ユーザー登録表
+                    </span>
+                    <Badge variant="outline" className="text-sm">
+                      {tableUsers.length}名
+                    </Badge>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {tableUsers.length === 0 ? (
+                    <div className="text-center py-8">
+                      <Users className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                      <p className="text-gray-500">テーブル管理ユーザーが登録されていません</p>
+                      <Button onClick={handleAddTableUser} className="mt-4">
+                        <Plus className="w-4 h-4 mr-2" />
+                        テーブル管理ユーザーを登録
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>番号</TableHead>
+                            <TableHead>管理者名</TableHead>
+                            <TableHead>管理者メール</TableHead>
+                            <TableHead>性別</TableHead>
+                            <TableHead>備考</TableHead>
+                            <TableHead className="text-center">操作</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {tableUsers.map((tableUser, index) => (
+                            <TableRow key={tableUser.id}>
+                              <TableCell>{index + 1}</TableCell>
+                              <TableCell className="font-medium">{tableUser.name}</TableCell>
+                              <TableCell>
+                                <div className="flex items-center space-x-2">
+                                  <Mail className="w-4 h-4 text-gray-400" />
+                                  <span className="text-sm">{tableUser.mail}</span>
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                {tableUser.gender ? (
+                                  <Badge variant="secondary" className={
+                                    tableUser.gender === 'male' ? 'bg-blue-100 text-blue-800' :
+                                    tableUser.gender === 'female' ? 'bg-pink-100 text-pink-800' :
+                                    'bg-gray-100 text-gray-800'
+                                  }>
+                                    {tableUser.gender === 'male' ? '男性' :
+                                     tableUser.gender === 'female' ? '女性' :
+                                     tableUser.gender === 'other' ? 'その他' : tableUser.gender}
+                                  </Badge>
+                                ) : (
+                                  <span className="text-gray-400 text-sm">-</span>
+                                )}
+                              </TableCell>
+                              <TableCell>
+                                {tableUser.other && String(tableUser.other).trim() ? (
                                   <div className="flex items-center space-x-2">
                                     <FileText className="w-4 h-4 text-gray-400" />
-                                    <span className="text-sm">{String(admin.other)}</span>
+                                    <span className="text-sm">{String(tableUser.other)}</span>
                                   </div>
                                 ) : (
                                   <span className="text-gray-400 text-sm">-</span>
@@ -662,14 +926,14 @@ export default function CastsPage() {
                               </TableCell>
                               <TableCell className="text-center">
                                 <div className="flex space-x-2 justify-center">
-                                  <Button size="sm" variant="outline" onClick={() => handleEditAdmin(admin)}>
+                                  <Button size="sm" variant="outline" onClick={() => handleEditTableUser(tableUser)}>
                                     <Edit className="w-4 h-4 mr-1" />
                                     変更
                                   </Button>
                                   <Button
                                     size="sm"
                                     variant="outline"
-                                    onClick={() => handleDeleteAdmin(admin.id)}
+                                    onClick={() => handleDeleteTableUser(tableUser.id)}
                                     className="text-red-600 hover:text-red-700 hover:bg-red-50"
                                   >
                                     <Trash2 className="w-4 h-4 mr-1" />
@@ -1039,6 +1303,185 @@ export default function CastsPage() {
             <AlertDialogCancel>キャンセル</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleConfirmDeleteAdmin}
+              className="bg-red-600 hover:bg-red-700"
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? '削除中...' : '削除'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* テーブル管理ユーザー追加ダイアログ */}
+      <Dialog open={isAddTableUserDialogOpen} onOpenChange={setIsAddTableUserDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center">
+              <Plus className="w-5 h-5 mr-2" />
+              テーブル管理ユーザー追加
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="add-table-user-name">名前 *</Label>
+              <Input
+                id="add-table-user-name"
+                value={addTableUserForm.name}
+                onChange={(e) => setAddTableUserForm(prev => ({ ...prev, name: e.target.value }))}
+                placeholder="名前を入力"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="add-table-user-mail">メールアドレス *</Label>
+              <Input
+                id="add-table-user-mail"
+                type="email"
+                value={addTableUserForm.mail}
+                onChange={(e) => setAddTableUserForm(prev => ({ ...prev, mail: e.target.value }))}
+                placeholder="メールアドレスを入力"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="add-table-user-password">パスワード *</Label>
+              <Input
+                id="add-table-user-password"
+                type="password"
+                value={addTableUserForm.password}
+                onChange={(e) => setAddTableUserForm(prev => ({ ...prev, password: e.target.value }))}
+                placeholder="パスワードを入力"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="add-table-user-gender">性別</Label>
+              <Select
+                value={addTableUserForm.gender}
+                onValueChange={(value) => setAddTableUserForm(prev => ({ ...prev, gender: value }))}
+              >
+                <SelectTrigger id="add-table-user-gender">
+                  <SelectValue placeholder="性別を選択（任意）" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="male">男性</SelectItem>
+                  <SelectItem value="female">女性</SelectItem>
+                  <SelectItem value="other">その他</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="add-table-user-other">備考</Label>
+              <Input
+                id="add-table-user-other"
+                value={addTableUserForm.other}
+                onChange={(e) => setAddTableUserForm(prev => ({ ...prev, other: e.target.value }))}
+                placeholder="備考を入力（任意）"
+              />
+            </div>
+            <div className="flex justify-end space-x-2">
+              <Button variant="outline" onClick={() => setIsAddTableUserDialogOpen(false)}>
+                <X className="w-4 h-4 mr-2" />
+                キャンセル
+              </Button>
+              <Button onClick={handleSaveAddTableUser} disabled={isSubmitting}>
+                <Save className="w-4 h-4 mr-2" />
+                {isSubmitting ? '追加中...' : '追加'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* テーブル管理ユーザー編集ダイアログ */}
+      <Dialog open={isEditTableUserDialogOpen} onOpenChange={setIsEditTableUserDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center">
+              <Edit className="w-5 h-5 mr-2" />
+              テーブル管理ユーザー編集
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="edit-table-user-name">名前 *</Label>
+              <Input
+                id="edit-table-user-name"
+                value={editTableUserForm.name}
+                onChange={(e) => setEditTableUserForm(prev => ({ ...prev, name: e.target.value }))}
+                placeholder="名前を入力"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-table-user-mail">メールアドレス *</Label>
+              <Input
+                id="edit-table-user-mail"
+                type="email"
+                value={editTableUserForm.mail}
+                onChange={(e) => setEditTableUserForm(prev => ({ ...prev, mail: e.target.value }))}
+                placeholder="メールアドレスを入力"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-table-user-password">パスワード</Label>
+              <Input
+                id="edit-table-user-password"
+                type="password"
+                value={editTableUserForm.password}
+                onChange={(e) => setEditTableUserForm(prev => ({ ...prev, password: e.target.value }))}
+                placeholder="新しいパスワード（変更する場合のみ）"
+              />
+              <p className="text-xs text-gray-500">空の場合は現在のパスワードを維持します</p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-table-user-gender">性別</Label>
+              <Select
+                value={editTableUserForm.gender}
+                onValueChange={(value) => setEditTableUserForm(prev => ({ ...prev, gender: value }))}
+              >
+                <SelectTrigger id="edit-table-user-gender">
+                  <SelectValue placeholder="性別を選択（任意）" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="male">男性</SelectItem>
+                  <SelectItem value="female">女性</SelectItem>
+                  <SelectItem value="other">その他</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-table-user-other">備考</Label>
+              <Input
+                id="edit-table-user-other"
+                value={editTableUserForm.other}
+                onChange={(e) => setEditTableUserForm(prev => ({ ...prev, other: e.target.value }))}
+                placeholder="備考を入力（任意）"
+              />
+            </div>
+            <div className="flex justify-end space-x-2">
+              <Button variant="outline" onClick={() => setIsEditTableUserDialogOpen(false)}>
+                <X className="w-4 h-4 mr-2" />
+                キャンセル
+              </Button>
+              <Button onClick={handleSaveEditTableUser} disabled={isSubmitting}>
+                <Save className="w-4 h-4 mr-2" />
+                {isSubmitting ? '更新中...' : '更新'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* テーブル管理ユーザー削除確認ダイアログ */}
+      <AlertDialog open={isDeleteTableUserDialogOpen} onOpenChange={setIsDeleteTableUserDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>テーブル管理ユーザー削除</AlertDialogTitle>
+            <AlertDialogDescription>
+              このテーブル管理ユーザーを削除しますか？この操作は取り消せません。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>キャンセル</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirmDeleteTableUser}
               className="bg-red-600 hover:bg-red-700"
               disabled={isSubmitting}
             >

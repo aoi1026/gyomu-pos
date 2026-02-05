@@ -6,7 +6,13 @@ import { NotificationProvider } from '@/lib/notification-context';
 import { SessionProvider } from '@/lib/session-context';
 import { PrinterProvider } from '@/lib/printer-context';
 
-const inter = Inter({ subsets: ['latin'] });
+const inter = Inter({ 
+  subsets: ['latin'],
+  display: 'swap',
+  fallback: ['system-ui', 'arial', 'sans-serif'],
+  preload: true,
+  adjustFontFallback: true,
+});
 
 export const metadata: Metadata = {
   title: 'LNXS - ナイトワーク特化POSシステム',
