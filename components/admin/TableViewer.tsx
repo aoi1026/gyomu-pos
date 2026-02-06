@@ -1,12 +1,14 @@
 'use client';
 
 import { useEffect, useState, useRef } from 'react';
-import { X, Clock, ShoppingCart, Utensils, Users, DollarSign, CheckCircle, Bell, Trash2, CreditCard, Wine, Plus, Minus, Edit2, Save, XCircle, LogOut, Pause, Play } from 'lucide-react';
+import { X, Clock, ShoppingCart, Utensils, Users, DollarSign, CheckCircle, Bell, Trash2, CreditCard, Wine, Plus, Minus, Edit2, Save, XCircle, LogOut, Pause, Play, Package, Coffee } from 'lucide-react';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -180,6 +182,9 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
   const isTimeExpired = setExtensionCountdown <= 0;
   const isOrderingDisabled = isTimeExpired || isPaymentCompleted;
   
+  // タブ関連
+  const [leftMode, setLeftMode] = useState<'order' | 'nomination' | 'service'>('order');
+  
   // メニュー関連
   const [menuCategories, setMenuCategories] = useState<any[]>([]);
   const [menuItems, setMenuItems] = useState<any[]>([]);
@@ -190,6 +195,22 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
   const [orderQuantity, setOrderQuantity] = useState<number>(1);
   const [selectedCastForOrder, setSelectedCastForOrder] = useState<string>('none');
   const [isForCast, setIsForCast] = useState<boolean>(false);
+  const [isOrderCartOpen, setIsOrderCartOpen] = useState(false);
+  
+  // 指名関連
+  const [currentNominationType, setCurrentNominationType] = useState<'inside' | 'main' | 'together' | null>(null);
+  const [showNominationCastDialog, setShowNominationCastDialog] = useState(false);
+  const [isNominationsLoading, setIsNominationsLoading] = useState(false);
+  
+  // サービス関連
+  const [services, setServices] = useState<any[]>([]);
+  const [isServicesLoading, setIsServicesLoading] = useState(true);
+  const [showServiceOrderDialog, setShowServiceOrderDialog] = useState(false);
+  const [selectedService, setSelectedService] = useState<any>(null);
+  const [serviceOrderQuantity, setServiceOrderQuantity] = useState<number>(1);
+  const [showBottleKeepDialog, setShowBottleKeepDialog] = useState(false);
+  const [showVipRoomDialog, setShowVipRoomDialog] = useState(false);
+  const [showKaraokeDialog, setShowKaraokeDialog] = useState(false);
 
   const getNominationTypeLabel = (type: 'main' | 'inside' | 'together') => {
     switch (type) {
@@ -290,7 +311,10 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
               loadCartOrders(activeSession.id),
               loadServiceOrders(activeSession.id),
               loadNominations(activeSession.id),
-              loadAddCharges()
+              loadAddCharges(),
+              loadMenuData(),
+              loadServices(),
+              loadCasts()
             ]);
           }
           
@@ -541,6 +565,7 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
           
           success('削除完了', '指名を削除しました');
           await loadNominations(session.id);
+          await loadAdditionalServices(session.id);
         } catch (err) {
           console.error('指名削除エラー:', err);
           error('エラー', err instanceof Error ? err.message : '指名の削除に失敗しました');
@@ -834,6 +859,96 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
     } finally {
       setIsCastsLoading(false);
     }
+  };
+
+  // サービスデータを取得
+  const loadServices = async () => {
+    try {
+      setIsServicesLoading(true);
+      const response = await fetch('/api/services');
+      const result = await response.json();
+      if (result.success) {
+        setServices(result.services || []);
+      }
+    } catch (error) {
+      console.error('サービス取得エラー:', error);
+    } finally {
+      setIsServicesLoading(false);
+    }
+  };
+
+  // 指名処理
+  const handleNomination = async (castId: string, castName: string, typeId: 'main' | 'inside' | 'together') => {
+    if (!session || !tableId) return;
+    if (isOrderingDisabled) {
+      error('エラー', isPaymentCompleted ? '決済が完了しているため、指名を追加できません' : 'セット時間が終了したため、指名を追加できません');
+      return;
+    }
+
+    try {
+      // 指名料金を計算
+      let charges = addCharges;
+      if (Object.keys(charges).length === 0) {
+        const chargesResponse = await fetch('/api/add-charges');
+        const chargesResult = await chargesResponse.json();
+        if (chargesResult.success && chargesResult.charges) {
+          const chargesMap: {[key: string]: number} = {};
+          chargesResult.charges.forEach((charge: any) => {
+            chargesMap[charge.charge_name] = parseFloat(charge.value) || 0;
+          });
+          charges = chargesMap;
+          setAddCharges(chargesMap);
+        }
+      }
+
+      let nominationCharge = 0;
+      if (typeId === 'main') {
+        nominationCharge = charges['main'] || 0;
+      } else if (typeId === 'inside') {
+        nominationCharge = charges['inside'] || 0;
+      } else if (typeId === 'together') {
+        const mainCharge = charges['main'] || 0;
+        const togetherCharge = charges['together'] || 0;
+        nominationCharge = mainCharge + togetherCharge;
+      }
+
+      // 指名を登録
+      const response = await fetch('/api/nominations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          castId: parseInt(castId, 10),
+          tableId: tableId,
+          sessionId: session.id,
+          typeId: typeId,
+          cost: nominationCharge
+        })
+      });
+
+      const result = await response.json();
+      if (result.success) {
+        setShowNominationCastDialog(false);
+        await loadNominations(session.id);
+        await loadAdditionalServices(session.id);
+        success('指名登録', '指名を登録しました');
+      } else {
+        error('エラー', result.error || '指名の登録に失敗しました');
+      }
+    } catch (err) {
+      console.error('指名登録エラー:', err);
+      error('エラー', '指名の登録に失敗しました');
+    }
+  };
+
+  // サービス注文処理
+  const handleServiceOrder = (service: any) => {
+    if (isOrderingDisabled) {
+      error('エラー', isPaymentCompleted ? '決済が完了しているため、サービスを注文できません' : 'セット時間が終了したため、サービスを注文できません');
+      return;
+    }
+    setSelectedService(service);
+    setServiceOrderQuantity(1);
+    setShowServiceOrderDialog(true);
   };
 
   // セット延長処理
@@ -1549,9 +1664,535 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
               <p>このテーブルにはアクティブなセッションがありません</p>
             </div>
           ) : (
-            <div className="max-w-5xl mx-auto">
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-              {/* 左側: セット延長、メニュー、注文カート、サービス注文カート */}
+            <div className="max-w-7xl mx-auto">
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+              {/* 左側: タブコンテンツ（注文・指名・サービス） */}
+              <div className="lg:col-span-2 space-y-4">
+                {/* タブ */}
+                <Tabs value={leftMode} onValueChange={(value) => setLeftMode(value as 'order' | 'nomination' | 'service')}>
+                  <TabsList className="grid w-full grid-cols-3">
+                    <TabsTrigger value="order">注文</TabsTrigger>
+                    <TabsTrigger value="nomination">指名</TabsTrigger>
+                    <TabsTrigger value="service">サービス</TabsTrigger>
+                  </TabsList>
+
+                  {/* 注文タブ */}
+                  <TabsContent value="order" className="space-y-4 mt-4">
+                    <div className={isTimeExpired ? 'pointer-events-none opacity-50' : ''}>
+                      {/* カテゴリタブ（スクロール時に固定 / 連続した平行四辺形） */}
+                      <div className="sticky top-0 bg-gradient-to-br from-purple-50 via-pink-50 to-blue-50 pt-2 pb-2 z-30 mb-4">
+                        <div className="pl-2 sm:pl-5 flex items-center overflow-x-auto">
+                          {[
+                            { id: 'all', name: 'すべて' },
+                            { id: '4', name: 'セット' },
+                            ...menuCategories.filter((c) => c.id !== 4).map((c) => ({ id: String(c.id), name: c.name })),
+                          ].map((tab, idx) => {
+                            const active = selectedCategoryId === tab.id;
+                            return (
+                              <button
+                                key={tab.id}
+                                type="button"
+                                onClick={() => setSelectedCategoryId(tab.id)}
+                                className={[
+                                  'relative h-8 sm:h-10 px-3 sm:px-5 text-xs sm:text-sm font-semibold select-none whitespace-nowrap',
+                                  'skew-x-12',
+                                  idx === 0 ? '' : '-ml-2 sm:-ml-3',
+                                  active
+                                    ? 'bg-purple-600 text-white shadow-md z-20'
+                                    : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50 z-10',
+                                  'rounded-none',
+                                ].join(' ')}
+                              >
+                                <span className="inline-block -skew-x-12">
+                                  {tab.name}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      <ScrollArea className="h-[calc(100vh-300px)] pr-2">
+                        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-3">
+                          {(() => {
+                            const items = selectedCategoryId === 'all'
+                              ? menuItems
+                              : selectedCategoryId === '4'
+                              ? menuItems.filter((it: any) => Number(it.category_id) === 4)
+                              : menuItems.filter((it: any) => Number(it.category_id) === Number(selectedCategoryId));
+                            if (!items || items.length === 0) {
+                              return (
+                                <div className="col-span-2 sm:col-span-3 lg:col-span-4 text-center text-sm text-gray-500 py-10">
+                                  該当する商品がありません
+                                </div>
+                              );
+                            }
+                            return items.map((item: any) => (
+                              <button
+                                key={item.id}
+                                type="button"
+                                onClick={() => { if (!isOrderingDisabled && !isTimeExpired) addToCart(item); }}
+                                className={`text-left rounded-lg border bg-white overflow-hidden shadow-sm hover:shadow-md transition-shadow ${isOrderingDisabled ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50'}`}
+                                disabled={isOrderingDisabled}
+                              >
+                                <div className="relative aspect-square bg-gray-100">
+                                  {item.image ? (
+                                    <img src={item.image} alt={item.name} className="w-full h-full object-cover" />
+                                  ) : (
+                                    <div className="w-full h-full flex items-center justify-center text-gray-400">
+                                      <Package className="w-8 h-8" />
+                                    </div>
+                                  )}
+                                  <div className="absolute right-1 bottom-1 bg-black/70 text-white text-[9px] sm:text-[11px] px-1.5 sm:px-2 py-0.5 sm:py-1 rounded">
+                                    {formatCurrency(item.sale_price)}
+                                  </div>
+                                </div>
+                                <div className="p-1 sm:p-1.5">
+                                  <div className="text-[11px] sm:text-[13px] font-semibold leading-tight line-clamp-2">{item.name}</div>
+                                  <div className="text-[9px] sm:text-[11px] text-gray-500 mt-0.5 sm:mt-1">
+                                    SKU: {item.sku ? item.sku : '-'}
+                                  </div>
+                                </div>
+                              </button>
+                            ));
+                          })()}
+                        </div>
+                      </ScrollArea>
+
+                      {/* 左下：注文カートボタン（押すと横からモーダル表示） */}
+                      <div className="fixed left-2 sm:left-16 bottom-[100px] sm:bottom-[100px] z-40">
+                        {(() => {
+                          const hasRequested = cartOrders.some((order: any) => {
+                            const st = (orderRequestStatus as any)[order.id] || order.status;
+                            return st === 'pending' || st === 'sent';
+                          });
+                          return (
+                            <Button
+                              onClick={() => setIsOrderCartOpen(true)}
+                              className="h-12 w-12 sm:h-16 sm:w-16 rounded-full bg-gradient-to-r from-pink-500 to-fuchsia-500 text-white shadow-lg hover:from-pink-600 hover:to-fuchsia-600 relative border-0"
+                              variant="outline"
+                            >
+                              <ShoppingCart className="w-5 h-5 sm:w-6 sm:h-6" />
+
+                              {hasRequested && (
+                                <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-red-500 rounded-full ring-2 ring-white" />
+                              )}
+                            </Button>
+                          );
+                        })()}
+                      </div>
+
+                      <Sheet open={isOrderCartOpen} onOpenChange={setIsOrderCartOpen}>
+                        <SheetContent side="right" className="w-full sm:w-[420px] sm:max-w-md p-0">
+                          <div className="p-6 pb-4 border-b">
+                            <SheetHeader>
+                              <SheetTitle className="flex items-center">
+                                <ShoppingCart className="w-5 h-5 mr-2" />
+                                注文カート
+                              </SheetTitle>
+                            </SheetHeader>
+                            <div className="text-sm text-gray-500 mt-1">
+                              {cartOrders.length}個の商品
+                            </div>
+                          </div>
+
+                          <div className="p-6 pt-4">
+                            {cartOrders.length === 0 ? (
+                              <div className="text-center py-10 text-gray-500">
+                                <ShoppingCart className="w-12 h-12 mx-auto mb-3 text-gray-400" />
+                                <p>カートが空です</p>
+                              </div>
+                            ) : (
+                              <ScrollArea className="h-[60vh] sm:h-[70vh] pr-1">
+                                <div className="space-y-3">
+                                  {cartOrders.map((order: any) => (
+                                    <div key={order.id} className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-2 sm:p-3 bg-gray-50 rounded-lg border gap-2 sm:gap-0">
+                                      <div className="flex-1 min-w-0 w-full sm:w-auto">
+                                        <h4 className="font-medium text-xs sm:text-sm truncate">{order.product_name}</h4>
+                                        <p className="text-[10px] sm:text-xs text-gray-500">
+                                          ¥{order.unit_price?.toLocaleString()} × {order.amount}個
+                                          {order.cast_name ? (
+                                            <span className="ml-1 sm:ml-2 text-blue-600">(担当: {order.cast_name})</span>
+                                          ) : (
+                                            <span className="ml-1 sm:ml-2 text-gray-500">(お客様直接注文)</span>
+                                          )}
+                                        </p>
+                                        <div className="flex flex-col sm:flex-row items-start sm:items-center mt-1 gap-1 sm:gap-0">
+                                          <span className="text-xs sm:text-sm font-bold text-blue-600">
+                                            合計: ¥{order.total_price?.toLocaleString()}
+                                          </span>
+                                          {orderRequestStatus[order.id] === 'sent' && (
+                                            <span className="text-[9px] sm:text-xs text-blue-600 font-medium">
+                                              (管理者に送信済み)
+                                            </span>
+                                          )}
+                                          {orderRequestStatus[order.id] === 'accepted' && (
+                                            <span className="text-[9px] sm:text-xs text-green-600 font-medium">
+                                              (管理者が受付済み)
+                                            </span>
+                                          )}
+                                          {(orderRequestStatus[order.id] as string) === 'rejected' && (
+                                            <span className="text-[9px] sm:text-xs text-red-600 font-medium">
+                                              (管理者が拒否)
+                                            </span>
+                                          )}
+                                        </div>
+                                      </div>
+                                      <div className="flex items-center space-x-1 sm:space-x-2 w-full sm:w-auto justify-end">
+                                        <div className="relative">
+                                          {orderRequestStatus[order.id] === 'pending' && (
+                                            <div className="w-6 h-6 flex items-center justify-center">
+                                              <Clock className="w-4 h-4 text-orange-500 animate-pulse" />
+                                            </div>
+                                          )}
+                                          {orderRequestStatus[order.id] === 'sent' && (
+                                            <div className="w-6 h-6 flex items-center justify-center">
+                                              <Bell className="w-4 h-4 text-blue-500 animate-bounce" />
+                                            </div>
+                                          )}
+                                          {orderRequestStatus[order.id] === 'accepted' && (
+                                            <div className="w-6 h-6 flex items-center justify-center">
+                                              <CheckCircle className="w-4 h-4 text-green-500" />
+                                            </div>
+                                          )}
+                                          {(orderRequestStatus[order.id] as string) === 'rejected' && (
+                                            <div className="w-6 h-6 flex items-center justify-center">
+                                              <X className="w-4 h-4 text-red-500" />
+                                            </div>
+                                          )}
+                                        </div>
+                                        {(() => {
+                                          const st = (orderRequestStatus as any)[order.id] || order.status;
+                                          const canDelete = st === 'pending' || st === 'sent';
+                                          return canDelete ? (
+                                            <Button
+                                              size="sm"
+                                              variant="outline"
+                                              onClick={() => removeFromCart(order.id.toString(), st)}
+                                              className="text-red-600 hover:text-red-700"
+                                            >
+                                              <Trash2 className="w-3 h-3" />
+                                            </Button>
+                                          ) : null;
+                                        })()}
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </ScrollArea>
+                            )}
+                          </div>
+                        </SheetContent>
+                      </Sheet>
+                    </div>
+                  </TabsContent>
+
+                  {/* 指名タブ */}
+                  <TabsContent value="nomination" className="space-y-4 mt-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6 lg:gap-8 xl:gap-12">
+                      {/* 指名ボタンエリア */}
+                      <div className="col-span-1 md:col-span-1 lg:col-span-1 space-y-4 md:space-y-6 lg:space-y-8 md:pr-4 lg:pr-0">
+                        <Button
+                          size="lg"
+                          className="w-full h-32 sm:h-36 md:h-40 lg:h-44 xl:h-48 text-base sm:text-lg md:text-xl lg:text-2xl bg-purple-600 hover:bg-purple-700 relative overflow-hidden p-0 shadow-lg hover:shadow-xl transition-shadow"
+                          disabled={isOrderingDisabled}
+                          onClick={() => {
+                            setCurrentNominationType('main');
+                            loadCasts();
+                            setShowNominationCastDialog(true);
+                          }}
+                        >
+                          <div className="absolute inset-0">
+                            <img
+                              src="/assets/nomination/1.jpeg"
+                              alt="本指名"
+                              className="w-full h-full object-cover opacity-80"
+                            />
+                            <div className="absolute inset-0 bg-black/25" />
+                          </div>
+                          <div className="relative z-10 w-full h-full flex items-center justify-center font-bold tracking-wide text-white drop-shadow-lg">
+                            本 指 名
+                          </div>
+                        </Button>
+                        <Button
+                          size="lg"
+                          className="w-full h-32 sm:h-36 md:h-40 lg:h-44 xl:h-48 text-base sm:text-lg md:text-xl lg:text-2xl bg-blue-600 hover:bg-blue-700 relative overflow-hidden p-0 shadow-lg hover:shadow-xl transition-shadow"
+                          disabled={isOrderingDisabled}
+                          onClick={() => {
+                            setCurrentNominationType('inside');
+                            loadCasts();
+                            setShowNominationCastDialog(true);
+                          }}
+                        >
+                          <div className="absolute inset-0">
+                            <img
+                              src="/assets/nomination/2.jpeg"
+                              alt="場内指名"
+                              className="w-full h-full object-cover opacity-80"
+                            />
+                            <div className="absolute inset-0 bg-black/25" />
+                          </div>
+                          <div className="relative z-10 w-full h-full flex items-center justify-center font-bold tracking-wide text-white drop-shadow-lg">
+                            場 内 指 名
+                          </div>
+                        </Button>
+                        <Button
+                          size="lg"
+                          className="w-full h-32 sm:h-36 md:h-40 lg:h-44 xl:h-48 text-base sm:text-lg md:text-xl lg:text-2xl bg-rose-600 hover:bg-rose-700 relative overflow-hidden p-0 shadow-lg hover:shadow-xl transition-shadow"
+                          disabled={isOrderingDisabled}
+                          onClick={() => {
+                            setCurrentNominationType('together');
+                            loadCasts();
+                            setShowNominationCastDialog(true);
+                          }}
+                        >
+                          <div className="absolute inset-0">
+                            <img
+                              src="/assets/nomination/3.jpeg"
+                              alt="同伴指名"
+                              className="w-full h-full object-cover opacity-80"
+                            />
+                            <div className="absolute inset-0 bg-black/25" />
+                          </div>
+                          <div className="relative z-10 w-full h-full flex items-center justify-center font-bold tracking-wide text-white drop-shadow-lg">
+                            同 伴 指 名
+                          </div>
+                        </Button>
+                      </div>
+                      {/* 指名リストエリア */}
+                      <div className="col-span-1 md:col-span-1 lg:col-span-2">
+                        <Card className="h-full">
+                          <CardHeader className="pb-3">
+                            <CardTitle className="flex items-center text-base sm:text-lg md:text-xl">
+                              <Users className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 mr-2" />
+                              指名リスト
+                            </CardTitle>
+                          </CardHeader>
+                          <CardContent>
+                            {isNominationsLoading ? (
+                              <div className="flex items-center justify-center py-8">
+                                <div className="w-6 h-6 border-2 border-purple-600 border-t-transparent rounded-full animate-spin" />
+                              </div>
+                            ) : nominations.length === 0 ? (
+                              <div className="text-center py-8 text-sm sm:text-base text-gray-500">
+                                <Users className="w-12 h-12 mx-auto mb-2 text-gray-400" />
+                                <p>指名はありません</p>
+                              </div>
+                            ) : (
+                              <ScrollArea className="h-[calc(100vh-400px)] pr-2">
+                                <div className="space-y-2 sm:space-y-3">
+                                  {nominations.map((nomination: any) => (
+                                    <div
+                                      key={nomination.id}
+                                      className="flex flex-col sm:flex-row items-start sm:items-center justify-between border border-gray-200 rounded-lg bg-white px-3 sm:px-4 md:px-5 py-2.5 sm:py-3 gap-2 sm:gap-3 hover:bg-gray-50 transition-colors"
+                                    >
+                                      <div className="flex-1 min-w-0 w-full sm:w-auto">
+                                        <div className="font-medium text-sm sm:text-base md:text-lg text-gray-900 truncate mb-1">
+                                          {nomination.cast_name}
+                                        </div>
+                                        <div className="text-xs sm:text-sm text-gray-500">
+                                          {new Date(nomination.created_at).toLocaleString('ja-JP', {
+                                            year: 'numeric',
+                                            month: '2-digit',
+                                            day: '2-digit',
+                                            hour: '2-digit',
+                                            minute: '2-digit'
+                                          })}
+                                        </div>
+                                      </div>
+                                      <div className="flex items-center space-x-2 sm:space-x-3 w-full sm:w-auto justify-end sm:justify-start">
+                                        <Badge
+                                          className={`text-xs sm:text-sm px-2 sm:px-3 py-1 ${nominationBadgeStyle[nomination.type_id as 'main' | 'inside' | 'together'] || 'bg-gray-100 text-gray-700'}`}
+                                        >
+                                          {getNominationTypeLabel(nomination.type_id)}
+                                        </Badge>
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          className="text-red-600 border-red-300 hover:bg-red-50 h-8 sm:h-9 w-8 sm:w-9 p-0"
+                                          onClick={() => deleteNominationRecord(nomination.id.toString())}
+                                        >
+                                          <Trash2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                                        </Button>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </ScrollArea>
+                            )}
+                          </CardContent>
+                        </Card>
+                      </div>
+                    </div>
+                  </TabsContent>
+
+                  {/* サービスタブ */}
+                  <TabsContent value="service" className="space-y-4 mt-4">
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                      <div className="col-span-1 lg:col-span-2 space-y-4">
+                        <Card>
+                          <CardHeader className="pb-2">
+                            <CardTitle className="flex items-center text-xs sm:text-sm">
+                              <Bell className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
+                              サービス・呼び出し
+                            </CardTitle>
+                          </CardHeader>
+                          <CardContent>
+                            {isServicesLoading ? (
+                              <div className="flex items-center justify-center py-6">
+                                <div className="w-6 h-6 border-2 border-purple-600 border-t-transparent rounded-full animate-spin" />
+                              </div>
+                            ) : services.length === 0 ? (
+                              <div className="text-center py-4 text-sm text-gray-500">
+                                サービスがありません
+                              </div>
+                            ) : (
+                              <div className={`grid grid-cols-2 sm:grid-cols-3 gap-2 ${isTimeExpired ? 'pointer-events-none opacity-50' : ''}`}>
+                                {services.map((service: any) => (
+                                  <Button
+                                    key={service.id}
+                                    variant="outline"
+                                    onClick={() => handleServiceOrder(service)}
+                                    disabled={isOrderingDisabled}
+                                    className={`h-12 sm:h-14 px-1 sm:px-2 flex-col justify-center gap-0.5 sm:gap-1 ${isOrderingDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                  >
+                                    <Utensils className="w-4 h-4 sm:w-5 sm:h-5" />
+                                    <span className="text-[10px] sm:text-[13px] leading-tight line-clamp-1">{service.name}</span>
+                                  </Button>
+                                ))}
+                              </div>
+                            )}
+                          </CardContent>
+                        </Card>
+
+                        <Card>
+                          <CardHeader className="pb-2">
+                            <CardTitle className="flex items-center text-xs sm:text-sm">
+                              <Coffee className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
+                              追加注文
+                            </CardTitle>
+                          </CardHeader>
+                          <CardContent>
+                            <div className={`grid grid-cols-3 gap-2 ${isTimeExpired ? 'pointer-events-none opacity-50' : ''}`}>
+                              <Button
+                                variant="outline"
+                                onClick={() => setShowBottleKeepDialog(true)}
+                                disabled={isTimeExpired}
+                                className="h-12 sm:h-14 px-1 sm:px-2 flex-col justify-center gap-0.5 sm:gap-1"
+                              >
+                                <Wine className="w-4 h-4 sm:w-5 sm:h-5" />
+                                <span className="text-[10px] sm:text-[13px] leading-tight">ボトルキープ</span>
+                              </Button>
+                              <Button
+                                variant="outline"
+                                onClick={() => setShowVipRoomDialog(true)}
+                                disabled={isTimeExpired}
+                                className="h-14 px-2 flex-col justify-center gap-1"
+                              >
+                                <Users className="w-5 h-5" />
+                                <span className="text-[10px] sm:text-[13px] leading-tight">VIPルーム</span>
+                              </Button>
+                              <Button
+                                variant="outline"
+                                onClick={() => setShowKaraokeDialog(true)}
+                                disabled={isTimeExpired}
+                                className="h-14 px-2 flex-col justify-center gap-1"
+                              >
+                                <Users className="w-5 h-5" />
+                                <span className="text-[10px] sm:text-[13px] leading-tight">カラオケ利用</span>
+                              </Button>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      </div>
+
+                      {/* 右側：サービス注文カート */}
+                      <div className="col-span-1">
+                        <Card>
+                          <CardHeader>
+                            <CardTitle className="flex items-center">
+                              <Utensils className="w-5 h-5 mr-2" />
+                              サービス注文カート
+                            </CardTitle>
+                            <CardDescription>
+                              {serviceOrders.length}個のサービス
+                            </CardDescription>
+                          </CardHeader>
+                          <CardContent>
+                            {serviceOrders.length === 0 ? (
+                              <div className="text-center py-6 text-gray-500">
+                                <Utensils className="w-10 h-10 mx-auto mb-2 text-gray-400" />
+                                <p>サービス注文がありません</p>
+                              </div>
+                            ) : (
+                              <ScrollArea className="h-[45vh] sm:h-[55vh] pr-1">
+                                <div className="space-y-3">
+                                  {serviceOrders.map((order) => (
+                                    <div key={order.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border">
+                                      <div className="flex-1">
+                                        <h4 className="font-medium text-sm">{order.service_name}</h4>
+                                        <p className="text-xs text-gray-500">
+                                          数量: {order.amount}
+                                          {order.cast_name && (
+                                            <span className="ml-2 text-blue-600">
+                                              (担当: {order.cast_name})
+                                            </span>
+                                          )}
+                                        </p>
+                                        <div className="flex items-center mt-1">
+                                          {serviceRequestStatus[order.id] === 'sent' && (
+                                            <span className="text-xs text-blue-600 font-medium">
+                                              (管理者に送信済み)
+                                            </span>
+                                          )}
+                                          {serviceRequestStatus[order.id] === 'accepted' && (
+                                            <span className="text-xs text-green-600 font-medium">
+                                              (管理者が受付済み)
+                                            </span>
+                                          )}
+                                          {(serviceRequestStatus[order.id] as string) === 'rejected' && (
+                                            <span className="text-xs text-red-600 font-medium">
+                                              (管理者が拒否)
+                                            </span>
+                                          )}
+                                        </div>
+                                      </div>
+                                      <div className="flex items-center space-x-2">
+                                        {serviceRequestStatus[order.id] === 'pending' && (
+                                          <Clock className="w-4 h-4 text-orange-500 animate-pulse" />
+                                        )}
+                                        {serviceRequestStatus[order.id] === 'sent' && (
+                                          <Bell className="w-4 h-4 text-blue-500 animate-bounce" />
+                                        )}
+                                        {serviceRequestStatus[order.id] === 'accepted' && (
+                                          <CheckCircle className="w-4 h-4 text-green-500" />
+                                        )}
+                                        {(serviceRequestStatus[order.id] as string) === 'rejected' && (
+                                          <X className="w-4 h-4 text-red-500" />
+                                        )}
+                                        <Button 
+                                          size="sm"
+                                          variant="outline"
+                                          onClick={() => removeFromServiceOrders(order.id.toString())}
+                                          className="text-red-600 hover:text-red-700"
+                                        >
+                                          <Trash2 className="w-3 h-3" />
+                                        </Button>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </ScrollArea>
+                            )}
+                          </CardContent>
+                        </Card>
+                      </div>
+                    </div>
+                  </TabsContent>
+                </Tabs>
+              </div>
+
+              {/* 右側: セット延長と注文合計（常に表示） */}
               <div className="space-y-6">
                 {/* セット延長 */}
                 <Card className="bg-gradient-to-r from-purple-50 to-pink-50 border-purple-200">
@@ -1684,335 +2325,6 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
                   </CardContent>
                 </Card>
 
-                {/* メニュー */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center">
-                      <Wine className="w-5 h-5 mr-2" />
-                      メニュー
-                    </CardTitle>
-                    <CardDescription>
-                      カテゴリを選択して製品一覧を表示
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="flex items-center gap-3 mb-3">
-                      <Label className="text-sm text-gray-600">カテゴリ</Label>
-                      <Select value={selectedCategoryId} onValueChange={setSelectedCategoryId}>
-                        <SelectTrigger className="w-56">
-                          <SelectValue placeholder="カテゴリを選択" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {menuCategories.filter((c) => c.id === 4).length > 0 ? (
-                            menuCategories.filter((c) => c.id === 4).map((c) => (
-                              <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>
-                            ))
-                          ) : (
-                            <SelectItem value="4">セット</SelectItem>
-                          )}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <ScrollArea className="h-[30vh] pr-1">
-                      {isMenuLoading ? (
-                        <div className="flex items-center justify-center py-8">
-                          <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
-                        </div>
-                      ) : (
-                        <Table>
-                          <TableHeader>
-                            <TableRow>
-                              <TableHead className="w-[40%]">商品名</TableHead>
-                              <TableHead className="w-[20%]">価格</TableHead>
-                              <TableHead className="w-[20%]">SKU</TableHead>
-                              <TableHead className="w-[20%] text-right">アクション</TableHead>
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {(() => {
-                              const items = selectedCategoryId === 'all' 
-                                ? menuItems.filter((it: any) => Number(it.category_id) === 4)
-                                : menuItems.filter((it: any) => Number(it.category_id) === Number(selectedCategoryId));
-                              if (!items || items.length === 0) {
-                                return (
-                                  <TableRow>
-                                    <TableCell colSpan={4} className="text-center text-sm text-gray-500">
-                                      該当する商品がありません
-                                    </TableCell>
-                                  </TableRow>
-                                );
-                              }
-                              return items.map((item: any) => (
-                                <TableRow key={item.id}>
-                                  <TableCell>
-                                    <div className="flex flex-col">
-                                      <span className="font-medium">{item.name}</span>
-                                      {item.other && (
-                                        <span className="text-xs text-gray-500 truncate">{item.other}</span>
-                                      )}
-                                    </div>
-                                  </TableCell>
-                                  <TableCell className="whitespace-nowrap">{formatCurrency(item.sale_price)}</TableCell>
-                                  <TableCell>
-                                    {item.sku ? (
-                                      <Badge variant="outline" className="text-[10px] py-0 px-1">{item.sku}</Badge>
-                                    ) : (
-                                      <span className="text-gray-300 text-xs">-</span>
-                                    )}
-                                  </TableCell>
-                                  <TableCell className="text-right">
-                                    <Button 
-                                      size="sm"
-                                      onClick={() => addToCart(item)}
-                                      disabled={isOrderingDisabled}
-                                      className={isOrderingDisabled ? 'opacity-50 cursor-not-allowed' : ''}
-                                    >
-                                      <Plus className="w-4 h-4 mr-1" /> 追加
-                                    </Button>
-                                  </TableCell>
-                                </TableRow>
-                              ));
-                            })()}
-                          </TableBody>
-                        </Table>
-                      )}
-                    </ScrollArea>
-                  </CardContent>
-                </Card>
-
-                {/* 注文カート */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center">
-                      <ShoppingCart className="w-5 h-5 mr-2" />
-                      注文カート
-                    </CardTitle>
-                    <CardDescription>
-                      {cartOrders.length}個の商品
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    {cartOrders.length === 0 ? (
-                      <div className="text-center py-8 text-gray-500">
-                        <ShoppingCart className="w-12 h-12 mx-auto mb-3 text-gray-400" />
-                        <p>カートが空です</p>
-                      </div>
-                    ) : (
-                      <ScrollArea className="h-[30vh] pr-1">
-                        <div className="space-y-3">
-                          {cartOrders.map((order) => (
-                            <div key={order.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border">
-                              <div className="flex-1">
-                                <h4 className="font-medium text-sm">{order.product_name}</h4>
-                                <p className="text-xs text-gray-500">
-                                  ¥{order.unit_price?.toLocaleString()} × {order.amount}個
-                                  {order.cast_name ? (
-                                    <span className="ml-2 text-blue-600">
-                                      (担当: {order.cast_name})
-                                    </span>
-                                  ) : (
-                                    <span className="ml-2 text-gray-500">
-                                      (お客様直接注文)
-                                    </span>
-                                  )}
-                                </p>
-                                <div className="flex items-center mt-1">
-                                  <span className="text-sm font-bold text-blue-600">
-                                    合計: ¥{order.total_price?.toLocaleString()}
-                                  </span>
-                                  {orderRequestStatus[order.id] === 'sent' && (
-                                    <span className="ml-2 text-xs text-blue-600 font-medium">
-                                      (管理者に送信済み)
-                                    </span>
-                                  )}
-                                  {orderRequestStatus[order.id] === 'accepted' && (
-                                    <span className="ml-2 text-xs text-green-600 font-medium">
-                                      (管理者が受付済み)
-                                    </span>
-                                  )}
-                                  {(orderRequestStatus[order.id] as string) === 'rejected' && (
-                                    <span className="ml-2 text-xs text-red-600 font-medium">
-                                      (管理者が拒否)
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-                              <div className="flex items-center space-x-2">
-                                {orderRequestStatus[order.id] === 'pending' && (
-                                  <Clock className="w-4 h-4 text-orange-500 animate-pulse" />
-                                )}
-                                {orderRequestStatus[order.id] === 'sent' && (
-                                  <Bell className="w-4 h-4 text-blue-500 animate-bounce" />
-                                )}
-                                {orderRequestStatus[order.id] === 'accepted' && (
-                                  <CheckCircle className="w-4 h-4 text-green-500" />
-                                )}
-                                {(orderRequestStatus[order.id] as string) === 'rejected' && (
-                                  <X className="w-4 h-4 text-red-500" />
-                                )}
-                                {/* 削除ボタン（承認待ちのみ表示） */}
-                                {(() => {
-                                  const st = orderRequestStatus[order.id] || order.status;
-                                  const canDelete = st === 'pending' || st === 'sent';
-                                  return canDelete ? (
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      onClick={() => removeFromCart(order.id.toString(), st)}
-                                      className="text-red-600 hover:text-red-700"
-                                    >
-                                      <Trash2 className="w-3 h-3" />
-                                    </Button>
-                                  ) : null;
-                                })()}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </ScrollArea>
-                    )}
-                  </CardContent>
-                </Card>
-
-              </div>
-
-              {/* 右側: 指名リスト、サービス注文カート、注文合計 */}
-              <div className="space-y-6">
-                {/* 指名リスト */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center">
-                      <Users className="w-5 h-5 mr-2" />
-                      指名リスト
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="mb-3">
-                      <Button
-                        onClick={handleTogetherNomination}
-                        size="sm"
-                        variant="outline"
-                        disabled={isOrderingDisabled}
-                        className={`w-full text-rose-700 border-rose-300 hover:bg-rose-50 ${isOrderingDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
-                      >
-                        <Users className="w-4 h-4 mr-2" />
-                        <span className="text-xs">同伴指名</span>
-                      </Button>
-                    </div>
-                    {nominations.length === 0 ? (
-                      <div className="text-sm text-gray-500">指名はありません</div>
-                    ) : (
-                      <ScrollArea className="h-[30vh] pr-1">
-                        <div className="space-y-3">
-                          {nominations.map((nomination) => (
-                            <div key={nomination.id} className="flex items-center justify-between border border-gray-200 bg-white px-3 py-2 rounded-lg">
-                              <div>
-                                <div className="font-medium text-gray-900">{nomination.cast_name}</div>
-                                <div className="text-xs text-gray-500">
-                                  {new Date(nomination.created_at).toLocaleString('ja-JP')}
-                                </div>
-                              </div>
-                              <div className="flex items-center space-x-2">
-                                <Badge className={nominationBadgeStyle[nomination.type_id] || 'bg-gray-100 text-gray-700'}>
-                                  {getNominationTypeLabel(nomination.type_id)}
-                                </Badge>
-                                <Button 
-                                  size="sm"
-                                  variant="outline"
-                                  className="text-red-600 border-red-300 hover:bg-red-50"
-                                  onClick={() => deleteNominationRecord(nomination.id.toString())}
-                                >
-                                  <Trash2 className="w-3 h-3" />
-                                </Button>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </ScrollArea>
-                    )}
-                  </CardContent>
-                </Card>
-
-                {/* サービス注文カート */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center">
-                      <Utensils className="w-5 h-5 mr-2" />
-                      サービス注文カート
-                    </CardTitle>
-                    <CardDescription>
-                      {serviceOrders.length}個のサービス
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    {serviceOrders.length === 0 ? (
-                      <div className="text-center py-8 text-gray-500">
-                        <Utensils className="w-12 h-12 mx-auto mb-3 text-gray-400" />
-                        <p>サービス注文がありません</p>
-                      </div>
-                    ) : (
-                      <ScrollArea className="h-[30vh] pr-1">
-                        <div className="space-y-3">
-                          {serviceOrders.map((order) => (
-                            <div key={order.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border">
-                              <div className="flex-1">
-                                <h4 className="font-medium text-sm">{order.service_name}</h4>
-                                <p className="text-xs text-gray-500">
-                                  数量: {order.amount}
-                                  {order.cast_name && (
-                                    <span className="ml-2 text-blue-600">
-                                      (担当: {order.cast_name})
-                                    </span>
-                                  )}
-                                </p>
-                                <div className="flex items-center mt-1">
-                                  {serviceRequestStatus[order.id] === 'sent' && (
-                                    <span className="text-xs text-blue-600 font-medium">
-                                      (管理者に送信済み)
-                                    </span>
-                                  )}
-                                  {serviceRequestStatus[order.id] === 'accepted' && (
-                                    <span className="text-xs text-green-600 font-medium">
-                                      (管理者が受付済み)
-                                    </span>
-                                  )}
-                                  {(serviceRequestStatus[order.id] as string) === 'rejected' && (
-                                    <span className="text-xs text-red-600 font-medium">
-                                      (管理者が拒否)
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-                              <div className="flex items-center space-x-2">
-                                {serviceRequestStatus[order.id] === 'pending' && (
-                                  <Clock className="w-4 h-4 text-orange-500 animate-pulse" />
-                                )}
-                                {serviceRequestStatus[order.id] === 'sent' && (
-                                  <Bell className="w-4 h-4 text-blue-500 animate-bounce" />
-                                )}
-                                {serviceRequestStatus[order.id] === 'accepted' && (
-                                  <CheckCircle className="w-4 h-4 text-green-500" />
-                                )}
-                                {(serviceRequestStatus[order.id] as string) === 'rejected' && (
-                                  <X className="w-4 h-4 text-red-500" />
-                                )}
-                                {/* 削除ボタン */}
-                                <Button 
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => removeFromServiceOrders(order.id.toString())}
-                                  className="text-red-600 hover:text-red-700"
-                                >
-                                  <Trash2 className="w-3 h-3" />
-                                </Button>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </ScrollArea>
-                    )}
-                  </CardContent>
-                </Card>
 
                 {/* 注文合計 */}
                 <Card>
@@ -2751,6 +3063,179 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
             <Button
               onClick={handleOrderSubmit}
               disabled={isOrderingDisabled || !selectedProduct || orderQuantity < 1}
+              className="bg-blue-600 hover:bg-blue-700"
+            >
+              <CheckCircle className="w-4 h-4 mr-2" />
+              注文確定
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* 指名キャスト選択ダイアログ */}
+      <Dialog open={showNominationCastDialog} onOpenChange={setShowNominationCastDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center">
+              <Users className="w-5 h-5 mr-2" />
+              {currentNominationType === 'main' ? '本指名' : currentNominationType === 'inside' ? '場内指名' : currentNominationType === 'together' ? '同伴指名' : '指名'}登録
+            </DialogTitle>
+            <DialogDescription>
+              指名するキャストを選択してください
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            {isCastsLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <div className="w-6 h-6 border-2 border-purple-600 border-t-transparent rounded-full animate-spin" />
+              </div>
+            ) : (
+              <ScrollArea className="h-[300px]">
+                <div className="space-y-2">
+                  {casts.length === 0 ? (
+                    <div className="text-center py-8 text-gray-500">
+                      <Users className="w-12 h-12 mx-auto mb-2 text-gray-400" />
+                      <p>出勤中のキャストがありません</p>
+                    </div>
+                  ) : (
+                    casts.map((cast) => (
+                      <Button
+                        key={cast.id}
+                        variant="outline"
+                        className="w-full justify-start h-auto py-3"
+                        onClick={() => handleNomination(cast.id.toString(), cast.name, currentNominationType || 'main')}
+                      >
+                        <div className="flex items-center space-x-3">
+                          <Users className="w-5 h-5 text-purple-600" />
+                          <div className="text-left">
+                            <div className="font-medium">{cast.name}</div>
+                            <div className="text-xs text-gray-500">ID: {cast.id}</div>
+                          </div>
+                        </div>
+                      </Button>
+                    ))
+                  )}
+                </div>
+              </ScrollArea>
+            )}
+          </div>
+
+          <div className="flex justify-end space-x-2 pt-4">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowNominationCastDialog(false);
+                setCurrentNominationType(null);
+              }}
+            >
+              キャンセル
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* サービス注文ダイアログ */}
+      <Dialog open={showServiceOrderDialog} onOpenChange={setShowServiceOrderDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center">
+              <Utensils className="w-5 h-5 mr-2" />
+              サービス注文
+            </DialogTitle>
+            <DialogDescription>
+              {selectedService?.name}の注文詳細を入力してください
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            {/* サービス情報 */}
+            <div className="p-4 bg-gray-50 rounded-lg">
+              <div className="flex justify-between items-center">
+                <div>
+                  <h3 className="font-medium text-gray-900">{selectedService?.name}</h3>
+                </div>
+              </div>
+            </div>
+
+            {/* 注文数量 */}
+            <div className="space-y-2">
+              <Label htmlFor="service-quantity">注文数量</Label>
+              <div className="flex items-center space-x-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setServiceOrderQuantity(Math.max(1, serviceOrderQuantity - 1))}
+                  disabled={serviceOrderQuantity <= 1}
+                >
+                  <Minus className="w-4 h-4" />
+                </Button>
+                <Input
+                  id="service-quantity"
+                  type="number"
+                  min="1"
+                  value={serviceOrderQuantity}
+                  onChange={(e) => setServiceOrderQuantity(Math.max(1, parseInt(e.target.value) || 1))}
+                  className="text-center w-20"
+                />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setServiceOrderQuantity(serviceOrderQuantity + 1)}
+                >
+                  <Plus className="w-4 h-4" />
+                </Button>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex justify-end space-x-2 pt-4">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowServiceOrderDialog(false);
+                setSelectedService(null);
+                setServiceOrderQuantity(1);
+              }}
+            >
+              キャンセル
+            </Button>
+            <Button
+              onClick={async () => {
+                if (!session || !selectedService || !tableId) return;
+                if (isOrderingDisabled) {
+                  error('エラー', isPaymentCompleted ? '決済が完了しているため、サービスを注文できません' : 'セット時間が終了したため、サービスを注文できません');
+                  return;
+                }
+
+                try {
+                  const response = await fetch('/api/serviceorder', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      service_id: selectedService.id,
+                      amount: serviceOrderQuantity,
+                      table_id: tableId,
+                      session_id: session.id
+                    })
+                  });
+
+                  const result = await response.json();
+                  if (result.success) {
+                    success('注文完了', 'サービス注文が確定されました');
+                    setShowServiceOrderDialog(false);
+                    setSelectedService(null);
+                    setServiceOrderQuantity(1);
+                    await loadServiceOrders(session.id);
+                  } else {
+                    error('エラー', result.error || 'サービス注文の確定に失敗しました');
+                  }
+                } catch (err) {
+                  console.error('サービス注文エラー:', err);
+                  error('エラー', 'サービス注文の確定に失敗しました');
+                }
+              }}
+              disabled={isOrderingDisabled || !selectedService || serviceOrderQuantity < 1}
               className="bg-blue-600 hover:bg-blue-700"
             >
               <CheckCircle className="w-4 h-4 mr-2" />
