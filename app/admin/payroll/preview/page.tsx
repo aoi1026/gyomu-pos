@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { 
   ArrowLeft, Calculator, Download, Lock, Unlock, Users,
-  DollarSign, Clock, TrendingUp, FileText, Printer as PrinterIcon
+  DollarSign, Clock, TrendingUp, FileText, Printer as PrinterIcon, Search, ChevronDown, ChevronUp
 } from 'lucide-react';
 import { 
   mockPayrollRuns, mockPayrollItems, formatCurrency, formatDate,
@@ -43,6 +43,9 @@ export default function PayrollPreviewPage() {
   const [rowUnlocked, setRowUnlocked] = useState<Record<number, boolean>>({});
   const autoSaveTimers = useRef<Record<number, any>>({});
   const rowLockTimers = useRef<Record<number, any>>({});
+  const [castSearchQuery, setCastSearchQuery] = useState<string>('');
+  const [expandedDailyRows, setExpandedDailyRows] = useState<Record<number, boolean>>({});
+  const [dailyRowsData, setDailyRowsData] = useState<Record<number, any[]>>({});
   const fetchMonthlyRows = async (year: number, month: number, useSessions?: boolean, saveOnLoad?: boolean) => {
     try {
       const qs = new URLSearchParams();
@@ -278,6 +281,64 @@ export default function PayrollPreviewPage() {
     const m = Math.floor((totalSeconds % 3600) / 60);
     const s = totalSeconds % 60;
     return `${h}h ${m}m ${s}s`;
+  };
+
+  const formatDisplayDate = (dateStr: string) => {
+    const date = new Date(dateStr);
+    // 1日を加算（JavaScriptのDateオブジェクトが自動的に月をまたいだ場合を処理）
+    date.setDate(date.getDate() + 1);
+    
+    const yyyy = date.getFullYear();
+    const mm = String(date.getMonth() + 1).padStart(2, '0');
+    const dd = String(date.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  };
+
+  const fetchDailyRows = async (userId: number) => {
+    try {
+      let startDate: string;
+      let endDate: string;
+
+      if (dateMode === 'month') {
+        const year = selectedYear;
+        const month = selectedMonth;
+        startDate = `${year}-${String(month).padStart(2, '0')}-01`;
+        const lastDay = new Date(year, month, 0).getDate();
+        endDate = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+      } else if (dateMode === 'range') {
+        startDate = periodStart;
+        endDate = periodEnd;
+      } else {
+        startDate = singleDate;
+        endDate = singleDate;
+      }
+
+      const qs = new URLSearchParams();
+      qs.set('user_id', String(userId));
+      qs.set('start', startDate);
+      qs.set('end', endDate);
+
+      const res = await fetch(`/api/admin/payroll/daily?${qs.toString()}`);
+      const result = await res.json();
+      if (result.success) {
+        setDailyRowsData((prev) => ({ ...prev, [userId]: result.rows }));
+      } else {
+        console.error('日別給与データ取得失敗:', result.error);
+        setDailyRowsData((prev) => ({ ...prev, [userId]: [] }));
+      }
+    } catch (err) {
+      console.error('日別給与データ取得エラー:', err);
+      setDailyRowsData((prev) => ({ ...prev, [userId]: [] }));
+    }
+  };
+
+  const toggleDailyRows = (userId: number) => {
+    const isExpanded = expandedDailyRows[userId];
+    if (!isExpanded) {
+      // 展開する場合、データを取得
+      fetchDailyRows(userId);
+    }
+    setExpandedDailyRows((prev) => ({ ...prev, [userId]: !isExpanded }));
   };
   const [editingItem, setEditingItem] = useState<PayrollItem | null>(null);
   const [editValues, setEditValues] = useState({
@@ -671,10 +732,6 @@ export default function PayrollPreviewPage() {
     );
   };
 
-  const totalAmount = payrollItems.reduce((sum, item) => sum + item.total_yen, 0);
-  const totalHours = payrollItems.reduce((sum, item) => sum + item.base_hours, 0);
-  const totalNominations = payrollItems.reduce((sum, item) => sum + item.nomination_count, 0);
-
   return (
     <RoleGate allowedRoles={['admin', 'superadmin']}>
       <div className="min-h-screen bg-gradient-to-br from-purple-50 via-pink-50 to-blue-50">
@@ -927,7 +984,19 @@ export default function PayrollPreviewPage() {
         <Card className="mb-4 sm:mb-6 md:mb-8 shadow-sm">
           <CardHeader className="pb-3 sm:pb-4">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
-              <CardTitle className="text-lg sm:text-xl md:text-2xl">キャスト別 給与計算</CardTitle>
+              <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
+                <CardTitle className="text-lg sm:text-xl md:text-2xl">キャスト別 給与計算</CardTitle>
+                <div className="relative w-full sm:w-64">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <Input
+                    type="text"
+                    placeholder="キャスト名で検索..."
+                    value={castSearchQuery}
+                    onChange={(e) => setCastSearchQuery(e.target.value)}
+                    className="pl-10 h-9 sm:h-10 text-sm"
+                  />
+                </div>
+              </div>
               <div className="flex flex-wrap items-center gap-2">
                 <Button
                   variant="outline"
@@ -993,7 +1062,12 @@ export default function PayrollPreviewPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {monthlyRows.map((row, idx) => {
+                  {monthlyRows
+                    .filter((row) => {
+                      if (!castSearchQuery) return true;
+                      return row.name?.toLowerCase().includes(castSearchQuery.toLowerCase());
+                    })
+                    .map((row, idx) => {
                     const updateField = (key: string, value: number) => {
                       const rows = [...monthlyRows];
                       const next = { ...rows[idx], [key]: value };
@@ -1019,24 +1093,45 @@ export default function PayrollPreviewPage() {
                     };
                     const isUnlocked = dateMode === 'month' ? !!rowUnlocked[row.user_id] : false;
                     return (
-                      <tr key={row.user_id} className="border-t hover:bg-gray-50 transition-colors">
+                      <>
+                        <tr key={row.user_id} className="border-t hover:bg-gray-50 transition-colors">
                         <td className="p-2 sm:p-3 whitespace-nowrap sticky left-0 bg-white z-20 border-r border-gray-200">
                           <div className="flex flex-col items-start space-y-1">
                             <div className="font-medium text-sm">{row.name}</div>
-                            {dateMode === 'month' && (
-                            <button
-                              type="button"
-                              className={`inline-flex items-center text-xs px-2 py-1 rounded border transition-colors ${
-                                isUnlocked 
-                                  ? 'text-green-700 border-green-300 bg-green-50 hover:bg-green-100' 
-                                  : 'text-gray-600 border-gray-300 bg-gray-50 hover:bg-gray-100'
-                              }`}
-                              onClick={() => toggleRowLock(row.user_id)}
-                              title={isUnlocked ? 'ロック（編集不可）' : 'ロック解除（編集可）'}
-                            >
-                              {isUnlocked ? <Unlock className="w-3 h-3 mr-1" /> : <Lock className="w-3 h-3 mr-1" />}
-                            </button>
-                            )}
+                            <div className="flex items-center gap-2 flex-wrap">
+                              {dateMode === 'month' && (
+                                <button
+                                  type="button"
+                                  className={`inline-flex items-center text-xs px-2 py-1 rounded border transition-colors ${
+                                    isUnlocked 
+                                      ? 'text-green-700 border-green-300 bg-green-50 hover:bg-green-100' 
+                                      : 'text-gray-600 border-gray-300 bg-gray-50 hover:bg-gray-100'
+                                  }`}
+                                  onClick={() => toggleRowLock(row.user_id)}
+                                  title={isUnlocked ? 'ロック（編集不可）' : 'ロック解除（編集可）'}
+                                >
+                                  {isUnlocked ? <Unlock className="w-3 h-3 mr-1" /> : <Lock className="w-3 h-3 mr-1" />}
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                className="inline-flex items-center text-xs px-2 py-1 rounded border border-blue-300 bg-blue-50 hover:bg-blue-100 text-blue-700 transition-colors"
+                                onClick={() => toggleDailyRows(row.user_id)}
+                                title={expandedDailyRows[row.user_id] ? '日別内訳を非表示' : '日別内訳を表示'}
+                              >
+                                {expandedDailyRows[row.user_id] ? (
+                                  <>
+                                    <ChevronUp className="w-3 h-3 mr-1" />
+                                    日別内訳
+                                  </>
+                                ) : (
+                                  <>
+                                    <ChevronDown className="w-3 h-3 mr-1" />
+                                    日別内訳
+                                  </>
+                                )}
+                              </button>
+                            </div>
                           </div>
                         </td>
                         <td className="p-2 sm:p-3 text-center whitespace-nowrap">
@@ -1157,6 +1252,161 @@ export default function PayrollPreviewPage() {
                           <Button size="sm" variant="outline" onClick={saveRow}>保存</Button>
                         </td> */}
                       </tr>
+                      {expandedDailyRows[row.user_id] && dailyRowsData[row.user_id] && (
+                        <tr key={`daily-${row.user_id}`}>
+                          <td colSpan={16} className="p-0 bg-gray-50">
+                            <div className="p-4">
+                              <div className="text-sm font-semibold mb-2">日別内訳: {row.name}</div>
+                              <div className="overflow-x-auto">
+                                <table className="w-full text-xs sm:text-sm divide-y divide-gray-200">
+                                  <thead className="bg-gray-100">
+                                    <tr>
+                                      <th className="p-2 sm:p-3 font-semibold sticky left-0 bg-gray-50 z-20 min-w-[83px] sm:min-w-[103px] border-r border-gray-200">日付</th>
+                                      <th className="p-2 text-center font-semibold whitespace-nowrap min-w-[70px] sm:min-w-[80px]">基本時間</th>
+                                      <th className="p-2 text-center font-semibold whitespace-nowrap min-w-[70px] sm:min-w-[80px]">基本給</th>
+                                      <th className="p-2 text-center font-semibold whitespace-nowrap min-w-[70px] sm:min-w-[80px]">本指名数</th>
+                                      <th className="p-2 text-center font-semibold whitespace-nowrap min-w-[70px] sm:min-w-[80px]">本指名料</th>
+                                      <th className="p-2 text-center font-semibold whitespace-nowrap min-w-[70px] sm:min-w-[80px]">場内指名数</th>
+                                      <th className="p-2 text-center font-semibold whitespace-nowrap min-w-[70px] sm:min-w-[80px]">場内指名料</th>
+                                      <th className="p-2 text-center font-semibold whitespace-nowrap min-w-[60px] sm:min-w-[70px]">同伴者</th>
+                                      <th className="p-2 text-center font-semibold whitespace-nowrap min-w-[70px] sm:min-w-[80px]">同伴料</th>
+                                      <th className="p-2 text-center font-semibold whitespace-nowrap min-w-[80px] sm:min-w-[100px]">売上バック</th>
+                                      <th className="p-2 text-center font-semibold whitespace-nowrap min-w-[80px] sm:min-w-[100px]">残業代</th>
+                                      <th className="p-2 text-center font-semibold whitespace-nowrap min-w-[80px] sm:min-w-[100px]">控除</th>
+                                      <th className="p-2 text-center font-semibold whitespace-nowrap min-w-[80px] sm:min-w-[100px]">支給額</th>
+                                      <th className="p-2 text-center font-semibold whitespace-nowrap min-w-[90px] sm:min-w-[110px]">前払い</th>
+                                      <th className="p-2 text-center font-semibold whitespace-nowrap min-w-[90px] sm:min-w-[110px]">総額</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {dailyRowsData[row.user_id].map((dailyRow: any, dailyIdx: number) => {
+                                      const dailyTotalPay = 
+                                        Number(dailyRow.base_pay || 0) +
+                                        Number(dailyRow.main_nomination_fee || 0) +
+                                        Number(dailyRow.inside_nomination_fee || 0) +
+                                        Number(dailyRow.together_nomination_fee || 0) +
+                                        Number(dailyRow.sales_back_yen || 0) +
+                                        Number(dailyRow.overtime_wage_yen || 0) -
+                                        Number(dailyRow.deduction_yen || 0);
+                                      const dailyPaid = Number(dailyRow.paid_price || 0);
+                                      const dailyRealTotal = dailyTotalPay - dailyPaid;
+                                      return (
+                                        <tr key={dailyIdx} className="border-t hover:bg-gray-50">
+                                          <td className="p-2 text-left sticky left-0 bg-white z-10 border-r border-gray-200">{formatDisplayDate(dailyRow.date)}</td>
+                                          <td className="p-2 text-center whitespace-nowrap">{formatHours(dailyRow.basic_hours)}</td>
+                                          <td className="p-2 text-center whitespace-nowrap">{formatCurrency(dailyRow.base_pay || 0)}</td>
+                                          <td className="p-2 text-center whitespace-nowrap">{Number(dailyRow.main_nomination_count || 0)}</td>
+                                          <td className="p-2 text-center whitespace-nowrap">{formatCurrency(dailyRow.main_nomination_fee || 0)}</td>
+                                          <td className="p-2 text-center whitespace-nowrap">{Number(dailyRow.inside_nomination_count || 0)}</td>
+                                          <td className="p-2 text-center whitespace-nowrap">{formatCurrency(dailyRow.inside_nomination_fee || 0)}</td>
+                                          <td className="p-2 text-center whitespace-nowrap">{Number(dailyRow.together_nomination_count || 0)}</td>
+                                          <td className="p-2 text-center whitespace-nowrap">{formatCurrency(dailyRow.together_nomination_fee || 0)}</td>
+                                          <td className="p-2 text-center whitespace-nowrap">{formatCurrency(dailyRow.sales_back_yen || 0)}</td>
+                                          <td className="p-2 text-center whitespace-nowrap">{formatCurrency(dailyRow.overtime_wage_yen || 0)}</td>
+                                          <td className="p-2 text-center whitespace-nowrap">{formatCurrency(dailyRow.deduction_yen || 0)}</td>
+                                          <td className="p-2 text-center font-semibold whitespace-nowrap">{formatCurrency(dailyTotalPay)}</td>
+                                          <td className="p-2 text-center whitespace-nowrap">{formatCurrency(dailyPaid)}</td>
+                                          <td className="p-2 text-center font-semibold whitespace-nowrap">{formatCurrency(dailyRealTotal)}</td>
+                                        </tr>
+                                      );
+                                    })}
+                                  </tbody>
+                                  <tfoot className="bg-gray-100 border-t-2 border-gray-300">
+                                    <tr className="font-semibold">
+                                      <td className="p-2 text-left">合計</td>
+                                      <td className="p-2 text-center">
+                                        {formatHours(
+                                          dailyRowsData[row.user_id].reduce((sum: number, r: any) => sum + Number(r.basic_hours || 0), 0)
+                                        )}
+                                      </td>
+                                      <td className="p-2 text-center">
+                                        {formatCurrency(
+                                          dailyRowsData[row.user_id].reduce((sum: number, r: any) => sum + Number(r.base_pay || 0), 0)
+                                        )}
+                                      </td>
+                                      <td className="p-2 text-center">
+                                        {dailyRowsData[row.user_id].reduce((sum: number, r: any) => sum + Number(r.main_nomination_count || 0), 0)}
+                                      </td>
+                                      <td className="p-2 text-center">
+                                        {formatCurrency(
+                                          dailyRowsData[row.user_id].reduce((sum: number, r: any) => sum + Number(r.main_nomination_fee || 0), 0)
+                                        )}
+                                      </td>
+                                      <td className="p-2 text-center">
+                                        {dailyRowsData[row.user_id].reduce((sum: number, r: any) => sum + Number(r.inside_nomination_count || 0), 0)}
+                                      </td>
+                                      <td className="p-2 text-center">
+                                        {formatCurrency(
+                                          dailyRowsData[row.user_id].reduce((sum: number, r: any) => sum + Number(r.inside_nomination_fee || 0), 0)
+                                        )}
+                                      </td>
+                                      <td className="p-2 text-center">
+                                        {dailyRowsData[row.user_id].reduce((sum: number, r: any) => sum + Number(r.together_nomination_count || 0), 0)}
+                                      </td>
+                                      <td className="p-2 text-center">
+                                        {formatCurrency(
+                                          dailyRowsData[row.user_id].reduce((sum: number, r: any) => sum + Number(r.together_nomination_fee || 0), 0)
+                                        )}
+                                      </td>
+                                      <td className="p-2 text-center">
+                                        {formatCurrency(
+                                          dailyRowsData[row.user_id].reduce((sum: number, r: any) => sum + Number(r.sales_back_yen || 0), 0)
+                                        )}
+                                      </td>
+                                      <td className="p-2 text-center">
+                                        {formatCurrency(
+                                          dailyRowsData[row.user_id].reduce((sum: number, r: any) => sum + Number(r.overtime_wage_yen || 0), 0)
+                                        )}
+                                      </td>
+                                      <td className="p-2 text-center">
+                                        {formatCurrency(
+                                          dailyRowsData[row.user_id].reduce((sum: number, r: any) => sum + Number(r.deduction_yen || 0), 0)
+                                        )}
+                                      </td>
+                                      <td className="p-2 text-center font-semibold whitespace-nowrap">
+                                        {formatCurrency(
+                                          dailyRowsData[row.user_id].reduce((sum: number, r: any) => (
+                                            sum +
+                                            Number(r.base_pay || 0) +
+                                            Number(r.main_nomination_fee || 0) +
+                                            Number(r.inside_nomination_fee || 0) +
+                                            Number(r.together_nomination_fee || 0) +
+                                            Number(r.sales_back_yen || 0) +
+                                            Number(r.overtime_wage_yen || 0) -
+                                            Number(r.deduction_yen || 0)
+                                          ), 0)
+                                        )}
+                                      </td>
+                                      <td className="p-2 text-center whitespace-nowrap">
+                                        {formatCurrency(
+                                          dailyRowsData[row.user_id].reduce((sum: number, r: any) => sum + Number(r.paid_price || 0), 0)
+                                        )}
+                                      </td>
+                                      <td className="p-2 text-center font-semibold whitespace-nowrap">
+                                        {formatCurrency(
+                                          dailyRowsData[row.user_id].reduce((sum: number, r: any) => {
+                                            const totalPay = 
+                                              Number(r.base_pay || 0) +
+                                              Number(r.main_nomination_fee || 0) +
+                                              Number(r.inside_nomination_fee || 0) +
+                                              Number(r.together_nomination_fee || 0) +
+                                              Number(r.sales_back_yen || 0) +
+                                              Number(r.overtime_wage_yen || 0) -
+                                              Number(r.deduction_yen || 0);
+                                            const paid = Number(r.paid_price || 0);
+                                            return sum + (totalPay - paid);
+                                          }, 0)
+                                        )}
+                                      </td>
+                                    </tr>
+                                  </tfoot>
+                                </table>
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                      </>
                     );
                   })}
                 </tbody>

@@ -13,7 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { 
-  ArrowLeft, Clock, User, Calendar, Timer, MessageSquare, LogIn, LogOut, Search
+  ArrowLeft, Clock, User, Calendar, Timer, MessageSquare, LogIn, LogOut, Search, Edit
 } from 'lucide-react';
 import { useNotificationContext } from '@/lib/notification-context';
 
@@ -52,12 +52,15 @@ export default function AdminAttendancePage() {
   const [selectedCast, setSelectedCast] = useState<Cast | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [timeValue, setTimeValue] = useState('');
   const [commentValue, setCommentValue] = useState('');
   const [showActiveOnly, setShowActiveOnly] = useState(false);
   const [showInactiveOnly, setShowInactiveOnly] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [currentTime, setCurrentTime] = useState<string>('');
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editHour, setEditHour] = useState<string>('');
+  const [editMinute, setEditMinute] = useState<string>('');
+  const [clockOutHour, setClockOutHour] = useState<string>('');
+  const [clockOutMinute, setClockOutMinute] = useState<string>('');
 
   const router = useRouter();
   const { success, error } = useNotificationContext();
@@ -83,50 +86,6 @@ export default function AdminAttendancePage() {
     }
   }, [router]);
 
-  // 現在時刻をリアルタイムで更新
-  useEffect(() => {
-    const updateCurrentTime = () => {
-      const now = new Date();
-      setCurrentTime(now.toLocaleString('ja-JP', {
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit'
-      }));
-    };
-
-    updateCurrentTime();
-    const interval = setInterval(updateCurrentTime, 1000);
-
-    return () => clearInterval(interval);
-  }, []);
-
-  // モーダルが開いている間、時間設定要素に現在時刻を反映
-  useEffect(() => {
-    if (isModalOpen && selectedCast) {
-      const updateTimeValue = () => {
-        const now = new Date();
-        // datetime-local形式に変換 (YYYY-MM-DDTHH:mm)
-        const year = now.getFullYear();
-        const month = String(now.getMonth() + 1).padStart(2, '0');
-        const day = String(now.getDate()).padStart(2, '0');
-        const hours = String(now.getHours()).padStart(2, '0');
-        const minutes = String(now.getMinutes()).padStart(2, '0');
-        const datetimeLocal = `${year}-${month}-${day}T${hours}:${minutes}`;
-        setTimeValue(datetimeLocal);
-      };
-
-      // モーダルを開いた時に現在時刻を設定
-      updateTimeValue();
-      
-      // 1分ごとに更新（秒単位の更新は不要）
-      const interval = setInterval(updateTimeValue, 60000);
-
-      return () => clearInterval(interval);
-    }
-  }, [isModalOpen, selectedCast]);
 
   const loadCasts = async () => {
     try {
@@ -193,26 +152,33 @@ export default function AdminAttendancePage() {
   };
 
   const handleCastClick = (cast: Cast) => {
-    setSelectedCast(cast);
-    setTimeValue(new Date().toISOString().slice(0, 16)); // YYYY-MM-DDTHH:mm形式
-    setCommentValue('');
-    setIsModalOpen(true);
+    const isActive = activeAttendances.has(cast.id);
+    
+    if (isActive) {
+      // 出勤中の場合は退勤モーダルを表示
+      setSelectedCast(cast);
+      const now = new Date();
+      setClockOutHour(String(now.getHours()).padStart(2, '0'));
+      setClockOutMinute(String(now.getMinutes()).padStart(2, '0'));
+      setCommentValue('');
+      setIsModalOpen(true);
+    } else {
+      // 出勤していない場合は直接出勤処理を実行
+      handleDirectClockIn(cast);
+    }
   };
 
-  const handleClockIn = async () => {
-    if (!selectedCast || !timeValue) {
-      error('エラー', '時間を入力してください');
-      return;
-    }
-
+  const handleDirectClockIn = async (cast: Cast) => {
     setIsSubmitting(true);
     try {
-      const clockInTime = new Date(timeValue).toISOString();
+      const now = new Date();
+      const clockInTime = now.toISOString();
+      
       const response = await fetch('/api/attendance', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          staff_id: selectedCast.id,
+          staff_id: cast.id,
           clock_in: clockInTime
         })
       });
@@ -221,7 +187,7 @@ export default function AdminAttendancePage() {
       if (result.success) {
         // 出勤状態を1に設定
         try {
-          await fetch(`/api/casts/${selectedCast.id}`, {
+          await fetch(`/api/casts/${cast.id}`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ attendance_status: 1 })
@@ -230,8 +196,7 @@ export default function AdminAttendancePage() {
           console.error('出勤状態更新エラー:', err);
         }
         
-        success('出勤記録完了', `${selectedCast.name}さんの出勤を記録しました`);
-        setIsModalOpen(false);
+        success('出勤記録完了', `${cast.name}さんの出勤を記録しました`);
         loadActiveAttendances();
         loadAttendanceHistory();
       } else {
@@ -245,8 +210,12 @@ export default function AdminAttendancePage() {
     }
   };
 
+  const handleClockIn = async () => {
+    // この関数は使用されなくなりました（直接出勤処理に置き換え）
+  };
+
   const handleClockOut = async () => {
-    if (!selectedCast || !timeValue) {
+    if (!selectedCast || !clockOutHour || !clockOutMinute) {
       error('エラー', '時間を入力してください');
       return;
     }
@@ -259,7 +228,24 @@ export default function AdminAttendancePage() {
 
     setIsSubmitting(true);
     try {
-      const clockOutTime = new Date(timeValue).toISOString();
+      // 現在の日付を取得
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = String(now.getMonth() + 1).padStart(2, '0');
+      const day = String(now.getDate()).padStart(2, '0');
+      
+      // 入力された時・分を使用
+      const hour = parseInt(clockOutHour);
+      const minute = parseInt(clockOutMinute);
+      
+      if (hour < 0 || hour > 23 || minute < 0 || minute > 59) {
+        error('エラー', '正しい時間を入力してください');
+        setIsSubmitting(false);
+        return;
+      }
+
+      const clockOutTimeStr = `${year}-${month}-${day}T${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:00`;
+      const clockOutTime = new Date(clockOutTimeStr).toISOString();
       const clockInTime = new Date(activeAttendance.clock_in);
       const diffMs = new Date(clockOutTime).getTime() - clockInTime.getTime();
       const diffHours = diffMs / (1000 * 60 * 60);
@@ -299,6 +285,74 @@ export default function AdminAttendancePage() {
     } catch (err) {
       console.error('退勤記録エラー:', err);
       error('エラー', '退勤記録に失敗しました');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleEditClockIn = (cast: Cast) => {
+    const activeAttendance = activeAttendances.get(cast.id);
+    if (!activeAttendance) return;
+
+    const clockInDate = new Date(activeAttendance.clock_in);
+    setEditHour(String(clockInDate.getHours()).padStart(2, '0'));
+    setEditMinute(String(clockInDate.getMinutes()).padStart(2, '0'));
+    setSelectedCast(cast);
+    setIsEditModalOpen(true);
+  };
+
+  const handleSaveEditClockIn = async () => {
+    if (!selectedCast || !editHour || !editMinute) {
+      error('エラー', '時間を入力してください');
+      return;
+    }
+
+    const activeAttendance = activeAttendances.get(selectedCast.id);
+    if (!activeAttendance) {
+      error('エラー', '出勤記録が見つかりません');
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const hour = parseInt(editHour);
+      const minute = parseInt(editMinute);
+      
+      if (hour < 0 || hour > 23 || minute < 0 || minute > 59) {
+        error('エラー', '正しい時間を入力してください');
+        setIsSubmitting(false);
+        return;
+      }
+
+      // 既存の出勤時間から日付部分を取得
+      const clockInDate = new Date(activeAttendance.clock_in);
+      const year = clockInDate.getFullYear();
+      const month = String(clockInDate.getMonth() + 1).padStart(2, '0');
+      const day = String(clockInDate.getDate()).padStart(2, '0');
+      
+      const clockInTimeStr = `${year}-${month}-${day}T${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:00`;
+      const clockInTime = new Date(clockInTimeStr).toISOString();
+
+      const response = await fetch(`/api/attendance/${activeAttendance.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          clock_in: clockInTime
+        })
+      });
+
+      const result = await response.json();
+      if (result.success) {
+        success('出勤時間を更新しました', `${selectedCast.name}さんの出勤時間を更新しました`);
+        setIsEditModalOpen(false);
+        loadActiveAttendances();
+        loadAttendanceHistory();
+      } else {
+        error('エラー', result.error || '出勤時間の更新に失敗しました');
+      }
+    } catch (err) {
+      console.error('出勤時間更新エラー:', err);
+      error('エラー', '出勤時間の更新に失敗しました');
     } finally {
       setIsSubmitting(false);
     }
@@ -444,28 +498,42 @@ export default function AdminAttendancePage() {
                           const isActive = activeAttendances.has(cast.id);
                           const activeAttendance = isActive ? activeAttendances.get(cast.id) : null;
                           return (
-                            <Button
-                              key={cast.id}
-                              variant={isActive ? "default" : "outline"}
-                              className={`h-24 flex flex-col items-center justify-center ${
-                                isActive 
-                                  ? 'bg-green-600 hover:bg-green-700 text-white' 
-                                  : 'bg-white hover:bg-gray-50'
-                              }`}
-                              onClick={() => handleCastClick(cast)}
-                            >
-                              <div className="font-medium text-sm sm:text-base">{cast.name}</div>
-                              {isActive && activeAttendance && (
-                                <div className="mt-1 flex flex-col items-center">
-                                  <Badge variant="secondary" className="bg-green-100 text-green-800 mb-1">
-                                    出勤中
-                                  </Badge>
-                                  <div className="text-xs opacity-90">
-                                  出勤時間 {formatTime(activeAttendance.clock_in)}
+                            <div key={cast.id} className="relative">
+                              <Button
+                                variant={isActive ? "default" : "outline"}
+                                className={`h-24 w-full flex flex-col items-center justify-center ${
+                                  isActive 
+                                    ? 'bg-green-600 hover:bg-green-700 text-white' 
+                                    : 'bg-white hover:bg-gray-50'
+                                }`}
+                                onClick={() => handleCastClick(cast)}
+                              >
+                                <div className="font-medium text-sm sm:text-base">{cast.name}</div>
+                                {isActive && activeAttendance && (
+                                  <div className="mt-1 flex flex-col items-center">
+                                    <Badge variant="secondary" className="bg-green-100 text-green-800 mb-1">
+                                      出勤中
+                                    </Badge>
+                                    <div className="text-xs opacity-90">
+                                    出勤時間 {formatTime(activeAttendance.clock_in)}
+                                    </div>
                                   </div>
-                                </div>
+                                )}
+                              </Button>
+                              {isActive && activeAttendance && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="absolute top-1 right-1 h-6 w-6 p-0 bg-white hover:bg-gray-100 text-gray-600 rounded-full shadow-sm"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleEditClockIn(cast);
+                                  }}
+                                >
+                                  <Edit className="w-3 h-3" />
+                                </Button>
                               )}
-                            </Button>
+                            </div>
                           );
                         })}
                         {/* 空のセルを埋める */}
@@ -599,19 +667,37 @@ export default function AdminAttendancePage() {
                 </div>
               </div>
 
-              <div>
-                <Label htmlFor="time">時間</Label>
-                {/* <div className="mb-2 text-sm text-gray-600">
-                  現在時刻: {currentTime}
-                </div> */}
-                <Input
-                  id="time"
-                  type="datetime-local"
-                  value={timeValue}
-                  onChange={(e) => setTimeValue(e.target.value)}
-                  className="mt-1"
-                />
-              </div>
+              {activeAttendances.has(selectedCast.id) && (
+                <div>
+                  <Label>退勤時間</Label>
+                  <div className="flex items-center space-x-2 mt-1">
+                    <div className="flex items-center space-x-1">
+                      <Input
+                        type="number"
+                        min="0"
+                        max="23"
+                        value={clockOutHour}
+                        onChange={(e) => setClockOutHour(e.target.value)}
+                        placeholder="時"
+                        className="w-20"
+                      />
+                      <span className="text-gray-500">時</span>
+                    </div>
+                    <div className="flex items-center space-x-1">
+                      <Input
+                        type="number"
+                        min="0"
+                        max="59"
+                        value={clockOutMinute}
+                        onChange={(e) => setClockOutMinute(e.target.value)}
+                        placeholder="分"
+                        className="w-20"
+                      />
+                      <span className="text-gray-500">分</span>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {activeAttendances.has(selectedCast.id) && (
                 <div>
@@ -636,24 +722,92 @@ export default function AdminAttendancePage() {
                   キャンセル
                 </Button>
                 <Button
-                  onClick={activeAttendances.has(selectedCast.id) ? handleClockOut : handleClockIn}
+                  onClick={handleClockOut}
                   disabled={isSubmitting}
-                  className={activeAttendances.has(selectedCast.id) 
-                    ? 'bg-orange-600 hover:bg-orange-700' 
-                    : 'bg-green-600 hover:bg-green-700'
-                  }
+                  className="bg-orange-600 hover:bg-orange-700"
                 >
                   {isSubmitting ? (
                     '処理中...'
-                  ) : activeAttendances.has(selectedCast.id) ? (
+                  ) : (
                     <>
                       <LogOut className="w-4 h-4 mr-2" />
                       退勤
                     </>
+                  )}
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* 出勤時間編集モーダル */}
+      <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center">
+              <Edit className="w-5 h-5 mr-2" />
+              出勤時間の編集
+            </DialogTitle>
+          </DialogHeader>
+          {selectedCast && (
+            <div className="space-y-4">
+              <div className="bg-gray-50 p-4 rounded-lg">
+                <div className="flex items-center space-x-2">
+                  <User className="w-4 h-4 text-gray-400" />
+                  <span className="font-medium">{selectedCast.name}</span>
+                </div>
+              </div>
+
+              <div>
+                <Label>出勤時間</Label>
+                <div className="flex items-center space-x-2 mt-1">
+                  <div className="flex items-center space-x-1">
+                    <Input
+                      type="number"
+                      min="0"
+                      max="23"
+                      value={editHour}
+                      onChange={(e) => setEditHour(e.target.value)}
+                      placeholder="時"
+                      className="w-20"
+                    />
+                    <span className="text-gray-500">時</span>
+                  </div>
+                  <div className="flex items-center space-x-1">
+                    <Input
+                      type="number"
+                      min="0"
+                      max="59"
+                      value={editMinute}
+                      onChange={(e) => setEditMinute(e.target.value)}
+                      placeholder="分"
+                      className="w-20"
+                    />
+                    <span className="text-gray-500">分</span>
+                  </div>
+                </div>
+              </div>
+
+              <DialogFooter>
+                <Button
+                  variant="outline"
+                  onClick={() => setIsEditModalOpen(false)}
+                  disabled={isSubmitting}
+                >
+                  キャンセル
+                </Button>
+                <Button
+                  onClick={handleSaveEditClockIn}
+                  disabled={isSubmitting}
+                  className="bg-green-600 hover:bg-green-700"
+                >
+                  {isSubmitting ? (
+                    '処理中...'
                   ) : (
                     <>
-                      <LogIn className="w-4 h-4 mr-2" />
-                      出勤
+                      <Edit className="w-4 h-4 mr-2" />
+                      保存
                     </>
                   )}
                 </Button>

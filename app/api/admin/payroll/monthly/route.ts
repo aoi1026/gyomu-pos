@@ -92,7 +92,7 @@ export async function GET(request: NextRequest) {
       att AS (
         SELECT a.staff_id AS user_id, COALESCE(SUM(a.total_work_hours), 0) AS hours
         FROM attendance a
-         WHERE a.created_at >= $1::date AND a.created_at < $2::date
+         WHERE DATE(a.created_at) >= $1::date AND DATE(a.created_at) < $2::date
         GROUP BY a.staff_id
       ),
       nom_main AS (
@@ -121,7 +121,7 @@ export async function GET(request: NextRequest) {
           COALESCE(SUM(n.cost_cast), 0) AS sum_fee
         FROM nomination n
         WHERE n.type_id = 'together'
-          AND n.created_at >= $1::date AND n.created_at < $2::date
+          AND DATE(n.created_at) >= $1::date AND DATE(n.created_at) < $2::date
         GROUP BY n.cast_id
       ),
       ac AS (
@@ -170,7 +170,7 @@ export async function GET(request: NextRequest) {
       att AS (
         SELECT a.staff_id AS user_id, COALESCE(SUM(a.total_work_hours), 0) AS hours
         FROM attendance a
-        WHERE a.created_at >= $1::date AND a.created_at < $2::date
+        WHERE DATE(a.created_at) >= $1::date AND DATE(a.created_at) < $2::date
         GROUP BY a.staff_id
       ),
       nom_main AS (
@@ -179,7 +179,7 @@ export async function GET(request: NextRequest) {
                COALESCE(SUM(n.cost_cast), 0) AS sum_fee
         FROM nomination n
         WHERE n.type_id = 'main'
-          AND n.created_at >= $1::date AND n.created_at < $2::date
+          AND DATE(n.created_at) >= $1::date AND DATE(n.created_at) < $2::date
         GROUP BY n.cast_id
       ),
       nom_inside AS (
@@ -188,7 +188,7 @@ export async function GET(request: NextRequest) {
                COALESCE(SUM(n.cost_cast), 0) AS sum_fee
         FROM nomination n
         WHERE n.type_id = 'inside'
-          AND n.created_at >= $1::date AND n.created_at < $2::date
+          AND DATE(n.created_at) >= $1::date AND DATE(n.created_at) < $2::date
         GROUP BY n.cast_id
       ),
       nom_together AS (
@@ -199,7 +199,7 @@ export async function GET(request: NextRequest) {
           COALESCE(SUM(n.cost_cast), 0) AS sum_fee
         FROM nomination n
         WHERE n.type_id = 'together'
-          AND n.created_at >= $1::date AND n.created_at < $2::date
+          AND DATE(n.created_at) >= $1::date AND DATE(n.created_at) < $2::date
         GROUP BY n.cast_id
       ),
       ac AS (
@@ -227,8 +227,8 @@ export async function GET(request: NextRequest) {
         WHERE so.status = 'accepted'
           AND so.for_cast = 1
           AND so.cast_id IS NOT NULL
-          AND so.accepted_at >= $1::date 
-          AND so.accepted_at < $2::date
+          AND DATE(so.accepted_at) >= $1::date 
+          AND DATE(so.accepted_at) < $2::date
         GROUP BY so.cast_id
       )
       SELECT 
