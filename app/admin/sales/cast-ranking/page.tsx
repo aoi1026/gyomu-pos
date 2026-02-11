@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import RoleGate from '@/components/auth/RoleGate';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -24,7 +24,7 @@ type RankingRow = {
   points: number;
 };
 
-export default function CastRankingPage() {
+function CastRankingContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { error } = useNotificationContext();
@@ -197,4 +197,10 @@ export default function CastRankingPage() {
   );
 }
 
-
+export default function CastRankingPage() {
+  return (
+    <Suspense fallback={<div className="flex items-center justify-center min-h-[50vh] text-muted-foreground">読み込み中...</div>}>
+      <CastRankingContent />
+    </Suspense>
+  );
+}

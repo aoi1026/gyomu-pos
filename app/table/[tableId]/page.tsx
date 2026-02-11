@@ -34,9 +34,11 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from '@/components/ui/table';
 
 
-export default function TableDashboard({ params }: { params: { tableId: string } }) {
+export default function TableDashboard({ params }: { params: Promise<{ tableId: string }> }) {
+  const [tableId, setTableId] = useState<string | null>(null);
   const [tableAuth, setTableAuth] = useState<TableAuth | null>(null);
   const [isSessionActive, setIsSessionActive] = useState<boolean>(false);
+  const [isRedirectingAfterEnd, setIsRedirectingAfterEnd] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [showNominationDialog, setShowNominationDialog] = useState(false);
   const [nominationType, setNominationType] = useState<'nomination' | 'field_nomination'>('nomination');
@@ -233,7 +235,13 @@ export default function TableDashboard({ params }: { params: { tableId: string }
   // キャスト一覧（APIから取得）
   const [availableCasts, setAvailableCasts] = useState<any[]>([]);
 
+  // paramsを解決（Next.js 15+ではparamsはPromise）
   useEffect(() => {
+    Promise.resolve(params).then((p) => setTableId(p.tableId));
+  }, [params]);
+
+  useEffect(() => {
+    if (!tableId) return;
     // テーブルログイン（tableロール）の場合をチェック
     const tableUserAuth = typeof window !== 'undefined' ? localStorage.getItem('table_auth') : null;
     let tableUser = null;
@@ -256,10 +264,10 @@ export default function TableDashboard({ params }: { params: { tableId: string }
         .then(res => res.json())
         .then(result => {
           if (result.success) {
-            const tableInfo = result.tables.find((table: any) => table.id.toString() === params.tableId);
+            const tableInfo = result.tables.find((table: any) => table.id.toString() === tableId);
             if (tableInfo) {
               const currentTable: TableAuth = {
-                table_id: params.tableId,
+                table_id: tableId,
                 table_label: tableInfo.name,
                 area: tableInfo.area || 'メインフロア',
                 capacity: tableInfo.capacity,
@@ -267,6 +275,20 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                 login_time: new Date().toISOString()
               };
               setTableAuth(currentTable);
+              if (typeof window !== 'undefined') {
+                // role: 'table' を維持して別テーブルへ切り替え可能にする
+                const existing = localStorage.getItem('table_auth');
+                let toStore: Record<string, unknown> = { ...currentTable };
+                if (existing) {
+                  try {
+                    const parsed = JSON.parse(existing);
+                    if (parsed.role === 'table') {
+                      toStore = { ...currentTable, role: 'table', id: parsed.id, name: parsed.name, email: parsed.email };
+                    }
+                  } catch (e) { /* ignore */ }
+                }
+                localStorage.setItem('table_auth', JSON.stringify(toStore));
+              }
               
               // このテーブルのセッションが存在するかチェック
               fetch('/api/sessions')
@@ -274,7 +296,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
                 .then(sessionsResult => {
                   if (sessionsResult.data) {
                     const activeSession = sessionsResult.data.find((s: any) => 
-                      s.table_id.toString() === params.tableId && s.status === 1
+                      s.table_id.toString() === tableId && s.status === 1
                     );
                     
                     if (activeSession) {
@@ -383,7 +405,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
 
     // 従来のテーブルログイン（テーブル選択）の場合
     const currentTable = getCurrentTable();
-    if (!currentTable || currentTable.table_id !== params.tableId) {
+    if (!currentTable || currentTable.table_id !== tableId) {
       router.push('/');
       return;
     }
@@ -396,7 +418,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
       .then(sessionsResult => {
         if (sessionsResult.data) {
           const activeSession = sessionsResult.data.find((s: any) => 
-            s.table_id.toString() === params.tableId && s.status === 1
+            s.table_id.toString() === tableId && s.status === 1
           );
           
           if (activeSession) {
@@ -486,7 +508,7 @@ export default function TableDashboard({ params }: { params: { tableId: string }
         loadCasts();
         loadAddCharges();
       });
-  }, [params.tableId, router]);
+  }, [tableId, router]);
 
   // tableAuthが設定された後にカートを読み込む
   useEffect(() => {
@@ -1597,8 +1619,9 @@ export default function TableDashboard({ params }: { params: { tableId: string }
       'セッション終了',
       'セッションを終了しますか？',
       async () => {
-        // リダイレクトフラグを設定
+        // リダイレクトフラグを設定（人員入力画面の一瞬表示を防ぐ）
         isEndingSessionRef.current = true;
+        setIsRedirectingAfterEnd(true);
         try {
           const sessionId = localStorage.getItem('current_session_id');
           const setCount = localStorage.getItem('set_count');
@@ -1685,15 +1708,12 @@ export default function TableDashboard({ params }: { params: { tableId: string }
           localStorage.removeItem('additional_services');
 
           success('セッション終了', 'セッションを終了しました');
-          
-          // テーブル一覧ページにリダイレクト
-          setTimeout(() => {
-            router.push('/table-list');
-          }, 500);
+          router.push('/table-list');
         } catch (err) {
           console.error('セッション終了エラー:', err);
           error('エラー', `セッション終了に失敗しました: ${err instanceof Error ? err.message : '不明なエラー'}`);
           isEndingSessionRef.current = false;
+          setIsRedirectingAfterEnd(false);
         }
       }
     );
@@ -3079,6 +3099,17 @@ export default function TableDashboard({ params }: { params: { tableId: string }
         <div className="text-center">
           <h1 className="text-2xl font-bold text-gray-900 mb-2">アクセスエラー</h1>
           <p className="text-gray-600">テーブル情報を取得できませんでした</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (isRedirectingAfterEnd) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-50 via-pink-50 to-blue-50">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 border-2 border-purple-600 border-t-transparent rounded-full animate-spin" />
+          <p className="text-sm text-gray-600">テーブル一覧へ移動しています...</p>
         </div>
       </div>
     );

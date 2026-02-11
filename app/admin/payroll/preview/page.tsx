@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import RoleGate from '@/components/auth/RoleGate';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -1093,8 +1093,8 @@ export default function PayrollPreviewPage() {
                     };
                     const isUnlocked = dateMode === 'month' ? !!rowUnlocked[row.user_id] : false;
                     return (
-                      <>
-                        <tr key={row.user_id} className="border-t hover:bg-gray-50 transition-colors">
+                      <React.Fragment key={row.user_id}>
+                        <tr className="border-t hover:bg-gray-50 transition-colors">
                         <td className="p-2 sm:p-3 whitespace-nowrap sticky left-0 bg-white z-20 border-r border-gray-200">
                           <div className="flex flex-col items-start space-y-1">
                             <div className="font-medium text-sm">{row.name}</div>
@@ -1420,7 +1420,7 @@ export default function PayrollPreviewPage() {
                           </td>
                         </tr>
                       )}
-                      </>
+                      </React.Fragment>
                     );
                   })}
                 </tbody>

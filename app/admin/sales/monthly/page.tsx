@@ -653,7 +653,7 @@ export default function MonthlySalesPage() {
                 <Table>
                   <TableHeader className="sticky top-0 z-20 bg-white/95 backdrop-blur border-b shadow-sm">
                     <TableRow className="sticky top-0">
-                      <TableHead className="sticky top-0 z-20 bg-white/95 backdrop-blur w-28">日付</TableHead>
+                      <TableHead className="sticky top-0 z-20 bg-white/95 backdrop-blur w-30">日付</TableHead>
                       <TableHead className="sticky top-0 z-20 bg-white/95 backdrop-blur text-right">売上合計</TableHead>
                       <TableHead className="sticky top-0 z-20 bg-white/95 backdrop-blur text-right">現金</TableHead>
                       <TableHead className="sticky top-0 z-20 bg-white/95 backdrop-blur text-right">店舗用カード</TableHead>

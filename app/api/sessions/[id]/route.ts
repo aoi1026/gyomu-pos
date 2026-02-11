@@ -3,10 +3,11 @@ import { pool } from '@/lib/database';
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const client = await pool.connect();
   try {
+    const { id } = await params;
     const { cost, end_at, set_count, client: clientCount, status, set_extensions, is_paused, paused_at, paused_elapsed, created_at, pay_type } = await request.json();
     
     if (cost === undefined && !end_at && set_count === undefined && clientCount === undefined && status === undefined && set_extensions === undefined && is_paused === undefined && !paused_at && paused_elapsed === undefined && !created_at && pay_type === undefined) {
@@ -86,7 +87,7 @@ export async function PATCH(
       paramIndex++;
     }
 
-    values.push(params.id);
+    values.push(id);
 
     const query = `UPDATE sessions SET ${updateFields.join(', ')} WHERE id = $${paramIndex} RETURNING *`;
     

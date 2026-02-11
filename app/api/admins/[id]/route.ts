@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/database';
 
-export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
+export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { name, mail, password, other, gender } = await request.json();
-    const adminId = params.id;
+    const { id: adminId } = await params;
 
     if (!name || !mail) {
       return NextResponse.json(
@@ -74,9 +74,9 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
   }
 }
 
-export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const adminId = params.id;
+    const { id: adminId } = await params;
     const client = await pool.connect();
 
     try {

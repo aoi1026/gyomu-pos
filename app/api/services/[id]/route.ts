@@ -4,11 +4,12 @@ import { pool } from '@/lib/database';
 // PUT - サービスを更新
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { name, other } = await request.json();
-    const serviceId = parseInt(params.id);
+    const { id } = await params;
+    const serviceId = parseInt(id);
     
     if (!name || name.trim() === '') {
       return NextResponse.json({
@@ -48,10 +49,11 @@ export async function PUT(
 // DELETE - サービスを削除
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const serviceId = parseInt(params.id);
+    const { id } = await params;
+    const serviceId = parseInt(id);
     
     const result = await pool.query(`
       DELETE FROM services 

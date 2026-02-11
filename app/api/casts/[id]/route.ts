@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/database';
 
-export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { attendance_status } = await request.json();
-    const castId = params.id;
+    const { id: castId } = await params;
 
     if (attendance_status === undefined) {
       return NextResponse.json(
@@ -50,10 +50,10 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
   }
 }
 
-export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
+export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { name, mail, password, other, gender } = await request.json();
-    const castId = params.id;
+    const { id: castId } = await params;
 
     if (!name || !mail) {
       return NextResponse.json(
@@ -121,9 +121,9 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
   }
 }
 
-export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const castId = params.id;
+    const { id: castId } = await params;
     const client = await pool.connect();
     
     try {

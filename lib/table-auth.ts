@@ -77,7 +77,7 @@ export const logoutTable = (): void => {
 // テーブルセッション開始
 export const startTableSession = async (tableId: string): Promise<TableAuth> => {
   const currentTable = getCurrentTable();
-  if (!currentTable || currentTable.table_id !== tableId) {
+  if (!currentTable || String(currentTable.table_id) !== String(tableId)) {
     throw new Error('テーブル認証情報が見つかりません');
   }
 
@@ -97,7 +97,7 @@ export const startTableSession = async (tableId: string): Promise<TableAuth> => 
 // テーブルセッション終了
 export const endTableSession = async (tableId: string): Promise<TableAuth> => {
   const currentTable = getCurrentTable();
-  if (!currentTable || currentTable.table_id !== tableId) {
+  if (!currentTable || String(currentTable.table_id) !== String(tableId)) {
     throw new Error('テーブル認証情報が見つかりません');
   }
 

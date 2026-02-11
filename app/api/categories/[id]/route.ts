@@ -3,11 +3,12 @@ import { pool } from '@/lib/database';
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { name, other, image } = await request.json();
-    const categoryId = parseInt(params.id);
+    const { id } = await params;
+    const categoryId = parseInt(id);
 
     if (!name || name.trim() === '') {
       return NextResponse.json(
@@ -88,10 +89,11 @@ export async function PUT(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const categoryId = parseInt(params.id);
+    const { id } = await params;
+    const categoryId = parseInt(id);
 
     if (isNaN(categoryId)) {
       return NextResponse.json(

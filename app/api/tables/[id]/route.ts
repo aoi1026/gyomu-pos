@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/database';
 
-export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
+export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { name, capacity, other } = await request.json();
-    const tableId = params.id;
+    const { id: tableId } = await params;
 
     if (!name || !capacity) {
       return NextResponse.json(
@@ -62,9 +62,9 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
   }
 }
 
-export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const tableId = params.id;
+    const { id: tableId } = await params;
     const client = await pool.connect();
     
     try {

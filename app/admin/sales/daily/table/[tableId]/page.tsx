@@ -2,7 +2,7 @@
 
 export const dynamic = 'force-dynamic';
 
-import { useEffect, useMemo, useState } from 'react';
+import { use, useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import RoleGate from '@/components/auth/RoleGate';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -27,11 +27,12 @@ function formatDateTime(dateString: string | null) {
   });
 }
 
-export default function DailyTableDetailPage({ params }: { params: { tableId: string } }) {
+export default function DailyTableDetailPage({ params }: { params: Promise<{ tableId: string }> }) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const resolvedParams = use(params);
   const date = searchParams.get('date') || new Date().toISOString().split('T')[0];
-  const tableId = Number(params.tableId);
+  const tableId = Number(resolvedParams.tableId);
 
   const [isLoading, setIsLoading] = useState(true);
   const [sessions, setSessions] = useState<any[]>([]);

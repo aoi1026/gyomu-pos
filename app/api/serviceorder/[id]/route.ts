@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/database';
 
-export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const client = await pool.connect();
   try {
+    const { id } = await params;
     const { status, accepted_by } = await request.json();
     
-    console.log('サービス注文更新リクエスト:', { id: params.id, status, accepted_by });
+    console.log('サービス注文更新リクエスト:', { id, status, accepted_by });
     
     if (!status) {
       return NextResponse.json(
@@ -81,7 +82,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
       console.log('accepted_atカラム処理エラー:', err);
     }
 
-    values.push(params.id);
+    values.push(id);
 
     const query = `UPDATE serviceorder SET ${updateFields.join(', ')} WHERE id = $${paramIndex} RETURNING *`;
     console.log('実行するクエリ:', query);
@@ -90,7 +91,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
     const result = await client.query(query, values);
 
     if (result.rows.length === 0) {
-      console.log('サービス注文が見つかりません:', params.id);
+      console.log('サービス注文が見つかりません:', id);
       return NextResponse.json(
         { success: false, error: 'サービス注文が見つかりません' },
         { status: 404 }
@@ -141,15 +142,16 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
   }
 }
 
-export async function DELETE(_request: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const client = await pool.connect();
   try {
+    const { id } = await params;
     await client.query('BEGIN');
 
     // サービス注文を取得
     const orderRes = await client.query(
       `SELECT id, status FROM serviceorder WHERE id = $1 FOR UPDATE`,
-      [params.id]
+      [id]
     );
     if (orderRes.rows.length === 0) {
       await client.query('ROLLBACK');
@@ -164,7 +166,7 @@ export async function DELETE(_request: NextRequest, { params }: { params: { id: 
     }
 
     // サービス注文を削除
-    await client.query(`DELETE FROM serviceorder WHERE id = $1`, [params.id]);
+    await client.query(`DELETE FROM serviceorder WHERE id = $1`, [id]);
 
     await client.query('COMMIT');
     return NextResponse.json({ success: true });

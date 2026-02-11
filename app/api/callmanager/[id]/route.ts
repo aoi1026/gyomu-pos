@@ -3,11 +3,11 @@ import { pool } from '@/lib/database';
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { status, accepted_by } = await request.json();
-    const callId = params.id;
+    const { id: callId } = await params;
 
     if (!status || !accepted_by) {
       return NextResponse.json(

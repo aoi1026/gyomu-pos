@@ -3,10 +3,11 @@ import { pool } from '@/lib/database';
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const client = await pool.connect();
   try {
+    const { id } = await params;
     const { cost, type_id, tomain_nomination, rank_cost_add, rank_point_add } = await request.json();
 
     if (cost === undefined && type_id === undefined && tomain_nomination === undefined && rank_cost_add === undefined && rank_point_add === undefined) {
@@ -31,7 +32,7 @@ export async function PATCH(
       FROM nomination
       WHERE id = $1
       `,
-      [params.id]
+      [id]
     );
     if (currentRes.rows.length === 0) {
       await client.query('ROLLBACK');
@@ -102,7 +103,7 @@ export async function PATCH(
       values.push(parseFloat(rank_point_add));
     }
 
-    values.push(params.id);
+    values.push(id);
 
     const result = await client.query(
       `UPDATE nomination SET ${updates.join(', ')} WHERE id = $${idx} RETURNING *`,

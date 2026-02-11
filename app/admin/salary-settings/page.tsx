@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { Suspense, useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -16,7 +16,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/co
 import { Menu } from 'lucide-react';
 import NominationBackRatesPanel from '@/components/admin/NominationBackRatesPanel';
 
-export default function SalarySettingsPage() {
+function SalarySettingsContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [user, setUser] = useState<any>(null);
@@ -68,6 +68,12 @@ export default function SalarySettingsPage() {
   // アクティブなメイン項目
   const [activeMainItem, setActiveMainItem] = useState<string>('hourly-wage');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  
+  // キャスト給与状態モーダル
+  const [showCastStatusModal, setShowCastStatusModal] = useState(false);
+  const [castStatusData, setCastStatusData] = useState<any[]>([]);
+  const [weekInfo, setWeekInfo] = useState<any>(null);
+  const [isLoadingCastStatus, setIsLoadingCastStatus] = useState(false);
 
   useEffect(() => {
     const tab = searchParams?.get('tab');
@@ -327,6 +333,30 @@ export default function SalarySettingsPage() {
     } finally {
       setIsDeletingAttenday(false);
     }
+  };
+
+  const loadCastStatus = async () => {
+    setIsLoadingCastStatus(true);
+    try {
+      const response = await fetch('/api/salary-settings/cast-status');
+      const result = await response.json();
+      if (result.success) {
+        setCastStatusData(result.data || []);
+        setWeekInfo(result.weekInfo || null);
+      } else {
+        setMessage({ type: 'error', text: result.error || 'データの取得に失敗しました' });
+      }
+    } catch (error) {
+      console.error('キャスト給与状態取得エラー:', error);
+      setMessage({ type: 'error', text: 'データの取得に失敗しました' });
+    } finally {
+      setIsLoadingCastStatus(false);
+    }
+  };
+
+  const handleOpenCastStatusModal = () => {
+    setShowCastStatusModal(true);
+    loadCastStatus();
   };
 
   const handleDeleteFullReflectCategory = async () => {
@@ -754,10 +784,23 @@ export default function SalarySettingsPage() {
               {activeMainItem === 'hourly-wage' && (
                 <Card className="shadow-sm">
                   <CardHeader className="pb-3 sm:pb-4">
-                    <CardTitle className="text-lg sm:text-xl md:text-2xl">キャスト時給設定</CardTitle>
-                    <CardDescription className="text-sm sm:text-base">
-                      基準日数に基づいてレギュラーとアルバイトの時給を設定します
-                    </CardDescription>
+                    <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 sm:gap-4">
+                      <div className="flex-1">
+                        <CardTitle className="text-lg sm:text-xl md:text-2xl">キャスト時給設定</CardTitle>
+                        <CardDescription className="text-sm sm:text-base">
+                          基準日数に基づいてレギュラーとアルバイトの時給を設定します
+                        </CardDescription>
+                      </div>
+                      <Button
+                        onClick={handleOpenCastStatusModal}
+                        size="sm"
+                        variant="outline"
+                        className="bg-blue-50 hover:bg-blue-100 text-blue-700 border-blue-300 h-9 sm:h-10 w-full sm:w-auto"
+                      >
+                        <Users className="w-4 h-4 mr-2" />
+                        すべてのキャスト給与状態
+                      </Button>
+                    </div>
                   </CardHeader>
                   <CardContent className="space-y-4 sm:space-y-6">
                     <div className="space-y-2">
@@ -1560,6 +1603,150 @@ export default function SalarySettingsPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* すべてのキャスト給与状態モーダル */}
+      <Dialog open={showCastStatusModal} onOpenChange={setShowCastStatusModal}>
+        <DialogContent className="max-w-[95vw] sm:max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-lg sm:text-xl">すべてのキャスト給与状態</DialogTitle>
+            <DialogDescription className="text-sm sm:text-base">
+              {weekInfo && (
+                <>
+                  前週（{weekInfo.start} ～ {weekInfo.end}）の出勤日数と時給情報
+                  <br />
+                  基準日数: {weekInfo.standardDate}日 / レギュラー時給: ¥{weekInfo.regularWage.toLocaleString()} / アルバイト時給: ¥{weekInfo.arubaitoWage.toLocaleString()}
+                </>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            {isLoadingCastStatus ? (
+              <div className="flex flex-col items-center justify-center py-12">
+                <div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mb-4" />
+                <div className="text-sm sm:text-base text-gray-500">読み込み中...</div>
+              </div>
+            ) : castStatusData.length === 0 ? (
+              <div className="text-center py-12 text-sm sm:text-base text-gray-500">
+                データがありません
+              </div>
+            ) : (
+              <>
+                {/* デスクトップ表示（テーブル） */}
+                <div className="hidden md:block overflow-x-auto -mx-4 sm:mx-0">
+                  <div className="inline-block min-w-full align-middle">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="min-w-[150px]">キャスト名</TableHead>
+                          <TableHead className="text-center min-w-[100px]">出勤日数</TableHead>
+                          <TableHead className="text-center min-w-[120px]">給与区分</TableHead>
+                          <TableHead className="text-center min-w-[120px]">現在の時給</TableHead>
+                          {/* <TableHead className="text-center min-w-[120px]">適用時給</TableHead> */}
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {castStatusData.map((cast: any) => (
+                          <TableRow key={cast.id}>
+                            <TableCell className="font-semibold">{cast.name}</TableCell>
+                            <TableCell className="text-center">
+                              <span className={`font-medium ${cast.attendanceDays >= cast.standardDate ? 'text-green-600' : 'text-blue-600'}`}>
+                                {cast.attendanceDays}日
+                              </span>
+                            </TableCell>
+                            <TableCell className="text-center">
+                              <span className={`px-2 py-1 rounded text-xs font-medium ${
+                                cast.wageType === 'regular' 
+                                  ? 'bg-green-100 text-green-800' 
+                                  : 'bg-blue-100 text-blue-800'
+                              }`}>
+                                {cast.wageType === 'regular' ? 'レギュラー' : 'アルバイト'}
+                              </span>
+                            </TableCell>
+                            <TableCell className="text-center">
+                              <span className={`font-medium ${
+                                Math.abs(cast.hourlyPrice - cast.expectedWage) < 0.01
+                                  ? 'text-gray-700'
+                                  : 'text-orange-600'
+                              }`}>
+                                ¥{cast.hourlyPrice.toLocaleString()}
+                              </span>
+                            </TableCell>
+                            {/* <TableCell className="text-center">
+                              <span className="font-medium text-gray-700">
+                                ¥{cast.expectedWage.toLocaleString()}
+                              </span>
+                            </TableCell> */}
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </div>
+                {/* モバイル表示（カード） */}
+                <div className="md:hidden space-y-3">
+                  {castStatusData.map((cast: any) => (
+                    <Card key={cast.id} className="border border-gray-200">
+                      <CardContent className="p-4 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <span className="font-semibold text-base">{cast.name}</span>
+                          <span className={`px-2 py-1 rounded text-xs font-medium ${
+                            cast.wageType === 'regular' 
+                              ? 'bg-green-100 text-green-800' 
+                              : 'bg-blue-100 text-blue-800'
+                          }`}>
+                            {cast.wageType === 'regular' ? 'レギュラー' : 'アルバイト'}
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3 text-sm">
+                          <div>
+                            <span className="text-gray-600">出勤日数:</span>
+                            <span className={`ml-2 font-medium ${cast.attendanceDays >= cast.standardDate ? 'text-green-600' : 'text-blue-600'}`}>
+                              {cast.attendanceDays}日
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-gray-600">現在の時給:</span>
+                            <span className={`ml-2 font-medium ${
+                              Math.abs(cast.hourlyPrice - cast.expectedWage) < 0.01
+                                ? 'text-gray-700'
+                                : 'text-orange-600'
+                            }`}>
+                              ¥{cast.hourlyPrice.toLocaleString()}
+                            </span>
+                          </div>
+                          <div className="col-span-2">
+                            <span className="text-gray-600">適用時給:</span>
+                            <span className="ml-2 font-medium text-gray-700">
+                              ¥{cast.expectedWage.toLocaleString()}
+                            </span>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+          <div className="flex justify-end pt-4 border-t">
+            <Button
+              variant="outline"
+              onClick={() => setShowCastStatusModal(false)}
+              className="h-10 sm:h-11 w-full sm:w-auto"
+            >
+              閉じる
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
+  );
+}
+
+export default function SalarySettingsPage() {
+  return (
+    <Suspense fallback={<div className="flex items-center justify-center min-h-[50vh] text-muted-foreground">読み込み中...</div>}>
+      <SalarySettingsContent />
+    </Suspense>
   );
 }

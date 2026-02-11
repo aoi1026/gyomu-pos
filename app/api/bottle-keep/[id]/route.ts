@@ -4,10 +4,11 @@ import { pool } from '@/lib/database';
 // 個別ボトルキープ情報の更新
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const client = await pool.connect();
   try {
+    const { id } = await params;
     const { client_name, client_email, bottle_name, amount, other } = await request.json();
     
     const updateFields = [];
@@ -51,7 +52,7 @@ export async function PATCH(
       );
     }
 
-    values.push(params.id);
+    values.push(id);
 
     const query = `UPDATE bottle_keep SET ${updateFields.join(', ')}, updated_at = CURRENT_TIMESTAMP WHERE id = $${paramIndex} RETURNING *`;
     
@@ -82,13 +83,14 @@ export async function PATCH(
 // 個別ボトルキープ情報の削除
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const client = await pool.connect();
   try {
+    const { id } = await params;
     const result = await client.query(
       'DELETE FROM bottle_keep WHERE id = $1 RETURNING *',
-      [params.id]
+      [id]
     );
 
     if (result.rows.length === 0) {

@@ -3,12 +3,13 @@ import { pool } from '@/lib/database';
 
 export const dynamic = 'force-dynamic';
 
-export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const client = await pool.connect();
   try {
+    const { id } = await params;
     const { status, accepted_by } = await request.json();
     
-    console.log('売上注文更新リクエスト:', { id: params.id, status, accepted_by });
+    console.log('売上注文更新リクエスト:', { id, status, accepted_by });
     
     if (!status) {
       return NextResponse.json(
@@ -40,7 +41,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
          FROM salesorder
         WHERE id = $1
         FOR UPDATE`,
-      [params.id]
+      [id]
     );
     if (existingRes.rows.length === 0) {
       await client.query('ROLLBACK');
@@ -105,7 +106,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
       console.log('accepted_atカラム処理エラー:', err);
     }
 
-    values.push(params.id);
+    values.push(id);
 
     const query = `UPDATE salesorder SET ${updateFields.join(', ')} WHERE id = $${paramIndex} RETURNING *`;
     console.log('実行するクエリ:', query);
@@ -114,7 +115,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
     const result = await client.query(query, values);
 
     if (result.rows.length === 0) {
-      console.log('売上注文が見つかりません:', params.id);
+      console.log('売上注文が見つかりません:', id);
       await client.query('ROLLBACK');
       return NextResponse.json(
         { success: false, error: '売上注文が見つかりません' },
@@ -205,7 +206,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
 
           await client.query(
             `UPDATE salesorder SET castsalary_price = $1 WHERE id = $2`,
-            [computed, params.id]
+            [computed, id]
           );
 
           // salary.sales_back_yen へ castsalary_price を accepted_at の年月で加算
@@ -281,15 +282,16 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
   }
 }
 
-export async function DELETE(_request: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const client = await pool.connect();
   try {
+    const { id } = await params;
     await client.query('BEGIN');
 
     // 注文を取得し、pending以外は削除不可
     const orderRes = await client.query(
       `SELECT id, product_id, amount, status FROM salesorder WHERE id = $1 FOR UPDATE`,
-      [params.id]
+      [id]
     );
     if (orderRes.rows.length === 0) {
       await client.query('ROLLBACK');
@@ -308,7 +310,7 @@ export async function DELETE(_request: NextRequest, { params }: { params: { id: 
     );
 
     // 注文を削除
-    await client.query(`DELETE FROM salesorder WHERE id = $1`, [params.id]);
+    await client.query(`DELETE FROM salesorder WHERE id = $1`, [id]);
 
     await client.query('COMMIT');
     return NextResponse.json({ success: true });

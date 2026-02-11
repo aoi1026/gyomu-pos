@@ -53,12 +53,12 @@ export default function TableListPage() {
     if (tableAuth) {
       try {
         const parsedAuth = JSON.parse(tableAuth);
-        // tableロールのユーザーの場合のみ許可
-        if (parsedAuth.role === 'table') {
+        // tableロールのユーザー、またはテーブルページから遷移したTableAuth形式の場合に許可
+        if (parsedAuth.role === 'table' || parsedAuth.table_id) {
           setTableUser(parsedAuth);
           fetchData();
         } else {
-          // tableロールでない場合は削除
+          // 認証形式でない場合は削除
           localStorage.removeItem('table_auth');
           router.push('/');
         }
