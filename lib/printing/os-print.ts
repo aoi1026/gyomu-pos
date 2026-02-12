@@ -112,3 +112,40 @@ export function printReceiptViaOs(payloads: ReceiptPayload | ReceiptPayload[]): 
   `);
   w.document.close();
 }
+
+/**
+ * レシートをプレビューウィンドウで表示します（印刷ダイアログは開きません）。
+ */
+export function previewReceiptInWindow(payloads: ReceiptPayload | ReceiptPayload[]): void {
+  const list = Array.isArray(payloads) ? payloads : [payloads];
+  if (list.length === 0) return;
+
+  const w = window.open('', 'pos_os_preview', 'width=420,height=680');
+  if (!w) {
+    throw new Error('ポップアップがブロックされました。ポップアップ許可後に再度お試しください。');
+  }
+
+  const receiptsHtml = list
+    .map((p, i) => {
+      const html = payloadToHtml(p);
+      const breaker = i < list.length - 1 ? '<div class="page-break"></div>' : '';
+      return `<div class="paper">${html}</div>${breaker}`;
+    })
+    .join('');
+
+  w.document.open();
+  w.document.write(`
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>プレビュー</title>
+    <style>${PRINT_STYLES}</style>
+  </head>
+  <body>
+    ${receiptsHtml}
+  </body>
+</html>
+  `);
+  w.document.close();
+}

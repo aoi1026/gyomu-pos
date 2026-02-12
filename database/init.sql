@@ -40,6 +40,8 @@ ON CONFLICT DO NOTHING;
 
 -- プロジェクト変数の初期データ
 INSERT INTO project_variable (name, value, other) VALUES
-    ('store_name', '銀座エレガンス', '店舗名')
+    ('store_name', '銀座エレガンス', '店舗名'),
+    ('store_address', '', '店舗住所'),
+    ('store_tel', '', '店舗電話番号')
 ON CONFLICT (name) DO NOTHING;
 

@@ -56,7 +56,10 @@ async function ensureProjectVariableTable(client: any) {
   // 初期データを挿入（存在しない場合）
   await client.query(`
     INSERT INTO project_variable (name, value, other)
-    VALUES ('store_name', '銀座エレガンス', '店舗名')
+    VALUES 
+      ('store_name', '銀座エレガンス', '店舗名'),
+      ('store_address', '', '店舗住所'),
+      ('store_tel', '', '店舗電話番号')
     ON CONFLICT (name) DO NOTHING
   `);
 }

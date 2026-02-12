@@ -52,6 +52,8 @@ export default function Dashboard() {
   const [storeName, setStoreName] = useState<string>('銀座エレガンス');
   const [showStoreNameDialog, setShowStoreNameDialog] = useState(false);
   const [storeNameInput, setStoreNameInput] = useState<string>('');
+  const [storeAddressInput, setStoreAddressInput] = useState<string>('');
+  const [storePhoneInput, setStorePhoneInput] = useState<string>('');
   const [showBackupDialog, setShowBackupDialog] = useState(false);
   const [showRestoreDialog, setShowRestoreDialog] = useState(false);
   const [showLogoutDialog, setShowLogoutDialog] = useState(false);
@@ -236,34 +238,62 @@ export default function Dashboard() {
     }
   };
 
-  const handleStoreNameUpdate = async () => {
+  const loadStoreInfoForDialog = async () => {
+    try {
+      const [nameRes, addrRes, telRes] = await Promise.all([
+        fetch('/api/project-variables?name=store_name'),
+        fetch('/api/project-variables?name=store_address'),
+        fetch('/api/project-variables?name=store_tel'),
+      ]);
+      const nameJson = await nameRes.json();
+      const addrJson = await addrRes.json();
+      const telJson = await telRes.json();
+      if (nameJson?.success && nameJson?.data?.value) setStoreNameInput(String(nameJson.data.value));
+      if (addrJson?.success && addrJson?.data?.value) setStoreAddressInput(String(addrJson.data.value));
+      if (telJson?.success && telJson?.data?.value) setStorePhoneInput(String(telJson.data.value));
+    } catch (err) {
+      console.error('店舗情報取得エラー:', err);
+    }
+  };
+
+  const handleStoreInfoUpdate = async () => {
     if (!storeNameInput.trim()) {
       error('エラー', '店舗名を入力してください');
       return;
     }
 
     try {
-      const response = await fetch('/api/project-variables', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: 'store_name',
-          value: storeNameInput.trim()
-        })
-      });
-
-      const result = await response.json();
-      if (result.success) {
+      const updates = [
+        fetch('/api/project-variables', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: 'store_name', value: storeNameInput.trim() }),
+        }),
+        fetch('/api/project-variables', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: 'store_address', value: storeAddressInput.trim() }),
+        }),
+        fetch('/api/project-variables', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: 'store_tel', value: storePhoneInput.trim() }),
+        }),
+      ];
+      const results = await Promise.all(updates.map((r) => r.then((res) => res.json())));
+      if (results.every((r) => r.success)) {
         setStoreName(storeNameInput.trim());
         setShowStoreNameDialog(false);
         setStoreNameInput('');
-        success('店舗名を更新しました', '店舗名が正常に更新されました');
+        setStoreAddressInput('');
+        setStorePhoneInput('');
+        success('店舗情報を更新しました', '店舗情報が正常に更新されました');
       } else {
-        error('エラー', result.error || '店舗名の更新に失敗しました');
+        error('エラー', results.find((r) => !r.success)?.error || '店舗情報の更新に失敗しました');
       }
     } catch (err) {
-      console.error('店舗名更新エラー:', err);
-      error('エラー', '店舗名の更新に失敗しました');
+      console.error('店舗情報更新エラー:', err);
+      error('エラー', '店舗情報の更新に失敗しました');
     }
   };
 
@@ -437,9 +467,10 @@ export default function Dashboard() {
                     variant="ghost"
                     size="sm"
                     className="text-xs sm:text-sm"
-                    onClick={() => {
+                    onClick={async () => {
                       setStoreNameInput(storeName);
                       setShowStoreNameDialog(true);
+                      await loadStoreInfoForDialog();
                     }}
                   >
                     <Settings className="w-4 h-4 sm:w-4 sm:h-4" />
@@ -1060,16 +1091,16 @@ export default function Dashboard() {
         </>
       )}
 
-      {/* 店舗名設定ダイアログ */}
+      {/* 店舗情報追加ダイアログ */}
       <Dialog open={showStoreNameDialog} onOpenChange={setShowStoreNameDialog}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle className="flex items-center">
               <Settings className="w-5 h-5 mr-2" />
-              店舗名設定
+              店舗情報追加
             </DialogTitle>
             <DialogDescription>
-              店舗名を変更します
+              店舗名・住所・電話番号を設定します（印刷時のレシートにも反映されます）
             </DialogDescription>
           </DialogHeader>
 
@@ -1085,6 +1116,28 @@ export default function Dashboard() {
                 className="w-full"
               />
             </div>
+            <div className="space-y-2">
+              <Label htmlFor="store-address">店舗住所</Label>
+              <Input
+                id="store-address"
+                type="text"
+                placeholder="住所を入力"
+                value={storeAddressInput}
+                onChange={(e) => setStoreAddressInput(e.target.value)}
+                className="w-full"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="store-phone">電話番号</Label>
+              <Input
+                id="store-phone"
+                type="text"
+                placeholder="電話番号を入力"
+                value={storePhoneInput}
+                onChange={(e) => setStorePhoneInput(e.target.value)}
+                className="w-full"
+              />
+            </div>
 
             <div className="flex justify-end space-x-2">
               <Button
@@ -1092,12 +1145,14 @@ export default function Dashboard() {
                 onClick={() => {
                   setShowStoreNameDialog(false);
                   setStoreNameInput('');
+                  setStoreAddressInput('');
+                  setStorePhoneInput('');
                 }}
               >
                 キャンセル
               </Button>
               <Button
-                onClick={handleStoreNameUpdate}
+                onClick={handleStoreInfoUpdate}
                 disabled={!storeNameInput.trim()}
                 className="bg-purple-600 hover:bg-purple-700"
               >

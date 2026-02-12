@@ -12,6 +12,28 @@ export async function fetchStoreName(): Promise<string> {
   return 'STORE';
 }
 
+export async function fetchStoreAddress(): Promise<string> {
+  try {
+    const res = await fetch('/api/project-variables?name=store_address');
+    const json = await res.json();
+    if (json?.success && json?.data?.value) return String(json.data.value).trim();
+  } catch {
+    // ignore
+  }
+  return '';
+}
+
+export async function fetchStorePhone(): Promise<string> {
+  try {
+    const res = await fetch('/api/project-variables?name=store_tel');
+    const json = await res.json();
+    if (json?.success && json?.data?.value) return String(json.data.value).trim();
+  } catch {
+    // ignore
+  }
+  return '';
+}
+
 type BuildArgs = {
   storeName: string;
   tableName: string;

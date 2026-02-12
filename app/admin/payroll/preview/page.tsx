@@ -20,9 +20,8 @@ import { useNotificationContext } from '@/lib/notification-context';
 import { usePrinter } from '@/lib/printer-context';
 import { buildEscPosRasterReceipt } from '@/lib/printing/escpos-raster';
 import type { ReceiptPayload } from '@/lib/printing/escpos-raster';
-import { printReceiptViaOs } from '@/lib/printing/os-print';
-import { fetchStoreName } from '@/lib/printing/receipt-builders';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { printReceiptViaOs, previewReceiptInWindow } from '@/lib/printing/os-print';
+import { fetchStoreName, fetchStoreAddress, fetchStorePhone } from '@/lib/printing/receipt-builders';
 
 export default function PayrollPreviewPage() {
   const [payrollRun, setPayrollRun] = useState<PayrollRun | null>(null);
@@ -49,24 +48,32 @@ export default function PayrollPreviewPage() {
   const [castSearchQuery, setCastSearchQuery] = useState<string>('');
   const [expandedDailyRows, setExpandedDailyRows] = useState<Record<number, boolean>>({});
   const [dailyRowsData, setDailyRowsData] = useState<Record<number, any[]>>({});
-  const [showPrintModal, setShowPrintModal] = useState(false);
-  const [printAddress, setPrintAddress] = useState('');
-  const [printPhone, setPrintPhone] = useState('');
-  const [previewPayload, setPreviewPayload] = useState<ReceiptPayload | null>(null);
-  const pendingPrintGetPayload = useRef<(() => Promise<ReceiptPayload | ReceiptPayload[]>) | null>(null);
-
-  const enrichPayloadWithAddressPhone = (payload: ReceiptPayload, address: string, phone: string): ReceiptPayload => {
+  /** DBのstore_address・store_telでペイロードを補完 */
+  const enrichPayloadWithStoreInfo = async (payload: ReceiptPayload): Promise<ReceiptPayload> => {
+    const [address, phone] = await Promise.all([fetchStoreAddress(), fetchStorePhone()]);
     return {
       ...payload,
-      footerAddress: address.trim() || undefined,
-      footerPhone: phone.trim() || undefined,
+      footerAddress: address || undefined,
+      footerPhone: phone || undefined,
     };
   };
 
-  const openPrintModal = (getPayload: () => Promise<ReceiptPayload | ReceiptPayload[]>) => {
-    pendingPrintGetPayload.current = getPayload;
-    setPreviewPayload(null);
-    setShowPrintModal(true);
+  const doPrint = async (getPayload: () => Promise<ReceiptPayload | ReceiptPayload[]>) => {
+    const result = await getPayload();
+    const raw = Array.isArray(result) ? result : [result];
+    const payloads = await Promise.all(raw.map((p) => enrichPayloadWithStoreInfo(p)));
+    if (printer.status === 'connected') {
+      for (const p of payloads) await printer.write(buildEscPosRasterReceipt(p));
+    } else {
+      printReceiptViaOs(payloads);
+    }
+  };
+
+  const doPreview = async (getPayload: () => Promise<ReceiptPayload | ReceiptPayload[]>) => {
+    const result = await getPayload();
+    const raw = Array.isArray(result) ? result : [result];
+    const payloads = await Promise.all(raw.map((p) => enrichPayloadWithStoreInfo(p)));
+    previewReceiptInWindow(payloads);
   };
   const fetchMonthlyRows = async (year: number, month: number, useSessions?: boolean, saveOnLoad?: boolean) => {
     try {
@@ -382,25 +389,6 @@ export default function PayrollPreviewPage() {
     return `月: ${selectedYear}-${String(selectedMonth).padStart(2, '0')}`;
   }, [dateMode, singleDate, periodStart, periodEnd, selectedYear, selectedMonth]);
 
-  /** Bluetooth接続時はESC/POSで印刷、未接続時はOS印刷ダイアログを使用（iPad等デバイス接続済み環境向け） */
-  const printReceipt = async (payload: ReceiptPayload) => {
-    if (printer.status === 'connected') {
-      const data = buildEscPosRasterReceipt(payload);
-      await printer.write(data);
-    } else {
-      printReceiptViaOs(payload);
-    }
-  };
-
-  const printReceipts = async (payloads: ReceiptPayload[]) => {
-    if (printer.status === 'connected') {
-      for (const p of payloads) {
-        await printer.write(buildEscPosRasterReceipt(p));
-      }
-    } else {
-      printReceiptViaOs(payloads);
-    }
-  };
 
   const getPayloadForMonthlyRow = async (row: any): Promise<ReceiptPayload> => {
     const storeName = await fetchStoreName();
@@ -432,9 +420,24 @@ export default function PayrollPreviewPage() {
     };
   };
 
-  const handlePrintMonthlyRow = (row: any) => {
+  const handlePrintMonthlyRow = async (row: any) => {
     if (isPrinting) return;
-    openPrintModal(() => getPayloadForMonthlyRow(row));
+    setIsPrinting(true);
+    try {
+      await doPrint(() => getPayloadForMonthlyRow(row));
+      success('印刷', '印刷しました');
+    } catch (e: any) {
+      error('印刷に失敗しました', e?.message || String(e));
+    } finally {
+      setIsPrinting(false);
+    }
+  };
+  const handlePreviewMonthlyRow = async (row: any) => {
+    try {
+      await doPreview(() => getPayloadForMonthlyRow(row));
+    } catch (e: any) {
+      error('プレビューに失敗しました', e?.message || String(e));
+    }
   };
 
   const getPayloadForDailyBreakdown = async (row: any): Promise<ReceiptPayload> => {
@@ -465,14 +468,34 @@ export default function PayrollPreviewPage() {
     return { storeName, tableName: '給与計算', title: `日別内訳（${row?.name ?? ''}）`, issuedAt, lines, totalLabel: '総額', totalAmount: sumRealTotal };
   };
 
-  const handlePrintDailyBreakdown = (row: any) => {
+  const handlePrintDailyBreakdown = async (row: any) => {
     if (isPrinting) return;
     const dailyRows = dailyRowsData[row.user_id];
     if (!dailyRows?.length) {
       info('印刷', '日別内訳データがありません');
       return;
     }
-    openPrintModal(() => getPayloadForDailyBreakdown(row));
+    setIsPrinting(true);
+    try {
+      await doPrint(() => getPayloadForDailyBreakdown(row));
+      success('印刷', '印刷しました');
+    } catch (e: any) {
+      error('印刷に失敗しました', e?.message || String(e));
+    } finally {
+      setIsPrinting(false);
+    }
+  };
+  const handlePreviewDailyBreakdown = async (row: any) => {
+    const dailyRows = dailyRowsData[row.user_id];
+    if (!dailyRows?.length) {
+      info('印刷', '日別内訳データがありません');
+      return;
+    }
+    try {
+      await doPreview(() => getPayloadForDailyBreakdown(row));
+    } catch (e: any) {
+      error('プレビューに失敗しました', e?.message || String(e));
+    }
   };
 
   const getPayloadForMonthlyAll = async (): Promise<ReceiptPayload[]> => {
@@ -491,13 +514,32 @@ export default function PayrollPreviewPage() {
     return [summary, ...rowPayloads];
   };
 
-  const handlePrintMonthlyAll = () => {
+  const handlePrintMonthlyAll = async () => {
     if (isPrinting) return;
     if (!monthlyRows.length) {
       info('印刷', '印刷するデータがありません');
       return;
     }
-    openPrintModal(getPayloadForMonthlyAll);
+    setIsPrinting(true);
+    try {
+      await doPrint(getPayloadForMonthlyAll);
+      success('印刷', '印刷しました');
+    } catch (e: any) {
+      error('印刷に失敗しました', e?.message || String(e));
+    } finally {
+      setIsPrinting(false);
+    }
+  };
+  const handlePreviewMonthlyAll = async () => {
+    if (!monthlyRows.length) {
+      info('印刷', '印刷するデータがありません');
+      return;
+    }
+    try {
+      await doPreview(getPayloadForMonthlyAll);
+    } catch (e: any) {
+      error('プレビューに失敗しました', e?.message || String(e));
+    }
   };
 
   const getPayloadForMonthlyTotals = async (): Promise<ReceiptPayload> => {
@@ -567,13 +609,32 @@ export default function PayrollPreviewPage() {
     };
   };
 
-  const handlePrintMonthlyTotals = () => {
+  const handlePrintMonthlyTotals = async () => {
     if (isPrinting) return;
     if (!monthlyRows.length) {
       info('印刷', '印刷するデータがありません');
       return;
     }
-    openPrintModal(getPayloadForMonthlyTotals);
+    setIsPrinting(true);
+    try {
+      await doPrint(getPayloadForMonthlyTotals);
+      success('印刷', '印刷しました');
+    } catch (e: any) {
+      error('印刷に失敗しました', e?.message || String(e));
+    } finally {
+      setIsPrinting(false);
+    }
+  };
+  const handlePreviewMonthlyTotals = async () => {
+    if (!monthlyRows.length) {
+      info('印刷', '印刷するデータがありません');
+      return;
+    }
+    try {
+      await doPreview(getPayloadForMonthlyTotals);
+    } catch (e: any) {
+      error('プレビューに失敗しました', e?.message || String(e));
+    }
   };
 
   const getPayloadForPayrollItemRow = async (item: PayrollItem): Promise<ReceiptPayload> => {
@@ -602,42 +663,23 @@ export default function PayrollPreviewPage() {
     };
   };
 
-  const handlePrintPayrollItemRow = (item: PayrollItem) => {
+  const handlePrintPayrollItemRow = async (item: PayrollItem) => {
     if (isPrinting) return;
-    openPrintModal(() => getPayloadForPayrollItemRow(item));
-  };
-
-  const handleModalPreview = async () => {
-    const getPayload = pendingPrintGetPayload.current;
-    if (!getPayload) return;
-    try {
-      const result = await getPayload();
-      const payloads = Array.isArray(result) ? result : [result];
-      const first = payloads[0];
-      if (first) {
-        setPreviewPayload(enrichPayloadWithAddressPhone(first, printAddress, printPhone));
-      }
-    } catch (e: any) {
-      error('プレビューに失敗しました', e?.message || String(e));
-    }
-  };
-
-  const handleModalPrint = async () => {
-    const getPayload = pendingPrintGetPayload.current;
-    if (!getPayload) return;
     setIsPrinting(true);
     try {
-      const result = await getPayload();
-      const payloads = (Array.isArray(result) ? result : [result]).map((p) =>
-        enrichPayloadWithAddressPhone(p, printAddress, printPhone)
-      );
-      await printReceipts(payloads);
+      await doPrint(() => getPayloadForPayrollItemRow(item));
       success('印刷', '印刷しました');
-      setShowPrintModal(false);
     } catch (e: any) {
       error('印刷に失敗しました', e?.message || String(e));
     } finally {
       setIsPrinting(false);
+    }
+  };
+  const handlePreviewPayrollItemRow = async (item: PayrollItem) => {
+    try {
+      await doPreview(() => getPayloadForPayrollItemRow(item));
+    } catch (e: any) {
+      error('プレビューに失敗しました', e?.message || String(e));
     }
   };
 
@@ -1051,17 +1093,28 @@ export default function PayrollPreviewPage() {
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handlePrintMonthlyAll}
-                  disabled={isPrinting}
-                  className="h-9 sm:h-10 text-xs sm:text-sm"
-                >
-                  <PrinterIcon className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
-                  <span className="hidden sm:inline">印刷</span>
-                  <span className="sm:hidden">印刷</span>
-                </Button>
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handlePrintMonthlyAll}
+                    disabled={isPrinting}
+                    className="h-9 sm:h-10 text-xs sm:text-sm"
+                  >
+                    <PrinterIcon className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
+                    <span className="hidden sm:inline">印刷</span>
+                    <span className="sm:hidden">印刷</span>
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handlePreviewMonthlyAll}
+                    className="h-9 sm:h-10 px-2"
+                    title="プレビュー"
+                  >
+                    <FileText className="w-3 h-3 sm:w-4 sm:h-4" />
+                  </Button>
+                </div>
                 <Button
                   variant="outline"
                   size="sm"
@@ -1290,16 +1343,27 @@ export default function PayrollPreviewPage() {
                           )}
                         </td>
                         <td className="p-2 sm:p-3 text-center whitespace-nowrap sticky right-0 bg-white z-20 border-l border-gray-200 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.05)] hover:bg-gray-50">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handlePrintMonthlyRow(row)}
-                            disabled={isPrinting}
-                            className="h-8 sm:h-9 text-xs px-2 sm:px-3"
-                          >
-                            <PrinterIcon className="w-3 h-3 sm:w-4 sm:h-4" />
-                            <span className="hidden xl:inline ml-1">印刷</span>
-                          </Button>
+                          <div className="flex items-center justify-center gap-1">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handlePrintMonthlyRow(row)}
+                              disabled={isPrinting}
+                              className="h-8 sm:h-9 text-xs px-2 sm:px-3"
+                            >
+                              <PrinterIcon className="w-3 h-3 sm:w-4 sm:h-4" />
+                              <span className="hidden xl:inline ml-1">印刷</span>
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handlePreviewMonthlyRow(row)}
+                              className="h-8 sm:h-9 px-2"
+                              title="プレビュー"
+                            >
+                              <FileText className="w-3 h-3 sm:w-4 sm:h-4" />
+                            </Button>
+                          </div>
                         </td>
                         {/* <td className="p-2">
                           <Button size="sm" variant="outline" onClick={saveRow}>保存</Button>
@@ -1311,7 +1375,7 @@ export default function PayrollPreviewPage() {
                             <div className="p-4">
                               <div className="flex items-center justify-between mb-2 gap-4">
                                 <div className="text-sm font-semibold min-w-0">日別内訳: {row.name}</div>
-                                <div className="flex-shrink-0 sticky right-0 pl-4 bg-gray-50 z-30">
+                                <div className="flex-shrink-0 sticky right-0 pl-4 bg-gray-50 z-30 flex items-center gap-1">
                                   <Button
                                     variant="outline"
                                     size="sm"
@@ -1321,6 +1385,15 @@ export default function PayrollPreviewPage() {
                                   >
                                     <PrinterIcon className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
                                     印刷
+                                  </Button>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => handlePreviewDailyBreakdown(row)}
+                                    className="h-8 px-2"
+                                    title="プレビュー"
+                                  >
+                                    <FileText className="w-3 h-3 sm:w-4 sm:h-4" />
                                   </Button>
                                 </div>
                               </div>
@@ -1561,16 +1634,27 @@ export default function PayrollPreviewPage() {
                       )}
                     </td>
                     <td className="p-2 sm:p-3 text-center whitespace-nowrap sticky right-0 bg-gray-50 z-20 border-l border-gray-200 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.05)]">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={handlePrintMonthlyTotals}
-                        disabled={isPrinting}
-                        className="h-8 sm:h-9 text-xs px-2 sm:px-3"
-                      >
-                        <PrinterIcon className="w-3 h-3 sm:w-4 sm:h-4" />
-                        <span className="hidden xl:inline ml-1">印刷</span>
-                      </Button>
+                      <div className="flex items-center justify-center gap-1">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={handlePrintMonthlyTotals}
+                          disabled={isPrinting}
+                          className="h-8 sm:h-9 text-xs px-2 sm:px-3"
+                        >
+                          <PrinterIcon className="w-3 h-3 sm:w-4 sm:h-4" />
+                          <span className="hidden xl:inline ml-1">印刷</span>
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={handlePreviewMonthlyTotals}
+                          className="h-8 sm:h-9 px-2"
+                          title="プレビュー"
+                        >
+                          <FileText className="w-3 h-3 sm:w-4 sm:h-4" />
+                        </Button>
+                      </div>
                     </td>
                   </tr>
                 </tfoot>
@@ -1757,15 +1841,26 @@ export default function PayrollPreviewPage() {
                               {formatCurrency(item.total_yen)}
                             </td>
                             <td className="p-3 text-center">
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => handlePrintPayrollItemRow(item)}
-                                disabled={isPrinting}
-                              >
-                                <PrinterIcon className="w-4 h-4 mr-1" />
-                                印刷
-                              </Button>
+                              <div className="flex items-center justify-center gap-1">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => handlePrintPayrollItemRow(item)}
+                                  disabled={isPrinting}
+                                >
+                                  <PrinterIcon className="w-4 h-4 mr-1" />
+                                  印刷
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => handlePreviewPayrollItemRow(item)}
+                                  className="px-2"
+                                  title="プレビュー"
+                                >
+                                  <FileText className="w-4 h-4" />
+                                </Button>
+                              </div>
                             </td>
                             <td className="p-3">
                               {editingItem?.id === item.id ? (
@@ -1885,77 +1980,6 @@ export default function PayrollPreviewPage() {
         </div>
       </div>
 
-      {/* 印刷モーダル（住所・電話番号入力、プレビュー、印刷） */}
-      <Dialog open={showPrintModal} onOpenChange={(open) => { setShowPrintModal(open); if (!open) setPreviewPayload(null); }}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>印刷設定</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="print-address">住所</Label>
-              <Input
-                id="print-address"
-                placeholder="住所を入力"
-                value={printAddress}
-                onChange={(e) => setPrintAddress(e.target.value)}
-                className="w-full"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="print-phone">電話番号</Label>
-              <Input
-                id="print-phone"
-                placeholder="電話番号を入力"
-                value={printPhone}
-                onChange={(e) => setPrintPhone(e.target.value)}
-                className="w-full"
-              />
-            </div>
-
-            {previewPayload && (
-              <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 font-mono text-sm space-y-2">
-                <div className="text-center font-semibold">{previewPayload.storeName}</div>
-                <div className="text-center text-xs text-gray-600">{previewPayload.tableName}</div>
-                <div className="text-center font-medium">【{previewPayload.title}】</div>
-                <div className="space-y-1 border-t pt-2 mt-2">
-                  {previewPayload.lines.map((line, i) => (
-                    <div key={i} className="flex justify-between">
-                      <span>{line.left}</span>
-                      {line.right && <span>{line.right}</span>}
-                    </div>
-                  ))}
-                </div>
-                <div className="flex justify-between font-semibold border-t pt-2">
-                  <span>{previewPayload.totalLabel}</span>
-                  <span>{formatCurrency(previewPayload.totalAmount)}</span>
-                </div>
-                <div className="text-center text-xs text-gray-500 border-t pt-2 mt-2">
-                  {previewPayload.issuedAt.toLocaleString('ja-JP')}
-                </div>
-                {/* 最下部中央: 住所・電話番号（印刷テンプレートと同じ配置） */}
-                {(previewPayload.footerAddress || previewPayload.footerPhone) && (
-                  <div className="text-center text-xs text-gray-700 pt-3 mt-2 space-y-1 border-t">
-                    {previewPayload.footerAddress && <div>住所: {previewPayload.footerAddress}</div>}
-                    {previewPayload.footerPhone && <div>電話番号: {previewPayload.footerPhone}</div>}
-                  </div>
-                )}
-              </div>
-            )}
-
-            <div className="flex gap-2 pt-2">
-              <Button variant="outline" onClick={handleModalPreview} className="flex-1">
-                <FileText className="w-4 h-4 mr-2" />
-                プレビュー
-              </Button>
-              <Button onClick={handleModalPrint} disabled={isPrinting} className="flex-1">
-                <PrinterIcon className="w-4 h-4 mr-2" />
-                {isPrinting ? '印刷中...' : '印刷'}
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
     </RoleGate>
   );
 }

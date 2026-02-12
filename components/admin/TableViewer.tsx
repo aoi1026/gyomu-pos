@@ -18,7 +18,7 @@ import StripeProvider from '@/components/providers/StripeProvider';
 import StripePaymentForm from '@/components/payment/StripePaymentForm';
 import { useNotificationContext } from '@/lib/notification-context';
 import { usePrinter } from '@/lib/printer-context';
-import { fetchStoreName, buildCurrentAndExtensionReceipts } from '@/lib/printing/receipt-builders';
+import { fetchStoreName, fetchStoreAddress, fetchStorePhone, buildCurrentAndExtensionReceipts } from '@/lib/printing/receipt-builders';
 import { buildEscPosRasterReceipt } from '@/lib/printing/escpos-raster';
 import { printReceiptViaOs } from '@/lib/printing/os-print';
 
@@ -122,10 +122,14 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
 
   const buildReceiptData = async () => {
     if (!session || !tableId) return null;
-    const storeName = await fetchStoreName();
+    const [storeName, footerAddress, footerPhone] = await Promise.all([
+      fetchStoreName(),
+      fetchStoreAddress(),
+      fetchStorePhone(),
+    ]);
     const tableName = String(tableData?.name ? `テーブル: ${tableData.name}` : `テーブル: ${tableId}`);
     const issuedAt = new Date();
-    return buildCurrentAndExtensionReceipts({
+    const built = buildCurrentAndExtensionReceipts({
       storeName,
       tableName,
       issuedAt,
@@ -137,6 +141,11 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
       setExtensions,
       nominations: nominations as any,
     });
+    return {
+      ...built,
+      extension: { ...built.extension, footerAddress: footerAddress || undefined, footerPhone: footerPhone || undefined },
+      current: { ...built.current, footerAddress: footerAddress || undefined, footerPhone: footerPhone || undefined },
+    };
   };
 
   const tryAutoPrintReceipts = async () => {
@@ -2383,20 +2392,20 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={handleShowReceiptPreview}
-                        className="h-8 gap-1"
-                      >
-                        <FileText className="w-4 h-4" />
-                        <span className="hidden sm:inline">プレビュー</span>
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
                         onClick={handlePrintReceipt}
                         className="h-8 gap-1"
                       >
                         <Printer className="w-4 h-4" />
                         <span className="hidden sm:inline">領収書印刷</span>
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleShowReceiptPreview}
+                        className="h-8 px-2"
+                        title="プレビュー"
+                      >
+                        <FileText className="w-4 h-4" />
                       </Button>
                     </div>
                   </CardHeader>
@@ -3340,6 +3349,12 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
                   <span>{receiptPreviewData.extension.totalLabel}</span>
                   <span>{`¥${(receiptPreviewData.extension.totalAmount || 0).toLocaleString('ja-JP')}`}</span>
                 </div>
+                {(receiptPreviewData.extension.footerAddress || receiptPreviewData.extension.footerPhone) && (
+                  <div className="text-center text-xs text-gray-700 pt-2 mt-2 border-t space-y-1">
+                    {receiptPreviewData.extension.footerAddress && <div>住所: {receiptPreviewData.extension.footerAddress}</div>}
+                    {receiptPreviewData.extension.footerPhone && <div>電話番号: {receiptPreviewData.extension.footerPhone}</div>}
+                  </div>
+                )}
               </div>
               {/* 現在料金 */}
               <div className="rounded border border-gray-200 p-4 bg-gray-50">
@@ -3361,6 +3376,12 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
                   <span>{receiptPreviewData.current.totalLabel}</span>
                   <span>{`¥${(receiptPreviewData.current.totalAmount || 0).toLocaleString('ja-JP')}`}</span>
                 </div>
+                {(receiptPreviewData.current.footerAddress || receiptPreviewData.current.footerPhone) && (
+                  <div className="text-center text-xs text-gray-700 pt-2 mt-2 border-t space-y-1">
+                    {receiptPreviewData.current.footerAddress && <div>住所: {receiptPreviewData.current.footerAddress}</div>}
+                    {receiptPreviewData.current.footerPhone && <div>電話番号: {receiptPreviewData.current.footerPhone}</div>}
+                  </div>
+                )}
               </div>
             </div>
           )}
