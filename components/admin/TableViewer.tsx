@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useRef } from 'react';
-import { X, Clock, ShoppingCart, Utensils, Users, DollarSign, CheckCircle, Bell, Trash2, CreditCard, Wine, Plus, Minus, Edit2, Save, XCircle, LogOut, Pause, Play, Package, Coffee } from 'lucide-react';
+import { X, Clock, ShoppingCart, Utensils, Users, DollarSign, CheckCircle, Bell, Trash2, CreditCard, Wine, Plus, Minus, Edit2, Save, XCircle, LogOut, Pause, Play, Package, Coffee, Printer, FileText } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -20,6 +20,7 @@ import { useNotificationContext } from '@/lib/notification-context';
 import { usePrinter } from '@/lib/printer-context';
 import { fetchStoreName, buildCurrentAndExtensionReceipts } from '@/lib/printing/receipt-builders';
 import { buildEscPosRasterReceipt } from '@/lib/printing/escpos-raster';
+import { printReceiptViaOs } from '@/lib/printing/os-print';
 
 interface TableViewerProps {
   tableId: number | null;
@@ -116,6 +117,28 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
   const [isSuperAdmin, setIsSuperAdmin] = useState<boolean>(false);
   const [isProcessingStoreCreditCardPayment, setIsProcessingStoreCreditCardPayment] = useState<boolean>(false);
 
+  const [showReceiptPreview, setShowReceiptPreview] = useState(false);
+  const [receiptPreviewData, setReceiptPreviewData] = useState<{ extension: import('@/lib/printing/escpos-raster').ReceiptPayload; current: import('@/lib/printing/escpos-raster').ReceiptPayload } | null>(null);
+
+  const buildReceiptData = async () => {
+    if (!session || !tableId) return null;
+    const storeName = await fetchStoreName();
+    const tableName = String(tableData?.name ? `テーブル: ${tableData.name}` : `テーブル: ${tableId}`);
+    const issuedAt = new Date();
+    return buildCurrentAndExtensionReceipts({
+      storeName,
+      tableName,
+      issuedAt,
+      cartOrders,
+      orderRequestStatus,
+      additionalServices,
+      guestCount: String(guestCount || ''),
+      addCharges,
+      setExtensions,
+      nominations: nominations as any,
+    });
+  };
+
   const tryAutoPrintReceipts = async () => {
     // Only auto-print when a printer is already connected from the dashboard button.
     if (printer.status !== 'connected') return;
@@ -123,29 +146,52 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
     if (!tableData) return;
 
     try {
-      const storeName = await fetchStoreName();
-      const tableName = String(tableData?.name ? `テーブル: ${tableData.name}` : `テーブル: ${tableId}`);
-      const issuedAt = new Date();
-
-      const { extension, current } = buildCurrentAndExtensionReceipts({
-        storeName,
-        tableName,
-        issuedAt,
-        cartOrders,
-        orderRequestStatus,
-        additionalServices,
-        guestCount: String(guestCount || ''),
-        addCharges,
-        setExtensions,
-        nominations: nominations as any,
-      });
-
+      const built = await buildReceiptData();
+      if (!built) return;
+      const { extension, current } = built;
       await printer.write(buildEscPosRasterReceipt(extension));
       await printer.write(buildEscPosRasterReceipt(current));
     } catch (e) {
       console.error('自動領収書印刷エラー:', e);
-      // Do not break payment flow; show a lightweight toast.
       error('エラー', '領収書の自動印刷に失敗しました（プリンター接続を確認してください）');
+    }
+  };
+
+  const handlePrintReceipt = async () => {
+    if (!session || !tableId) {
+      error('エラー', 'セッション情報がありません');
+      return;
+    }
+    try {
+      const built = await buildReceiptData();
+      if (!built) return;
+      const { extension, current } = built;
+      if (printer.status === 'connected') {
+        await printer.write(buildEscPosRasterReceipt(extension));
+        await printer.write(buildEscPosRasterReceipt(current));
+      } else {
+        printReceiptViaOs([extension, current]);
+      }
+      success('印刷', '領収書を印刷しました');
+    } catch (e) {
+      console.error('領収書印刷エラー:', e);
+      error('エラー', '領収書の印刷に失敗しました');
+    }
+  };
+
+  const handleShowReceiptPreview = async () => {
+    if (!session || !tableId) {
+      error('エラー', 'セッション情報がありません');
+      return;
+    }
+    try {
+      const built = await buildReceiptData();
+      if (!built) return;
+      setReceiptPreviewData({ extension: built.extension, current: built.current });
+      setShowReceiptPreview(true);
+    } catch (e) {
+      console.error('領収書プレビューエラー:', e);
+      error('エラー', 'プレビューの生成に失敗しました');
     }
   };
   
@@ -2328,11 +2374,31 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
 
                 {/* 注文合計 */}
                 <Card>
-                  <CardHeader>
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                     <CardTitle className="flex items-center">
                       <DollarSign className="w-5 h-5 mr-2" />
                       注文合計
                     </CardTitle>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleShowReceiptPreview}
+                        className="h-8 gap-1"
+                      >
+                        <FileText className="w-4 h-4" />
+                        <span className="hidden sm:inline">プレビュー</span>
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handlePrintReceipt}
+                        className="h-8 gap-1"
+                      >
+                        <Printer className="w-4 h-4" />
+                        <span className="hidden sm:inline">領収書印刷</span>
+                      </Button>
+                    </div>
                   </CardHeader>
                   <CardContent className="space-y-4">
                     {/* 承認状況の表示 */}
@@ -3242,6 +3308,62 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
               注文確定
             </Button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* 領収書プレビューダイアログ */}
+      <Dialog open={showReceiptPreview} onOpenChange={setShowReceiptPreview}>
+        <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>領収書プレビュー</DialogTitle>
+            <DialogDescription>印刷される領収書の内容です</DialogDescription>
+          </DialogHeader>
+          {receiptPreviewData && (
+            <div className="space-y-6 font-mono text-sm">
+              {/* 延長料金 */}
+              <div className="rounded border border-gray-200 p-4 bg-gray-50">
+                <div className="text-center font-semibold mb-2">{receiptPreviewData.extension.storeName}</div>
+                <div className="text-center text-xs text-gray-600 mb-1">{receiptPreviewData.extension.tableName}</div>
+                <div className="text-center font-medium mb-3">{receiptPreviewData.extension.title}</div>
+                <div className="text-xs text-gray-500 mb-2">
+                  {receiptPreviewData.extension.issuedAt.toLocaleString('ja-JP')}
+                </div>
+                <div className="space-y-1 border-t pt-2">
+                  {receiptPreviewData.extension.lines.map((line, i) => (
+                    <div key={i} className="flex justify-between">
+                      <span>{line.left}</span>
+                      {line.right && <span>{line.right}</span>}
+                    </div>
+                  ))}
+                </div>
+                <div className="flex justify-between font-semibold border-t mt-2 pt-2">
+                  <span>{receiptPreviewData.extension.totalLabel}</span>
+                  <span>{`¥${(receiptPreviewData.extension.totalAmount || 0).toLocaleString('ja-JP')}`}</span>
+                </div>
+              </div>
+              {/* 現在料金 */}
+              <div className="rounded border border-gray-200 p-4 bg-gray-50">
+                <div className="text-center font-semibold mb-2">{receiptPreviewData.current.storeName}</div>
+                <div className="text-center text-xs text-gray-600 mb-1">{receiptPreviewData.current.tableName}</div>
+                <div className="text-center font-medium mb-3">{receiptPreviewData.current.title}</div>
+                <div className="text-xs text-gray-500 mb-2">
+                  {receiptPreviewData.current.issuedAt.toLocaleString('ja-JP')}
+                </div>
+                <div className="space-y-1 border-t pt-2">
+                  {receiptPreviewData.current.lines.map((line, i) => (
+                    <div key={i} className="flex justify-between">
+                      <span>{line.left}</span>
+                      {line.right && <span>{line.right}</span>}
+                    </div>
+                  ))}
+                </div>
+                <div className="flex justify-between font-semibold border-t mt-2 pt-2">
+                  <span>{receiptPreviewData.current.totalLabel}</span>
+                  <span>{`¥${(receiptPreviewData.current.totalAmount || 0).toLocaleString('ja-JP')}`}</span>
+                </div>
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>

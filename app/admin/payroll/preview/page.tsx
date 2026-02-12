@@ -19,7 +19,10 @@ import {
 import { useNotificationContext } from '@/lib/notification-context';
 import { usePrinter } from '@/lib/printer-context';
 import { buildEscPosRasterReceipt } from '@/lib/printing/escpos-raster';
+import type { ReceiptPayload } from '@/lib/printing/escpos-raster';
+import { printReceiptViaOs } from '@/lib/printing/os-print';
 import { fetchStoreName } from '@/lib/printing/receipt-builders';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
 export default function PayrollPreviewPage() {
   const [payrollRun, setPayrollRun] = useState<PayrollRun | null>(null);
@@ -46,6 +49,25 @@ export default function PayrollPreviewPage() {
   const [castSearchQuery, setCastSearchQuery] = useState<string>('');
   const [expandedDailyRows, setExpandedDailyRows] = useState<Record<number, boolean>>({});
   const [dailyRowsData, setDailyRowsData] = useState<Record<number, any[]>>({});
+  const [showPrintModal, setShowPrintModal] = useState(false);
+  const [printAddress, setPrintAddress] = useState('');
+  const [printPhone, setPrintPhone] = useState('');
+  const [previewPayload, setPreviewPayload] = useState<ReceiptPayload | null>(null);
+  const pendingPrintGetPayload = useRef<(() => Promise<ReceiptPayload | ReceiptPayload[]>) | null>(null);
+
+  const enrichPayloadWithAddressPhone = (payload: ReceiptPayload, address: string, phone: string): ReceiptPayload => {
+    return {
+      ...payload,
+      footerAddress: address.trim() || undefined,
+      footerPhone: phone.trim() || undefined,
+    };
+  };
+
+  const openPrintModal = (getPayload: () => Promise<ReceiptPayload | ReceiptPayload[]>) => {
+    pendingPrintGetPayload.current = getPayload;
+    setPreviewPayload(null);
+    setShowPrintModal(true);
+  };
   const fetchMonthlyRows = async (year: number, month: number, useSessions?: boolean, saveOnLoad?: boolean) => {
     try {
       const qs = new URLSearchParams();
@@ -360,38 +382,30 @@ export default function PayrollPreviewPage() {
     return `月: ${selectedYear}-${String(selectedMonth).padStart(2, '0')}`;
   }, [dateMode, singleDate, periodStart, periodEnd, selectedYear, selectedMonth]);
 
-  const ensurePrinterConnected = async () => {
-    if (printer.status === 'connected') return true;
-    return await new Promise<boolean>((resolve) => {
-      confirm(
-        'プリンター未接続',
-        'Bluetoothプリンターを接続しますか？（同じプリンター機能を使用します）',
-        async () => {
-          try {
-            await printer.requestAndConnect();
-            resolve(true);
-          } catch (e: any) {
-            error('接続に失敗しました', e?.message || String(e));
-            resolve(false);
-          }
-        },
-        '接続する',
-        'キャンセル'
-      );
-    });
+  /** Bluetooth接続時はESC/POSで印刷、未接続時はOS印刷ダイアログを使用（iPad等デバイス接続済み環境向け） */
+  const printReceipt = async (payload: ReceiptPayload) => {
+    if (printer.status === 'connected') {
+      const data = buildEscPosRasterReceipt(payload);
+      await printer.write(data);
+    } else {
+      printReceiptViaOs(payload);
+    }
   };
 
-  const printReceipt = async (payload: Parameters<typeof buildEscPosRasterReceipt>[0]) => {
-    const ok = await ensurePrinterConnected();
-    if (!ok) return;
-    const data = buildEscPosRasterReceipt(payload);
-    await printer.write(data);
+  const printReceipts = async (payloads: ReceiptPayload[]) => {
+    if (printer.status === 'connected') {
+      for (const p of payloads) {
+        await printer.write(buildEscPosRasterReceipt(p));
+      }
+    } else {
+      printReceiptViaOs(payloads);
+    }
   };
 
-  const printMonthlyRowCore = async (row: any) => {
+  const getPayloadForMonthlyRow = async (row: any): Promise<ReceiptPayload> => {
     const storeName = await fetchStoreName();
     const issuedAt = new Date();
-    await printReceipt({
+    return {
       storeName,
       tableName: '給与計算',
       title: `キャスト別給与（${row?.name ?? ''}）`,
@@ -415,143 +429,157 @@ export default function PayrollPreviewPage() {
       ],
       totalLabel: '総額',
       totalAmount: Number(row?.realTotal_price ?? (Number(row?.total_pay_yen || 0) - Number(row?.paid_price || 0))),
-    });
+    };
   };
 
-  const handlePrintMonthlyRow = async (row: any) => {
+  const handlePrintMonthlyRow = (row: any) => {
     if (isPrinting) return;
-    setIsPrinting(true);
-    setPrintingRowKey(`monthly-${row?.user_id ?? ''}`);
-    try {
-      await printMonthlyRowCore(row);
-    } catch (e: any) {
-      error('印刷に失敗しました', e?.message || String(e));
-    } finally {
-      setPrintingRowKey(null);
-      setIsPrinting(false);
-    }
+    openPrintModal(() => getPayloadForMonthlyRow(row));
   };
 
-  const handlePrintMonthlyAll = async () => {
+  const getPayloadForDailyBreakdown = async (row: any): Promise<ReceiptPayload> => {
+    const dailyRows = dailyRowsData[row.user_id] || [];
+    const storeName = await fetchStoreName();
+    const issuedAt = new Date();
+    const lines: { left: string; right?: string }[] = [
+      { left: '検索条件', right: searchConditionText },
+      { left: 'キャスト名', right: String(row?.name ?? '') },
+      { left: '--- 日別内訳 ---' },
+    ];
+    let sumRealTotal = 0;
+    for (const dr of dailyRows) {
+      const totalPay =
+        Number(dr.base_pay || 0) +
+        Number(dr.main_nomination_fee || 0) +
+        Number(dr.inside_nomination_fee || 0) +
+        Number(dr.together_nomination_fee || 0) +
+        Number(dr.sales_back_yen || 0) +
+        Number(dr.overtime_wage_yen || 0) -
+        Number(dr.deduction_yen || 0);
+      const paid = Number(dr.paid_price || 0);
+      const realTotal = totalPay - paid;
+      sumRealTotal += realTotal;
+      lines.push({ left: `${formatDisplayDate(dr.date)}`, right: formatCurrency(realTotal) });
+    }
+    lines.push({ left: '---' });
+    return { storeName, tableName: '給与計算', title: `日別内訳（${row?.name ?? ''}）`, issuedAt, lines, totalLabel: '総額', totalAmount: sumRealTotal };
+  };
+
+  const handlePrintDailyBreakdown = (row: any) => {
+    if (isPrinting) return;
+    const dailyRows = dailyRowsData[row.user_id];
+    if (!dailyRows?.length) {
+      info('印刷', '日別内訳データがありません');
+      return;
+    }
+    openPrintModal(() => getPayloadForDailyBreakdown(row));
+  };
+
+  const getPayloadForMonthlyAll = async (): Promise<ReceiptPayload[]> => {
+    const storeName = await fetchStoreName();
+    const issuedAt = new Date();
+    const summary: ReceiptPayload = {
+      storeName,
+      tableName: '給与計算',
+      title: 'キャスト別給与（一覧）',
+      issuedAt,
+      lines: [{ left: '検索条件', right: searchConditionText }, { left: '件数', right: String(monthlyRows.length) }],
+      totalLabel: '総額合計',
+      totalAmount: monthlyRows.reduce((sum, r) => sum + (Number(r?.realTotal_price ?? (Number(r?.total_pay_yen || 0) - Number(r?.paid_price || 0))) || 0), 0),
+    };
+    const rowPayloads = await Promise.all(monthlyRows.map((r) => getPayloadForMonthlyRow(r)));
+    return [summary, ...rowPayloads];
+  };
+
+  const handlePrintMonthlyAll = () => {
     if (isPrinting) return;
     if (!monthlyRows.length) {
       info('印刷', '印刷するデータがありません');
       return;
     }
-    setIsPrinting(true);
-    setPrintingRowKey('monthly-all');
-    try {
-      const storeName = await fetchStoreName();
-      const issuedAt = new Date();
-      // 先頭にサマリー（1枚）
-      await printReceipt({
-        storeName,
-        tableName: '給与計算',
-        title: 'キャスト別給与（一覧）',
-        issuedAt,
-        lines: [
-          { left: '検索条件', right: searchConditionText },
-          { left: '件数', right: String(monthlyRows.length) },
-        ],
-        totalLabel: '総額合計',
-        totalAmount: monthlyRows.reduce((sum, r) => sum + (Number(r?.realTotal_price ?? (Number(r?.total_pay_yen || 0) - Number(r?.paid_price || 0))) || 0), 0),
-      });
-      // 各キャストを1枚ずつ印刷（長大レシート回避）
-      for (const r of monthlyRows) {
-        await printMonthlyRowCore(r);
-      }
-    } finally {
-      setPrintingRowKey(null);
-      setIsPrinting(false);
-    }
+    openPrintModal(getPayloadForMonthlyAll);
   };
 
-  const handlePrintMonthlyTotals = async () => {
-    if (isPrinting) return;
-    if (!monthlyRows.length) {
-      info('印刷', '印刷するデータがありません');
-      return;
-    }
-    setIsPrinting(true);
-    setPrintingRowKey('monthly-total');
-    try {
-      const sumHours = monthlyRows.reduce((sum, r) => sum + Number(r.basic_hours || 0), 0);
-      const sumBasePay = monthlyRows.reduce((sum, r) => sum + Number(r.base_pay || 0), 0);
-      const sumMainCnt = monthlyRows.reduce((sum, r) => sum + Number(r.main_nomination_count || 0), 0);
-      const sumMainFee = monthlyRows.reduce((sum, r) => sum + Number(r.main_nomination_fee || 0), 0);
-      const sumInsideCnt = monthlyRows.reduce((sum, r) => sum + Number(r.inside_nomination_count || 0), 0);
-      const sumInsideFee = monthlyRows.reduce((sum, r) => sum + Number(r.inside_nomination_fee || 0), 0);
-      const sumTogetherCnt = monthlyRows.reduce((sum, r) => sum + Number(r.together_nomination_count || 0), 0);
-      const sumTogetherFee = monthlyRows.reduce((sum, r) => sum + Number(r.together_nomination_fee || 0), 0);
-      const sumSalesBack = monthlyRows.reduce((sum, r) => sum + Number(r.sales_back_yen || 0), 0);
-      const sumOvertime = monthlyRows.reduce((sum, r) => sum + Number(r.overtime_wage_yen || 0), 0);
-      const sumDeduction = monthlyRows.reduce((sum, r) => sum + Number(r.deduction_yen || 0), 0);
-      const sumTotalPay = monthlyRows.reduce(
-        (sum, r) =>
-          sum +
-          Number(r.base_pay || 0) +
+  const getPayloadForMonthlyTotals = async (): Promise<ReceiptPayload> => {
+    const sumHours = monthlyRows.reduce((sum, r) => sum + Number(r.basic_hours || 0), 0);
+    const sumBasePay = monthlyRows.reduce((sum, r) => sum + Number(r.base_pay || 0), 0);
+    const sumMainCnt = monthlyRows.reduce((sum, r) => sum + Number(r.main_nomination_count || 0), 0);
+    const sumMainFee = monthlyRows.reduce((sum, r) => sum + Number(r.main_nomination_fee || 0), 0);
+    const sumInsideCnt = monthlyRows.reduce((sum, r) => sum + Number(r.inside_nomination_count || 0), 0);
+    const sumInsideFee = monthlyRows.reduce((sum, r) => sum + Number(r.inside_nomination_fee || 0), 0);
+    const sumTogetherCnt = monthlyRows.reduce((sum, r) => sum + Number(r.together_nomination_count || 0), 0);
+    const sumTogetherFee = monthlyRows.reduce((sum, r) => sum + Number(r.together_nomination_fee || 0), 0);
+    const sumSalesBack = monthlyRows.reduce((sum, r) => sum + Number(r.sales_back_yen || 0), 0);
+    const sumOvertime = monthlyRows.reduce((sum, r) => sum + Number(r.overtime_wage_yen || 0), 0);
+    const sumDeduction = monthlyRows.reduce((sum, r) => sum + Number(r.deduction_yen || 0), 0);
+    const sumTotalPay = monthlyRows.reduce(
+      (sum, r) =>
+        sum +
+        Number(r.base_pay || 0) +
+        Number(r.main_nomination_fee || 0) +
+        Number(r.inside_nomination_fee || 0) +
+        Number(r.together_nomination_fee || 0) +
+        Number(r.sales_back_yen || 0) +
+        Number(r.overtime_wage_yen || 0) -
+        Number(r.deduction_yen || 0),
+      0
+    );
+    const sumPaid = monthlyRows.reduce((sum, r) => sum + Number(r.paid_price || 0), 0);
+    const sumRealTotal = monthlyRows.reduce(
+      (sum, r) =>
+        sum +
+        ((Number(r.base_pay || 0) +
           Number(r.main_nomination_fee || 0) +
           Number(r.inside_nomination_fee || 0) +
           Number(r.together_nomination_fee || 0) +
           Number(r.sales_back_yen || 0) +
           Number(r.overtime_wage_yen || 0) -
-          Number(r.deduction_yen || 0),
-        0
-      );
-      const sumPaid = monthlyRows.reduce((sum, r) => sum + Number(r.paid_price || 0), 0);
-      const sumRealTotal = monthlyRows.reduce(
-        (sum, r) =>
-          sum +
-          ((Number(r.base_pay || 0) +
-            Number(r.main_nomination_fee || 0) +
-            Number(r.inside_nomination_fee || 0) +
-            Number(r.together_nomination_fee || 0) +
-            Number(r.sales_back_yen || 0) +
-            Number(r.overtime_wage_yen || 0) -
-            Number(r.deduction_yen || 0)) -
-            Number(r.paid_price || 0)),
-        0
-      );
-
-      const storeName = await fetchStoreName();
-      const issuedAt = new Date();
-      await printReceipt({
-        storeName,
-        tableName: '給与計算',
-        title: 'キャスト別給与（合計）',
-        issuedAt,
-        lines: [
-          { left: '検索条件', right: searchConditionText },
-          { left: '件数', right: String(monthlyRows.length) },
-          { left: '基本時間(合計)', right: formatHours(sumHours) },
-          { left: '基本給(合計)', right: formatCurrency(sumBasePay) },
-          { left: '本指名数(合計)', right: String(sumMainCnt) },
-          { left: '本指名料(合計)', right: formatCurrency(sumMainFee) },
-          { left: '場内指名数(合計)', right: String(sumInsideCnt) },
-          { left: '場内指名料(合計)', right: formatCurrency(sumInsideFee) },
-          { left: '同伴者(合計)', right: String(sumTogetherCnt) },
-          { left: '同伴料(合計)', right: formatCurrency(sumTogetherFee) },
-          { left: '売上バック(合計)', right: formatCurrency(sumSalesBack) },
-          { left: '残業代(合計)', right: formatCurrency(sumOvertime) },
-          { left: '控除(合計)', right: formatCurrency(sumDeduction) },
-          { left: '支給額(合計)', right: formatCurrency(sumTotalPay) },
-          { left: '前払い(合計)', right: formatCurrency(sumPaid) },
-        ],
-        totalLabel: '総額(合計)',
-        totalAmount: sumRealTotal,
-      });
-    } catch (e: any) {
-      error('印刷に失敗しました', e?.message || String(e));
-    } finally {
-      setPrintingRowKey(null);
-      setIsPrinting(false);
-    }
-  };
-
-  const printPayrollItemRowCore = async (item: PayrollItem) => {
+          Number(r.deduction_yen || 0)) -
+          Number(r.paid_price || 0)),
+      0
+    );
     const storeName = await fetchStoreName();
     const issuedAt = new Date();
-    await printReceipt({
+    return {
+      storeName,
+      tableName: '給与計算',
+      title: 'キャスト別給与（合計）',
+      issuedAt,
+      lines: [
+        { left: '検索条件', right: searchConditionText },
+        { left: '件数', right: String(monthlyRows.length) },
+        { left: '基本時間(合計)', right: formatHours(sumHours) },
+        { left: '基本給(合計)', right: formatCurrency(sumBasePay) },
+        { left: '本指名数(合計)', right: String(sumMainCnt) },
+        { left: '本指名料(合計)', right: formatCurrency(sumMainFee) },
+        { left: '場内指名数(合計)', right: String(sumInsideCnt) },
+        { left: '場内指名料(合計)', right: formatCurrency(sumInsideFee) },
+        { left: '同伴者(合計)', right: String(sumTogetherCnt) },
+        { left: '同伴料(合計)', right: formatCurrency(sumTogetherFee) },
+        { left: '売上バック(合計)', right: formatCurrency(sumSalesBack) },
+        { left: '残業代(合計)', right: formatCurrency(sumOvertime) },
+        { left: '控除(合計)', right: formatCurrency(sumDeduction) },
+        { left: '支給額(合計)', right: formatCurrency(sumTotalPay) },
+        { left: '前払い(合計)', right: formatCurrency(sumPaid) },
+      ],
+      totalLabel: '総額(合計)',
+      totalAmount: sumRealTotal,
+    };
+  };
+
+  const handlePrintMonthlyTotals = () => {
+    if (isPrinting) return;
+    if (!monthlyRows.length) {
+      info('印刷', '印刷するデータがありません');
+      return;
+    }
+    openPrintModal(getPayloadForMonthlyTotals);
+  };
+
+  const getPayloadForPayrollItemRow = async (item: PayrollItem): Promise<ReceiptPayload> => {
+    const storeName = await fetchStoreName();
+    const issuedAt = new Date();
+    return {
       storeName,
       tableName: '給与計算',
       title: `給与明細（${item.staff.name}）`,
@@ -571,19 +599,44 @@ export default function PayrollPreviewPage() {
       ],
       totalLabel: '支給額',
       totalAmount: item.total_yen,
-    });
+    };
   };
 
-  const handlePrintPayrollItemRow = async (item: PayrollItem) => {
+  const handlePrintPayrollItemRow = (item: PayrollItem) => {
     if (isPrinting) return;
-    setIsPrinting(true);
-    setPrintingRowKey(`detail-${item?.id ?? ''}`);
+    openPrintModal(() => getPayloadForPayrollItemRow(item));
+  };
+
+  const handleModalPreview = async () => {
+    const getPayload = pendingPrintGetPayload.current;
+    if (!getPayload) return;
     try {
-      await printPayrollItemRowCore(item);
+      const result = await getPayload();
+      const payloads = Array.isArray(result) ? result : [result];
+      const first = payloads[0];
+      if (first) {
+        setPreviewPayload(enrichPayloadWithAddressPhone(first, printAddress, printPhone));
+      }
+    } catch (e: any) {
+      error('プレビューに失敗しました', e?.message || String(e));
+    }
+  };
+
+  const handleModalPrint = async () => {
+    const getPayload = pendingPrintGetPayload.current;
+    if (!getPayload) return;
+    setIsPrinting(true);
+    try {
+      const result = await getPayload();
+      const payloads = (Array.isArray(result) ? result : [result]).map((p) =>
+        enrichPayloadWithAddressPhone(p, printAddress, printPhone)
+      );
+      await printReceipts(payloads);
+      success('印刷', '印刷しました');
+      setShowPrintModal(false);
     } catch (e: any) {
       error('印刷に失敗しました', e?.message || String(e));
     } finally {
-      setPrintingRowKey(null);
       setIsPrinting(false);
     }
   };
@@ -1057,8 +1110,8 @@ export default function PayrollPreviewPage() {
                     <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[80px] sm:min-w-[100px]">控除</th>
                     <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[80px] sm:min-w-[100px]">支給額</th>
                     <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[90px] sm:min-w-[110px]">前払い</th>
-                    <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[90px] sm:min-w-[110px]">総額</th>
-                    <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[70px] sm:min-w-[80px]">印刷</th>
+                    <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[90px] sm:min-w-[110px] sticky right-[80px] bg-gray-50 z-20 border-l border-gray-200 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.05)]">総額</th>
+                    <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[70px] sm:min-w-[80px] sticky right-0 bg-gray-50 z-20 border-l border-gray-200 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.05)]">印刷</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1224,7 +1277,7 @@ export default function PayrollPreviewPage() {
                             disabled={!isUnlocked}
                           />
                         </td>
-                        <td className="p-2 sm:p-3 text-center font-semibold text-xs sm:text-sm whitespace-nowrap">
+                        <td className="p-2 sm:p-3 text-center font-semibold text-xs sm:text-sm whitespace-nowrap sticky right-[80px] bg-white z-20 border-l border-gray-200 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.05)] hover:bg-gray-50">
                           {formatCurrency(
                             (Number(row.base_pay || 0) +
                               Number(row.main_nomination_fee || 0) +
@@ -1236,7 +1289,7 @@ export default function PayrollPreviewPage() {
                               Number(row.paid_price || 0)
                           )}
                         </td>
-                        <td className="p-2 sm:p-3 text-center whitespace-nowrap">
+                        <td className="p-2 sm:p-3 text-center whitespace-nowrap sticky right-0 bg-white z-20 border-l border-gray-200 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.05)] hover:bg-gray-50">
                           <Button
                             size="sm"
                             variant="outline"
@@ -1256,7 +1309,21 @@ export default function PayrollPreviewPage() {
                         <tr key={`daily-${row.user_id}`}>
                           <td colSpan={16} className="p-0 bg-gray-50">
                             <div className="p-4">
-                              <div className="text-sm font-semibold mb-2">日別内訳: {row.name}</div>
+                              <div className="flex items-center justify-between mb-2 gap-4">
+                                <div className="text-sm font-semibold min-w-0">日別内訳: {row.name}</div>
+                                <div className="flex-shrink-0 sticky right-0 pl-4 bg-gray-50 z-30">
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => handlePrintDailyBreakdown(row)}
+                                    disabled={isPrinting}
+                                    className="h-8 text-xs bg-white shadow-sm"
+                                  >
+                                    <PrinterIcon className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
+                                    印刷
+                                  </Button>
+                                </div>
+                              </div>
                               <div className="w-full max-w-full overflow-x-auto">
                                 <div className="inline-block align-middle">
                                   <table className="text-xs sm:text-sm divide-y divide-gray-200" style={{ minWidth: 'max-content' }}>
@@ -1478,7 +1545,7 @@ export default function PayrollPreviewPage() {
                     <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap">
                       {formatCurrency(monthlyRows.reduce((sum, r) => sum + Number(r.paid_price || 0), 0))}
                     </td>
-                    <td className="p-2 sm:p-3 text-center font-semibold text-xs sm:text-sm whitespace-nowrap">
+                    <td className="p-2 sm:p-3 text-center font-semibold text-xs sm:text-sm whitespace-nowrap sticky right-[80px] bg-gray-50 z-20 border-l border-gray-200 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.05)]">
                       {formatCurrency(
                         monthlyRows.reduce((sum, r) => (
                           sum +
@@ -1493,7 +1560,7 @@ export default function PayrollPreviewPage() {
                         ), 0)
                       )}
                     </td>
-                    <td className="p-2 sm:p-3 text-center whitespace-nowrap">
+                    <td className="p-2 sm:p-3 text-center whitespace-nowrap sticky right-0 bg-gray-50 z-20 border-l border-gray-200 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.05)]">
                       <Button
                         size="sm"
                         variant="outline"
@@ -1817,6 +1884,78 @@ export default function PayrollPreviewPage() {
           )} */}
         </div>
       </div>
+
+      {/* 印刷モーダル（住所・電話番号入力、プレビュー、印刷） */}
+      <Dialog open={showPrintModal} onOpenChange={(open) => { setShowPrintModal(open); if (!open) setPreviewPayload(null); }}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>印刷設定</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="print-address">住所</Label>
+              <Input
+                id="print-address"
+                placeholder="住所を入力"
+                value={printAddress}
+                onChange={(e) => setPrintAddress(e.target.value)}
+                className="w-full"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="print-phone">電話番号</Label>
+              <Input
+                id="print-phone"
+                placeholder="電話番号を入力"
+                value={printPhone}
+                onChange={(e) => setPrintPhone(e.target.value)}
+                className="w-full"
+              />
+            </div>
+
+            {previewPayload && (
+              <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 font-mono text-sm space-y-2">
+                <div className="text-center font-semibold">{previewPayload.storeName}</div>
+                <div className="text-center text-xs text-gray-600">{previewPayload.tableName}</div>
+                <div className="text-center font-medium">【{previewPayload.title}】</div>
+                <div className="space-y-1 border-t pt-2 mt-2">
+                  {previewPayload.lines.map((line, i) => (
+                    <div key={i} className="flex justify-between">
+                      <span>{line.left}</span>
+                      {line.right && <span>{line.right}</span>}
+                    </div>
+                  ))}
+                </div>
+                <div className="flex justify-between font-semibold border-t pt-2">
+                  <span>{previewPayload.totalLabel}</span>
+                  <span>{formatCurrency(previewPayload.totalAmount)}</span>
+                </div>
+                <div className="text-center text-xs text-gray-500 border-t pt-2 mt-2">
+                  {previewPayload.issuedAt.toLocaleString('ja-JP')}
+                </div>
+                {/* 最下部中央: 住所・電話番号（印刷テンプレートと同じ配置） */}
+                {(previewPayload.footerAddress || previewPayload.footerPhone) && (
+                  <div className="text-center text-xs text-gray-700 pt-3 mt-2 space-y-1 border-t">
+                    {previewPayload.footerAddress && <div>住所: {previewPayload.footerAddress}</div>}
+                    {previewPayload.footerPhone && <div>電話番号: {previewPayload.footerPhone}</div>}
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="flex gap-2 pt-2">
+              <Button variant="outline" onClick={handleModalPreview} className="flex-1">
+                <FileText className="w-4 h-4 mr-2" />
+                プレビュー
+              </Button>
+              <Button onClick={handleModalPrint} disabled={isPrinting} className="flex-1">
+                <PrinterIcon className="w-4 h-4 mr-2" />
+                {isPrinting ? '印刷中...' : '印刷'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </RoleGate>
   );
 }

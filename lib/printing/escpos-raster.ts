@@ -11,6 +11,9 @@ export type ReceiptPayload = {
   lines: ReceiptLine[];
   totalLabel: string;
   totalAmount: number;
+  /** 最下部中央に表示（住所、電話番号など） */
+  footerAddress?: string;
+  footerPhone?: string;
 };
 
 function formatYen(amount: number) {
@@ -93,8 +96,7 @@ function makeReceiptCanvas(payload: ReceiptPayload, widthPx: number): HTMLCanvas
   const fontSmall = 18;
   const fontTitle = 26;
 
-  // Pre-calc height
-  const baseLines = 8; // headers + separators
+  const footerLines = [payload.footerAddress, payload.footerPhone].filter(Boolean).length;
   const h =
     40 + // top margin
     (fontTitle + yGap) + // store
@@ -105,6 +107,7 @@ function makeReceiptCanvas(payload: ReceiptPayload, widthPx: number): HTMLCanvas
     20 + // separator
     (fontTitle + yGap) + // total
     (fontSmall + yGap) + // issuedAt
+    (footerLines + 1) * (fontSmall + yGap) + // 時間・住所・電話
     60; // bottom margin / feed
 
   canvas.width = widthPx;
@@ -167,10 +170,18 @@ function makeReceiptCanvas(payload: ReceiptPayload, widthPx: number): HTMLCanvas
   ctx.fillText(formatYen(payload.totalAmount), canvas.width - padX, y);
   y += fontTitle + yGap;
 
-  // Issued at
-  ctx.textAlign = 'left';
+  // 最下部中央: 発行日時、住所、電話番号
+  ctx.textAlign = 'center';
   ctx.font = `${fontSmall}px sans-serif`;
-  ctx.fillText(`発行: ${formatIssuedAt(payload.issuedAt)}`, padX, y);
+  ctx.fillText(`発行: ${formatIssuedAt(payload.issuedAt)}`, canvas.width / 2, y);
+  y += fontSmall + yGap;
+  if (payload.footerAddress?.trim()) {
+    ctx.fillText(`住所: ${payload.footerAddress.trim()}`, canvas.width / 2, y);
+    y += fontSmall + yGap;
+  }
+  if (payload.footerPhone?.trim()) {
+    ctx.fillText(`電話番号: ${payload.footerPhone.trim()}`, canvas.width / 2, y);
+  }
 
   return canvas;
 }
