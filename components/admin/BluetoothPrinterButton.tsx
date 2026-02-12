@@ -91,7 +91,7 @@ export default function BluetoothPrinterButton() {
 
   return (
     <>
-      <Button
+      {/* <Button
         variant="ghost"
         size="sm"
         className="text-xs sm:text-sm"
@@ -100,7 +100,7 @@ export default function BluetoothPrinterButton() {
         <Printer className="w-4 h-4 mr-1 sm:mr-2" />
         <span className="hidden sm:inline">プリンター</span>
         <span className="ml-2 hidden sm:inline">{statusBadge}</span>
-      </Button>
+      </Button> */} 
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-xl">
