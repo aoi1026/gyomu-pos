@@ -1163,7 +1163,7 @@ export default function PayrollPreviewPage() {
                     <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[80px] sm:min-w-[100px]">控除</th>
                     <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[80px] sm:min-w-[100px]">支給額</th>
                     <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[90px] sm:min-w-[110px]">前払い</th>
-                    <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[90px] sm:min-w-[110px] sticky right-[80px] bg-gray-50 z-20 border-l border-gray-200 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.05)]">総額</th>
+                    <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[90px] sm:min-w-[110px]  right-[80px] bg-gray-50 z-20 border-l border-gray-200 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.05)]">総額</th>
                     <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[70px] sm:min-w-[80px] sticky right-0 bg-gray-50 z-20 border-l border-gray-200 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.05)]">印刷</th>
                   </tr>
                 </thead>
@@ -1330,7 +1330,7 @@ export default function PayrollPreviewPage() {
                             disabled={!isUnlocked}
                           />
                         </td>
-                        <td className="p-2 sm:p-3 text-center font-semibold text-xs sm:text-sm whitespace-nowrap sticky right-[80px] bg-white z-20 border-l border-gray-200 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.05)] hover:bg-gray-50">
+                        <td className="p-2 sm:p-3 text-center font-semibold text-xs sm:text-sm whitespace-nowrap  right-[80px] bg-white z-20 border-l border-gray-200 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.05)] hover:bg-gray-50">
                           {formatCurrency(
                             (Number(row.base_pay || 0) +
                               Number(row.main_nomination_fee || 0) +
@@ -1402,7 +1402,7 @@ export default function PayrollPreviewPage() {
                                   <table className="text-xs sm:text-sm divide-y divide-gray-200" style={{ minWidth: 'max-content' }}>
                                     <thead className="bg-gray-50">
                                       <tr className="text-left text-gray-600">
-                                        <th className="p-2 sm:p-3 font-semibold sticky left-0 bg-gray-50 z-20 min-w-[133px] sm:min-w-[153px] border-r border-gray-200">日付</th>
+                                        <th className="p-2 sm:p-3 font-semibold sticky left-0 bg-gray-50 z-20 min-w-[115px] sm:min-w-[136px] border-r border-gray-200">日付</th>
                                         <th className="p-2 sm:p-6 text-center font-semibold whitespace-nowrap min-w-[70px] sm:min-w-[80px]">基本時間</th>
                                         <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[70px] sm:min-w-[80px]">基本給</th>
                                         <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[70px] sm:min-w-[80px]">本指名数</th>
@@ -1618,7 +1618,7 @@ export default function PayrollPreviewPage() {
                     <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap">
                       {formatCurrency(monthlyRows.reduce((sum, r) => sum + Number(r.paid_price || 0), 0))}
                     </td>
-                    <td className="p-2 sm:p-3 text-center font-semibold text-xs sm:text-sm whitespace-nowrap sticky right-[80px] bg-gray-50 z-20 border-l border-gray-200 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.05)]">
+                    <td className="p-2 sm:p-3 text-center font-semibold text-xs sm:text-sm whitespace-nowrap right-[80px] bg-gray-50 z-20 border-l border-gray-200 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.05)]">
                       {formatCurrency(
                         monthlyRows.reduce((sum, r) => (
                           sum +
