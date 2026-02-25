@@ -2,7 +2,7 @@
 
 export const dynamic = 'force-dynamic';
 
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import RoleGate from '@/components/auth/RoleGate';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -18,10 +18,7 @@ import {
   Download, RefreshCw, Filter, FileSpreadsheet, FileText
 } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import {
-  formatCurrency, formatDate,
-  formatNumber
-} from '@/lib/mock-data';
+import { formatCurrency, formatDate, formatNumber } from '@/lib/mock-data';
 import { useNotificationContext } from '@/lib/notification-context';
 import { SalesChart } from '@/components/admin/SalesChart';
 import {
@@ -31,13 +28,13 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 
-export default function DailySalesPage() {
+function DailySalesPageContent() {
   const searchParams = useSearchParams();
   const [selectedDate, setSelectedDate] = useState<string>(() => searchParams.get('date') || new Date().toISOString().split('T')[0]);
   const [salesData, setSalesData] = useState<any>(null);
   const [tableSales, setTableSales] = useState<any[]>([]);
   const [castSales, setCastSales] = useState<any[]>([]);
-	const [productSales, setProductSales] = useState<any[]>([]);
+  const [productSales, setProductSales] = useState<any[]>([]);
   const [hourlySales, setHourlySales] = useState<any[]>([]);
   const [deducts, setDeducts] = useState<any[]>([]);
   const [additionalStats, setAdditionalStats] = useState<any>({
@@ -838,12 +835,26 @@ export default function DailySalesPage() {
             </DialogContent>
           </Dialog>
 
-		  {/* Sales Chart */}
+          {/* Sales Chart */}
           <div className="mt-8">
-			  <SalesChart period="daily" selectedDate={selectedDate} />
+            <SalesChart period="daily" selectedDate={selectedDate} />
           </div>
         </div>
       </div>
     </RoleGate>
+  );
+}
+
+export default function DailySalesPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center">
+          <div className="w-8 h-8 border-2 border-purple-600 border-t-transparent rounded-full animate-spin" />
+        </div>
+      }
+    >
+      <DailySalesPageContent />
+    </Suspense>
   );
 }
