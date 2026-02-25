@@ -5,8 +5,6 @@ export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 export const revalidate = 0;
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
-
 export async function POST(request: NextRequest) {
   try {
     const { amount, currency = 'jpy' } = await request.json();
@@ -17,6 +15,18 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    const secretKey = process.env.STRIPE_SECRET_KEY;
+
+    if (!secretKey) {
+      console.error('STRIPE_SECRET_KEY is not set');
+      return NextResponse.json(
+        { success: false, error: 'Stripeの秘密鍵が設定されていません' },
+        { status: 500 }
+      );
+    }
+
+    const stripe = new Stripe(secretKey);
 
     const paymentIntent = await stripe.paymentIntents.create({
       amount: amount,
