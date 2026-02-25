@@ -1,3 +1,6 @@
+-- 実行結果確認用の最終メッセージ
+SELECT 'migration complete' AS migration_status;
+
 --
 -- PostgreSQL 17.7 完全マイグレーション
 -- キャバクラシステム用データベース統合スキーマ
@@ -11,7 +14,7 @@ SET idle_in_transaction_session_timeout = 0;
 SET transaction_timeout = 0;
 SET client_encoding = 'UTF8';
 SET standard_conforming_strings = on;
-SELECT pg_catalog.set_config('search_path', '', false);
+SELECT pg_catalog.set_config('search_path', 'public', false);
 SET check_function_bodies = false;
 SET xmloption = content;
 SET client_min_messages = warning;
@@ -182,6 +185,7 @@ CREATE TABLE IF NOT EXISTS public.session_payments (
 CREATE INDEX IF NOT EXISTS idx_session_payments_session_id ON public.session_payments(session_id);
 CREATE INDEX IF NOT EXISTS idx_session_payments_created_at ON public.session_payments(created_at);
 
+DROP TRIGGER IF EXISTS update_session_payments_updated_at ON public.session_payments;
 CREATE TRIGGER update_session_payments_updated_at
     BEFORE UPDATE ON public.session_payments
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
@@ -446,6 +450,7 @@ CREATE TABLE IF NOT EXISTS public.deduct (
 
 CREATE INDEX IF NOT EXISTS idx_deduct_date ON public.deduct(date);
 
+DROP TRIGGER IF EXISTS update_deduct_updated_at ON public.deduct;
 CREATE TRIGGER update_deduct_updated_at
     BEFORE UPDATE ON public.deduct
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();

@@ -1375,7 +1375,7 @@ export default function PayrollPreviewPage() {
                             <div className="p-4">
                               <div className="flex items-center justify-between mb-2 gap-4">
                                 <div className="text-sm font-semibold min-w-0">日別内訳: {row.name}</div>
-                                <div className="flex-shrink-0 sticky right-0 pl-4 bg-gray-50 z-30 flex items-center gap-1">
+                                <div className="flex-shrink-0 sticky right-3 pl-4 bg-gray-50 z-30 flex items-center gap-1">
                                   <Button
                                     variant="outline"
                                     size="sm"
@@ -1402,7 +1402,7 @@ export default function PayrollPreviewPage() {
                                   <table className="text-xs sm:text-sm divide-y divide-gray-200" style={{ minWidth: 'max-content' }}>
                                     <thead className="bg-gray-50">
                                       <tr className="text-left text-gray-600">
-                                        <th className="p-2 sm:p-3 font-semibold sticky left-0 bg-gray-50 z-20 min-w-[115px] sm:min-w-[136px] border-r border-gray-200">日付</th>
+                                        <th className="p-2 sm:p-3 font-semibold sticky left-0 bg-gray-50 z-20 min-w-[113px] sm:min-w-[133px] border-r border-gray-200">日付</th>
                                         <th className="p-2 sm:p-6 text-center font-semibold whitespace-nowrap min-w-[70px] sm:min-w-[80px]">基本時間</th>
                                         <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[70px] sm:min-w-[80px]">基本給</th>
                                         <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[70px] sm:min-w-[80px]">本指名数</th>

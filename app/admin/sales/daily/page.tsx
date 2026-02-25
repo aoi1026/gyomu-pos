@@ -24,7 +24,6 @@ import {
 } from '@/lib/mock-data';
 import { useNotificationContext } from '@/lib/notification-context';
 import { SalesChart } from '@/components/admin/SalesChart';
-import * as XLSX from 'xlsx';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -298,117 +297,6 @@ export default function DailySalesPage() {
     }
   };
 
-  const exportToExcel = () => {
-    try {
-      if (!salesData) {
-        error('エラー', 'データが読み込まれていません');
-        return;
-      }
-
-      const workbook = XLSX.utils.book_new();
-      
-      // サマリーシート
-      const summaryData = [
-        ['日次売上レポート'],
-        [`対象日: ${selectedDate}`],
-        [''],
-        ['【売上サマリー】'],
-        ['項目', '値'],
-        ['合計（セッション）', Number(salesData.sessions_total_cost || 0).toFixed(2)],
-        ['総売上', Number(salesData.total_yen || 0).toFixed(2)],
-        ['来客数', `${salesData.customer_count || 0}組`],
-        ['注文件数', `${salesData.order_count || 0}件`],
-        ['平均客単価', (() => {
-          const totalCost = Number(salesData?.sessions_total_cost || 0);
-          const customerCount = Number(salesData?.customer_count || 0);
-          return customerCount > 0 ? (totalCost / customerCount).toFixed(2) : '0.00';
-        })()],
-      ];
-      const summarySheet = XLSX.utils.aoa_to_sheet(summaryData);
-      XLSX.utils.book_append_sheet(workbook, summarySheet, 'サマリー');
-      
-      // 製品別売上シート
-      const productData = [
-        ['製品名', '数量', '売上']
-      ];
-      productSales.forEach((row: any) => {
-        productData.push([
-          row.product_name || '',
-          Math.round(Number(row.quantity) || 0),
-          Number(Number(row.total_sales) || 0).toFixed(2)
-        ]);
-      });
-      const productSheet = XLSX.utils.aoa_to_sheet(productData);
-      XLSX.utils.book_append_sheet(workbook, productSheet, '製品別売上');
-      
-      // キャスト別売上シート
-      const castData = [
-        ['キャスト名', '売上']
-      ];
-      castSales.forEach((cast: any) => {
-        castData.push([
-          cast.cast_name || '',
-          Number(Number(cast.total_sales) || 0).toFixed(2)
-        ]);
-      });
-      const castSheet = XLSX.utils.aoa_to_sheet(castData);
-      XLSX.utils.book_append_sheet(workbook, castSheet, 'キャスト別売上');
-      
-      // テーブル別売上シート
-      const tableData = [
-        ['テーブル名', '売上']
-      ];
-      tableSales.forEach((row: any) => {
-        tableData.push([
-          row.table_name || '',
-          Number(Number(row.total_sales) || 0).toFixed(2)
-        ]);
-      });
-      const tableSheet = XLSX.utils.aoa_to_sheet(tableData);
-      XLSX.utils.book_append_sheet(workbook, tableSheet, 'テーブル別売上');
-      
-      // 時間別売上シート
-      const hourlyData = [
-        ['時間', '売上', '注文件数']
-      ];
-      hourlySales.forEach((row: any) => {
-        hourlyData.push([
-          `${row.hour || 0}時`,
-          Number(Number(row.total_sales) || 0).toFixed(2),
-          Number(row.order_count) || 0
-        ] as any);
-      });
-      const hourlySheet = XLSX.utils.aoa_to_sheet(hourlyData);
-      XLSX.utils.book_append_sheet(workbook, hourlySheet, '時間別売上');
-      
-      // 分析インサイトシート
-      const hourlySalesValues = hourlySales.map((h: any) => Number(h.total_sales) || 0);
-      const maxHourlySales = hourlySalesValues.length > 0 ? Math.max(...hourlySalesValues) : 0;
-      const minHourlySales = hourlySalesValues.length > 0 ? Math.min(...hourlySalesValues.filter((v: number) => v > 0)) : 0;
-      const maxHourlyIndex = hourlySalesValues.indexOf(maxHourlySales);
-      const minHourlyIndex = hourlySalesValues.indexOf(minHourlySales);
-      
-      const insightsData = [
-        ['分析インサイト'],
-        [''],
-        ['項目', '値'],
-        ['最高売上時間', `${hourlySales[maxHourlyIndex]?.hour || 0}時`],
-        ['最高売上金額', maxHourlySales.toFixed(2)],
-        ['最低売上時間', `${hourlySales[minHourlyIndex]?.hour || 0}時`],
-        ['最低売上金額', minHourlySales.toFixed(2)]
-      ];
-      const insightsSheet = XLSX.utils.aoa_to_sheet(insightsData);
-      XLSX.utils.book_append_sheet(workbook, insightsSheet, '分析インサイト');
-      
-      // ファイル出力
-      XLSX.writeFile(workbook, `日次売上_${selectedDate.replace(/-/g, '')}.xlsx`);
-      
-      info('Excel出力完了', '日次売上データをExcelでダウンロードしました', 3000);
-    } catch (e) {
-      console.error('Excel出力エラー:', e);
-      error('Excel出力エラー', 'Excelの生成に失敗しました');
-    }
-  };
 
   if (isLoading) {
     return (
@@ -472,10 +360,6 @@ export default function DailySalesPage() {
                     <DropdownMenuItem onClick={exportToCSV}>
                       <FileText className="w-4 h-4 mr-2" />
                       CSV形式でダウンロード
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={exportToExcel}>
-                      <FileSpreadsheet className="w-4 h-4 mr-2" />
-                      Excel形式でダウンロード
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>

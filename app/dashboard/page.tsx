@@ -772,21 +772,19 @@ export default function Dashboard() {
                 <CardHeader className="pb-3">
                   <CardTitle className="flex items-center text-purple-800">
                     <FileText className="w-5 h-5 mr-2" />
-                    注文件数
+                    現在のアクティブ客数
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold text-purple-900 mb-1">
-                    {todaySales.order_count}件
+                  {activeClientCount}名
                   </div>
-                  <div className="flex justify-between">
-                    <p className="text-sm text-purple-700">
-                      平均注文額 {formatCurrency(Math.floor(todaySales.total_yen / todaySales.order_count))}
-                    </p>
+                  {/* <div className="flex justify-between">
+                    
                     <p className="text-sm text-purple-700 ">
                       現在のアクティブ客数: {activeClientCount}名
                     </p>
-                  </div>
+                  </div> */}
                 </CardContent>
               </Card>
 

@@ -266,7 +266,7 @@ export function useNotification() {
   };
 
   const hideNotification = () => {
-    setNotification(prev => (prev.isOpen ? { ...prev, isOpen: false } : prev));
+    setNotification(prev => ({ ...prev, isOpen: false }));
   };
 
   // Convenience methods

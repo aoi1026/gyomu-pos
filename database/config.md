@@ -10,10 +10,10 @@ DB_HOST=localhost
 DB_PORT=5432
 DB_NAME=cabaclub_system
 DB_USER=postgres
-DB_PASSWORD=root
+DB_PASSWORD=postgres
 
 # 本番環境用（オプション）
-DATABASE_URL=postgresql://postgres:root@localhost:5432/cabaclub_system
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/cabaclub_system
 
 # アプリケーション設定
 NODE_ENV=development
@@ -27,7 +27,7 @@ NEXT_PUBLIC_APP_NAME=キャバクラPOSシステム
 - **ポート**: 5432
 - **データベース名**: cabaclub_system
 - **ユーザー**: postgres
-- **パスワード**: root
+- **パスワード**: postgres
 
 ### 本番環境
 - SSL接続が有効になります

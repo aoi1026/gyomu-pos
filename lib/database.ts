@@ -6,7 +6,8 @@ const dbConfig = {
   port: parseInt(process.env.DB_PORT || '5432'),
   database: process.env.DB_NAME || 'cabaclub_system',
   user: process.env.DB_USER || 'postgres',
-  password: process.env.DB_PASSWORD || 'root',
+  // config.md でのデフォルトと合わせる
+  password: process.env.DB_PASSWORD || 'postgres',
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
   max: 20, // 接続プールの最大接続数
   idleTimeoutMillis: 30000,
