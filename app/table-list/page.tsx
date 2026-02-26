@@ -274,9 +274,10 @@ export default function TableListPage() {
       });
 
       const result = await response.json();
-      
+
       if (!result.success) {
-        throw new Error(result.error || 'セッション作成に失敗しました');
+        error('エラー', result.error || 'セッション作成に失敗しました');
+        return;
       }
 
       success('セッション開始', 'セッションを開始しました');

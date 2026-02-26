@@ -48,8 +48,8 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   const client = await pool.connect();
   try {
-    const { table_id, cost, client: clientCount, status, pay_type, memo } = await request.json();
-    
+    const { table_id, cost, client: clientCount, status, pay_type } = await request.json();
+
     if (!table_id) {
       return NextResponse.json(
         { success: false, error: 'テーブルIDが必要です' },
@@ -60,8 +60,8 @@ export async function POST(request: NextRequest) {
     // セッション開始時は初期状態で停止状態にする（is_paused: true, paused_at: 現在時刻）
     const now = new Date().toISOString();
     const result = await client.query(
-      'INSERT INTO sessions (table_id, cost, set_count, client, status, is_paused, paused_at, paused_elapsed, set_extensions, pay_type, memo) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $11) RETURNING *',
-      [table_id, cost || 0, 1, clientCount || 0, status !== undefined ? status : 1, true, now, 0, JSON.stringify([]), pay_type ?? null, memo || null]
+      'INSERT INTO sessions (table_id, cost, set_count, client, status, is_paused, paused_at, paused_elapsed, set_extensions, pay_type) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10) RETURNING *',
+      [table_id, cost || 0, 1, clientCount || 0, status !== undefined ? status : 1, true, now, 0, JSON.stringify([]), pay_type ?? null]
     );
 
     return NextResponse.json({
