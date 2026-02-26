@@ -80,7 +80,7 @@ export default function CastLoginPage() {
       {/* 左半分: 画像（角丸なし） */}
       <div className="hidden md:block w-1/2 relative bg-gray-900">
         <Image
-          src="/assets/login.jpg"
+          src="/assets/cast-login.jpg"
           alt="キャストログイン"
           fill
           className="object-cover"
