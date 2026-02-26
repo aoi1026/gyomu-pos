@@ -1,4 +1,4 @@
-import type { ReceiptPayload } from '@/lib/printing/escpos-raster';
+import type { ReceiptPayload, FullReceiptPayload } from '@/lib/printing/escpos-raster';
 import { formatYen } from '@/lib/printing/escpos-raster';
 
 export async function fetchStoreName(): Promise<string> {
@@ -32,6 +32,41 @@ export async function fetchStorePhone(): Promise<string> {
     // ignore
   }
   return '';
+}
+
+export async function fetchReceiptGreeting(): Promise<string> {
+  try {
+    const res = await fetch('/api/project-variables?name=receipt_greeting');
+    const json = await res.json();
+    if (json?.success && json?.data?.value != null) return String(json.data.value).trim();
+  } catch {
+    // ignore
+  }
+  return 'ありがとうございます。\nまたのご来店をお待ちしております。';
+}
+
+export async function fetchStoreId(): Promise<string> {
+  try {
+    const res = await fetch('/api/project-variables?name=store_id');
+    const json = await res.json();
+    if (json?.success && json?.data?.value != null) return String(json.data.value).trim();
+  } catch {
+    // ignore
+  }
+  return '';
+}
+
+export async function fetchPaymentId(): Promise<string> {
+  try {
+    const res = await fetch('/api/receipt-payment-id');
+    const json = await res.json();
+    if (json?.success && json?.data?.paymentId) return String(json.data.paymentId);
+  } catch {
+    // ignore
+  }
+  const d = new Date();
+  const ymd = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
+  return `${ymd}000`;
 }
 
 type BuildArgs = {
@@ -151,6 +186,115 @@ export function buildCurrentAndExtensionReceipts(args: BuildArgs): {
       nominationInitialSum,
       currentTotal,
     },
+  };
+}
+
+export type BuildFullReceiptArgs = {
+  storeName: string;
+  storeAddress: string;
+  storePhone: string;
+  storeId?: string;
+  greeting: string;
+  paymentId: string;
+  tableNumber: string;
+  sessionStartTime: Date | string;
+  guestCount: string;
+  paymentMethod: string;
+  cartOrders: Array<{ id: number; product_name?: string; amount: number; total_price: number; status: string }>;
+  orderRequestStatus: Record<string | number, string>;
+  addCharges: Record<string, number>;
+  setExtensions: Array<{ count: number; timestamp?: number; price?: number }>;
+  nominations: Array<{ cost?: number }>;
+  additionalServices: Array<{ charge: number }>;
+};
+
+export function buildFullReceipt(args: BuildFullReceiptArgs): FullReceiptPayload {
+  const {
+    storeName,
+    storeAddress,
+    storePhone,
+    storeId = '',
+    greeting,
+    paymentId,
+    tableNumber,
+    sessionStartTime,
+    guestCount,
+    paymentMethod,
+    cartOrders,
+    orderRequestStatus,
+    addCharges,
+    setExtensions,
+    nominations,
+    additionalServices,
+  } = args;
+
+  const orderLines: Array<{ item: string; qty: number; amount: number }> = [];
+  const guest = Math.max(0, parseInt(String(guestCount || '0'), 10) || 0);
+  const setPrice = Number(addCharges['set_price'] || 0);
+  const sessionFee = setPrice * guest;
+
+  if (sessionFee > 0) {
+    orderLines.push({ item: 'セット料金', qty: guest, amount: sessionFee });
+  }
+
+  const extensionTotal = setExtensions.reduce((sum: number, e: any) => {
+    const price = Number(e?.price ?? ((Number(addCharges['extension_price'] || 0) || 0) * (Number(e?.count) || 0)));
+    return sum + (Number.isFinite(price) ? price : 0);
+  }, 0);
+  if (extensionTotal > 0) {
+    const extCount = setExtensions.reduce((s, e) => s + (Number(e?.count) || 0), 0);
+    orderLines.push({ item: 'セット延長', qty: extCount || 1, amount: extensionTotal });
+  }
+
+  const acceptedCart = cartOrders.filter(o => (orderRequestStatus[o.id] || o.status) === 'accepted');
+  for (const order of acceptedCart) {
+    const name = (order as any).product_name || '商品';
+    const qty = Math.max(1, Number(order.amount) || 1);
+    const amount = Number(order.total_price) || 0;
+    if (amount > 0) orderLines.push({ item: name, qty, amount });
+  }
+
+  const nominationSum = nominations.reduce((s, n) => s + (Number((n as any).cost) || 0), 0);
+  if (nominationSum > 0) {
+    orderLines.push({ item: '指名料金', qty: 1, amount: nominationSum });
+  }
+
+  const additionalTotal = additionalServices.reduce((s, a) => s + (Number(a.charge) || 0), 0);
+  if (additionalTotal > 0) {
+    orderLines.push({ item: '追加サービス', qty: 1, amount: additionalTotal });
+  }
+
+  let subtotal = orderLines.reduce((s, r) => s + r.amount, 0);
+  const tax = Math.round(subtotal * 0.1);
+  const total = subtotal + tax;
+  const taxDetailText = `(内消費税額10%) ${tax.toLocaleString('ja-JP')}円`;
+
+  let startTimeStr: string;
+  if (typeof sessionStartTime === 'string') {
+    startTimeStr = sessionStartTime;
+  } else {
+    const d = new Date(sessionStartTime);
+    startTimeStr = `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  }
+
+  const guestLabel = guestCount ? `${guestCount}名` : '0名';
+
+  return {
+    storeName,
+    tableNumber,
+    greeting: greeting || 'ありがとうございます。\nまたのご来店をお待ちしております。',
+    storeAddress,
+    storePhone,
+    paymentId,
+    orderLines,
+    subtotal,
+    tax,
+    total,
+    taxDetailText,
+    storeId,
+    paymentMethod: paymentMethod || '－',
+    startTime: startTimeStr,
+    guestCount: guestLabel,
   };
 }
 

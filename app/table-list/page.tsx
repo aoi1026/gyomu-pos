@@ -418,7 +418,7 @@ export default function TableListPage() {
       const isPaused = session.is_paused || false;
 
       return (
-        <Card key={table.id} className={`flex flex-col h-full ${isTimeExpired ? 'border-red-300 bg-red-50' : isPaused ? 'border-yellow-300 bg-yellow-50' : 'border-green-300 bg-green-50'}`}>
+        <Card key={table.id} className={`flex flex-col h-full rounded-none ${isTimeExpired ? 'border-red-300 bg-red-50' : isPaused ? 'border-yellow-300 bg-yellow-50' : 'border-green-300 bg-green-50'}`}>
           <CardContent className="p-4 flex flex-col flex-1">
             <div className="flex items-center justify-between mb-2">
               <div>
@@ -484,7 +484,7 @@ export default function TableListPage() {
       );
     } else {
       return (
-        <Card key={table.id} className="flex flex-col h-full border-gray-200">
+        <Card key={table.id} className="flex flex-col h-full border-gray-200 rounded-none">
           <CardContent className="p-4 flex flex-col flex-1">
             <div className="flex items-center justify-between mb-2">
               <div>

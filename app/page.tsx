@@ -1,15 +1,13 @@
 'use client';
 
-import { useState } from 'react';
 import Image from 'next/image';
+import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Wine, Users, BarChart3, Settings, Clock, CreditCard, UserCheck, Shield, QrCode, Tablet } from 'lucide-react';
-import LoginModal from '@/components/auth/LoginModal';
+import { Wine, Users, BarChart3, Settings, CreditCard, Shield, Tablet } from 'lucide-react';
 
 export default function Home() {
-  const [showLogin, setShowLogin] = useState(false);
+  const router = useRouter();
 
   const features = [
     {
@@ -95,7 +93,7 @@ export default function Home() {
                 MVP v1.0
               </Badge> */}
               <Button 
-                onClick={() => setShowLogin(true)}
+                onClick={() => router.push('/login')}
                 size="sm"
                 className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white text-sm sm:text-base"
               >
@@ -125,7 +123,7 @@ export default function Home() {
               <div className="flex flex-col sm:flex-row gap-4">
                 <Button 
                   size="lg" 
-                  onClick={() => setShowLogin(true)}
+                  onClick={() => router.push('/login')}
                   className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white px-8 py-3 text-lg shadow-lg hover:shadow-xl transition-all duration-300"
                 >
                   ログイン・テーブルログイン
@@ -412,11 +410,6 @@ export default function Home() {
         </div>
       </footer>
 
-      {/* Login Modal */}
-      <LoginModal 
-        isOpen={showLogin} 
-        onClose={() => setShowLogin(false)} 
-      />
     </div>
   );
 }

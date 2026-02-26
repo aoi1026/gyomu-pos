@@ -323,9 +323,9 @@ export default function CategoryManagementPage() {
                             <div>
                               <div className="font-medium flex items-center space-x-2">
                                 <span>{category.name}</span>
-                                {(category.id === 1 || category.id === 2 || category.id === 3) && (
+                                {/* {(category.id === 1 || category.id === 2 || category.id === 3) && (
                                   <Badge variant="outline" className="text-xs">固定</Badge>
-                                )}
+                                )} */}
                               </div>
                               <div className="text-sm text-gray-500">ID: {category.id}</div>
                             </div>
@@ -354,19 +354,17 @@ export default function CategoryManagementPage() {
                               onClick={() => handleEdit(category)}
                             >
                               <Edit className="w-4 h-4 mr-1" />
-                              編集
+                              変更
                             </Button>
-                            {(category.id !== 1 && category.id !== 2 && category.id !== 3) && (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => handleDelete(category.id)}
-                                className="text-red-600 hover:text-red-700"
-                              >
-                                <Trash2 className="w-4 h-4 mr-1" />
-                                削除
-                              </Button>
-                            )}
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleDelete(category.id)}
+                              className="text-red-600 hover:text-red-700"
+                            >
+                              <Trash2 className="w-4 h-4 mr-1" />
+                              削除
+                            </Button>
                           </div>
                         </TableCell>
                       </TableRow>

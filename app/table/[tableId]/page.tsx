@@ -3739,7 +3739,7 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
                 <Button
                   variant="ghost"
                   className="text-white text-xs sm:text-sm md:text-base lg:text-[18px] hover:bg-white/10 gap-1 sm:gap-2 flex-col sm:flex-row h-auto py-2 sm:py-0"
-                  onClick={() => router.push('/')}
+                  onClick={() => router.push('/table-list')}
                 >
                   <FaHome className="w-4 h-4 sm:w-5 sm:h-5" />
                   <span className="hidden sm:inline">最初のページ</span>

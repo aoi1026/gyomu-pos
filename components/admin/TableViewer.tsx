@@ -18,9 +18,18 @@ import StripeProvider from '@/components/providers/StripeProvider';
 import StripePaymentForm from '@/components/payment/StripePaymentForm';
 import { useNotificationContext } from '@/lib/notification-context';
 import { usePrinter } from '@/lib/printer-context';
-import { fetchStoreName, fetchStoreAddress, fetchStorePhone, buildCurrentAndExtensionReceipts } from '@/lib/printing/receipt-builders';
-import { buildEscPosRasterReceipt } from '@/lib/printing/escpos-raster';
-import { printReceiptViaOs } from '@/lib/printing/os-print';
+import {
+  fetchStoreName,
+  fetchStoreAddress,
+  fetchStorePhone,
+  fetchReceiptGreeting,
+  fetchPaymentId,
+  fetchStoreId,
+  buildFullReceipt,
+} from '@/lib/printing/receipt-builders';
+import { buildFullReceiptEscPos } from '@/lib/printing/escpos-raster';
+import type { FullReceiptPayload } from '@/lib/printing/escpos-raster';
+import { printFullReceiptViaOs, previewFullReceiptInWindow } from '@/lib/printing/os-print';
 
 interface TableViewerProps {
   tableId: number | null;
@@ -114,52 +123,51 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
   const [storeCreditCardPaymentAmount, setStoreCreditCardPaymentAmount] = useState<string>('');
   const [isPaymentCompleted, setIsPaymentCompleted] = useState<boolean>(false);
   const [paidAmount, setPaidAmount] = useState<number>(0);
+  const [lastPaymentMethod, setLastPaymentMethod] = useState<string>(''); // 領収書用: 現金 / クレジットカード / 店舗用クレジットカード
   const [isSuperAdmin, setIsSuperAdmin] = useState<boolean>(false);
   const [isProcessingStoreCreditCardPayment, setIsProcessingStoreCreditCardPayment] = useState<boolean>(false);
 
   const [showReceiptPreview, setShowReceiptPreview] = useState(false);
-  const [receiptPreviewData, setReceiptPreviewData] = useState<{ extension: import('@/lib/printing/escpos-raster').ReceiptPayload; current: import('@/lib/printing/escpos-raster').ReceiptPayload } | null>(null);
+  const [receiptPreviewData, setReceiptPreviewData] = useState<FullReceiptPayload | null>(null);
 
-  const buildReceiptData = async () => {
+  const buildReceiptData = async (): Promise<FullReceiptPayload | null> => {
     if (!session || !tableId) return null;
-    const [storeName, footerAddress, footerPhone] = await Promise.all([
+    const [storeName, storeAddress, storePhone, greeting, paymentId, storeId] = await Promise.all([
       fetchStoreName(),
       fetchStoreAddress(),
       fetchStorePhone(),
+      fetchReceiptGreeting(),
+      fetchPaymentId(),
+      fetchStoreId(),
     ]);
-    const tableName = String(tableData?.name ? `テーブル: ${tableData.name}` : `テーブル: ${tableId}`);
-    const issuedAt = new Date();
-    const built = buildCurrentAndExtensionReceipts({
+    const tableNumber = String(tableData?.name ?? tableId);
+    return buildFullReceipt({
       storeName,
-      tableName,
-      issuedAt,
+      storeAddress,
+      storePhone,
+      storeId,
+      greeting,
+      paymentId,
+      tableNumber,
+      sessionStartTime: session.created_at,
+      guestCount: String(guestCount || ''),
+      paymentMethod: lastPaymentMethod || '－',
       cartOrders,
       orderRequestStatus,
-      additionalServices,
-      guestCount: String(guestCount || ''),
       addCharges,
       setExtensions,
       nominations: nominations as any,
+      additionalServices,
     });
-    return {
-      ...built,
-      extension: { ...built.extension, footerAddress: footerAddress || undefined, footerPhone: footerPhone || undefined },
-      current: { ...built.current, footerAddress: footerAddress || undefined, footerPhone: footerPhone || undefined },
-    };
   };
 
   const tryAutoPrintReceipts = async () => {
-    // Only auto-print when a printer is already connected from the dashboard button.
     if (printer.status !== 'connected') return;
-    if (!session || !tableId) return;
-    if (!tableData) return;
-
+    if (!session || !tableId || !tableData) return;
     try {
-      const built = await buildReceiptData();
-      if (!built) return;
-      const { extension, current } = built;
-      await printer.write(buildEscPosRasterReceipt(extension));
-      await printer.write(buildEscPosRasterReceipt(current));
+      const payload = await buildReceiptData();
+      if (!payload) return;
+      await printer.write(buildFullReceiptEscPos(payload));
     } catch (e) {
       console.error('自動領収書印刷エラー:', e);
       error('エラー', '領収書の自動印刷に失敗しました（プリンター接続を確認してください）');
@@ -172,14 +180,12 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
       return;
     }
     try {
-      const built = await buildReceiptData();
-      if (!built) return;
-      const { extension, current } = built;
+      const payload = await buildReceiptData();
+      if (!payload) return;
       if (printer.status === 'connected') {
-        await printer.write(buildEscPosRasterReceipt(extension));
-        await printer.write(buildEscPosRasterReceipt(current));
+        await printer.write(buildFullReceiptEscPos(payload));
       } else {
-        printReceiptViaOs([extension, current]);
+        printFullReceiptViaOs(payload);
       }
       success('印刷', '領収書を印刷しました');
     } catch (e) {
@@ -194,9 +200,9 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
       return;
     }
     try {
-      const built = await buildReceiptData();
-      if (!built) return;
-      setReceiptPreviewData({ extension: built.extension, current: built.current });
+      const payload = await buildReceiptData();
+      if (!payload) return;
+      setReceiptPreviewData(payload);
       setShowReceiptPreview(true);
     } catch (e) {
       console.error('領収書プレビューエラー:', e);
@@ -1388,6 +1394,7 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
       
       setIsPaymentCompleted(true);
       setPaidAmount(paymentAmount);
+      setLastPaymentMethod('クレジットカード');
       setShowPaymentDialog(false);
       setPaymentAmount(0);
       await loadCartOrders(session.id);
@@ -1451,6 +1458,7 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
       
       setIsPaymentCompleted(true);
       setPaidAmount(amount);
+      setLastPaymentMethod('現金');
       setShowCashPaymentDialog(false);
       setCashPaymentAmount('');
       await loadCartOrders(session.id);
@@ -1509,6 +1517,7 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
       
       setIsPaymentCompleted(true);
       setPaidAmount(amount);
+      setLastPaymentMethod('店舗用クレジットカード');
       setShowStoreCreditCardPaymentDialog(false);
       setStoreCreditCardPaymentAmount('');
       await loadCartOrders(session.id);
@@ -3328,60 +3337,47 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
             <DialogDescription>印刷される領収書の内容です</DialogDescription>
           </DialogHeader>
           {receiptPreviewData && (
-            <div className="space-y-6 font-mono text-sm">
-              {/* 延長料金 */}
-              <div className="rounded border border-gray-200 p-4 bg-gray-50">
-                <div className="text-center font-semibold mb-2">{receiptPreviewData.extension.storeName}</div>
-                <div className="text-center text-xs text-gray-600 mb-1">{receiptPreviewData.extension.tableName}</div>
-                <div className="text-center font-medium mb-3">{receiptPreviewData.extension.title}</div>
-                <div className="text-xs text-gray-500 mb-2">
-                  {receiptPreviewData.extension.issuedAt.toLocaleString('ja-JP')}
-                </div>
-                <div className="space-y-1 border-t pt-2">
-                  {receiptPreviewData.extension.lines.map((line, i) => (
-                    <div key={i} className="flex justify-between">
-                      <span>{line.left}</span>
-                      {line.right && <span>{line.right}</span>}
-                    </div>
-                  ))}
-                </div>
-                <div className="flex justify-between font-semibold border-t mt-2 pt-2">
-                  <span>{receiptPreviewData.extension.totalLabel}</span>
-                  <span>{`¥${(receiptPreviewData.extension.totalAmount || 0).toLocaleString('ja-JP')}`}</span>
-                </div>
-                {(receiptPreviewData.extension.footerAddress || receiptPreviewData.extension.footerPhone) && (
-                  <div className="text-center text-xs text-gray-700 pt-2 mt-2 border-t space-y-1">
-                    {receiptPreviewData.extension.footerAddress && <div>住所: {receiptPreviewData.extension.footerAddress}</div>}
-                    {receiptPreviewData.extension.footerPhone && <div>電話番号: {receiptPreviewData.extension.footerPhone}</div>}
-                  </div>
-                )}
+            <div className="rounded border border-gray-200 p-4 bg-white font-mono text-sm">
+              <div className="text-center font-bold text-base mb-1">{receiptPreviewData.storeName}</div>
+              <div className="text-center text-xs text-gray-600 mb-2">【{receiptPreviewData.tableNumber}】</div>
+              <div className="text-center text-xs text-gray-700 whitespace-pre-line mb-3">{receiptPreviewData.greeting}</div>
+              <div className="text-xs text-gray-600 space-y-0.5 mb-3">
+                {receiptPreviewData.storeAddress && <div>{receiptPreviewData.storeAddress}</div>}
+                {receiptPreviewData.storePhone && <div>TEL:{receiptPreviewData.storePhone}</div>}
+                {receiptPreviewData.paymentId && <div>登録番号:{receiptPreviewData.paymentId}</div>}
               </div>
-              {/* 現在料金 */}
-              <div className="rounded border border-gray-200 p-4 bg-gray-50">
-                <div className="text-center font-semibold mb-2">{receiptPreviewData.current.storeName}</div>
-                <div className="text-center text-xs text-gray-600 mb-1">{receiptPreviewData.current.tableName}</div>
-                <div className="text-center font-medium mb-3">{receiptPreviewData.current.title}</div>
-                <div className="text-xs text-gray-500 mb-2">
-                  {receiptPreviewData.current.issuedAt.toLocaleString('ja-JP')}
-                </div>
-                <div className="space-y-1 border-t pt-2">
-                  {receiptPreviewData.current.lines.map((line, i) => (
-                    <div key={i} className="flex justify-between">
-                      <span>{line.left}</span>
-                      {line.right && <span>{line.right}</span>}
-                    </div>
+              <table className="w-full text-xs border-collapse mb-3">
+                <thead>
+                  <tr className="border-b">
+                    <th className="text-left py-1 pr-2">項目</th>
+                    <th className="text-right py-1 w-12">数量</th>
+                    <th className="text-right py-1">金額</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {receiptPreviewData.orderLines.map((row, i) => (
+                    <tr key={i} className="border-b border-gray-100">
+                      <td className="py-1 pr-2">{row.item}</td>
+                      <td className="text-right w-12">{row.qty}</td>
+                      <td className="text-right">¥{row.amount.toLocaleString('ja-JP')}</td>
+                    </tr>
                   ))}
-                </div>
-                <div className="flex justify-between font-semibold border-t mt-2 pt-2">
-                  <span>{receiptPreviewData.current.totalLabel}</span>
-                  <span>{`¥${(receiptPreviewData.current.totalAmount || 0).toLocaleString('ja-JP')}`}</span>
-                </div>
-                {(receiptPreviewData.current.footerAddress || receiptPreviewData.current.footerPhone) && (
-                  <div className="text-center text-xs text-gray-700 pt-2 mt-2 border-t space-y-1">
-                    {receiptPreviewData.current.footerAddress && <div>住所: {receiptPreviewData.current.footerAddress}</div>}
-                    {receiptPreviewData.current.footerPhone && <div>電話番号: {receiptPreviewData.current.footerPhone}</div>}
-                  </div>
-                )}
+                </tbody>
+              </table>
+              <div className="border-t pt-2 space-y-1 text-xs">
+                <div className="flex justify-between"><span>小計</span><span>¥{receiptPreviewData.subtotal.toLocaleString('ja-JP')}</span></div>
+                <div className="flex justify-between"><span>SC TAX</span><span>¥{receiptPreviewData.tax.toLocaleString('ja-JP')}</span></div>
+              </div>
+              <div className="border-t pt-2 flex justify-between font-bold text-sm mt-2">
+                <span>合計</span>
+                <span>¥{receiptPreviewData.total.toLocaleString('ja-JP')}-</span>
+              </div>
+              <div className="text-xs text-gray-500 mt-1">{receiptPreviewData.taxDetailText}</div>
+              <div className="text-xs text-gray-600 mt-3 pt-2 border-t space-y-0.5">
+                {receiptPreviewData.storeId && <div>ID:{receiptPreviewData.storeId}</div>}
+                <div>支払方法:{receiptPreviewData.paymentMethod}</div>
+                {receiptPreviewData.startTime && <div>開台時間:{receiptPreviewData.startTime}</div>}
+                {receiptPreviewData.guestCount && <div>開台人数:{receiptPreviewData.guestCount}</div>}
               </div>
             </div>
           )}

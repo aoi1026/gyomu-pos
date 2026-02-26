@@ -54,6 +54,8 @@ export default function Dashboard() {
   const [storeNameInput, setStoreNameInput] = useState<string>('');
   const [storeAddressInput, setStoreAddressInput] = useState<string>('');
   const [storePhoneInput, setStorePhoneInput] = useState<string>('');
+  const [receiptGreetingInput, setReceiptGreetingInput] = useState<string>('');
+  const [storeIdInput, setStoreIdInput] = useState<string>('');
   const [showBackupDialog, setShowBackupDialog] = useState(false);
   const [showRestoreDialog, setShowRestoreDialog] = useState(false);
   const [showLogoutDialog, setShowLogoutDialog] = useState(false);
@@ -212,13 +214,13 @@ export default function Dashboard() {
     // 従来の認証システムも確認
     const currentUser = getCurrentUser();
     if (!currentUser) {
-      router.push('/login');
+      router.push('/');
       return;
     }
 
     // キャスト・管理者・システム管理者のみアクセス可能
     if (!currentUser.roles.some(role => ['cast', 'admin', 'super_admin', 'superadmin'].includes(role))) {
-      router.push('/login');
+      router.push('/');
       return;
     }
 
@@ -240,17 +242,23 @@ export default function Dashboard() {
 
   const loadStoreInfoForDialog = async () => {
     try {
-      const [nameRes, addrRes, telRes] = await Promise.all([
+      const [nameRes, addrRes, telRes, greetingRes, storeIdRes] = await Promise.all([
         fetch('/api/project-variables?name=store_name'),
         fetch('/api/project-variables?name=store_address'),
         fetch('/api/project-variables?name=store_tel'),
+        fetch('/api/project-variables?name=receipt_greeting'),
+        fetch('/api/project-variables?name=store_id'),
       ]);
       const nameJson = await nameRes.json();
       const addrJson = await addrRes.json();
       const telJson = await telRes.json();
+      const greetingJson = await greetingRes.json();
+      const storeIdJson = await storeIdRes.json();
       if (nameJson?.success && nameJson?.data?.value) setStoreNameInput(String(nameJson.data.value));
       if (addrJson?.success && addrJson?.data?.value) setStoreAddressInput(String(addrJson.data.value));
       if (telJson?.success && telJson?.data?.value) setStorePhoneInput(String(telJson.data.value));
+      if (greetingJson?.success && greetingJson?.data?.value != null) setReceiptGreetingInput(String(greetingJson.data.value));
+      if (storeIdJson?.success && storeIdJson?.data?.value != null) setStoreIdInput(String(storeIdJson.data.value));
     } catch (err) {
       console.error('店舗情報取得エラー:', err);
     }
@@ -279,6 +287,16 @@ export default function Dashboard() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ name: 'store_tel', value: storePhoneInput.trim() }),
         }),
+        fetch('/api/project-variables', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: 'receipt_greeting', value: receiptGreetingInput.trim() }),
+        }),
+        fetch('/api/project-variables', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: 'store_id', value: storeIdInput.trim() }),
+        }),
       ];
       const results = await Promise.all(updates.map((r) => r.then((res) => res.json())));
       if (results.every((r) => r.success)) {
@@ -287,6 +305,8 @@ export default function Dashboard() {
         setStoreNameInput('');
         setStoreAddressInput('');
         setStorePhoneInput('');
+        setReceiptGreetingInput('');
+        setStoreIdInput('');
         success('店舗情報を更新しました', '店舗情報が正常に更新されました');
       } else {
         error('エラー', results.find((r) => !r.success)?.error || '店舗情報の更新に失敗しました');
@@ -745,9 +765,6 @@ export default function Dashboard() {
                   <div className="text-2xl font-bold text-blue-900 mb-1">
                     {formatCurrency(todaySales.total_yen)}
                   </div>
-                  {/* <p className="text-sm text-blue-700">
-                    前日比 +12.5%
-                  </p> */}
                 </CardContent>
               </Card>
 
@@ -777,16 +794,11 @@ export default function Dashboard() {
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold text-purple-900 mb-1">
-                  {activeClientCount}名
+                    {activeClientCount}名
                   </div>
-                  {/* <div className="flex justify-between">
-                    
-                    <p className="text-sm text-purple-700 ">
-                      現在のアクティブ客数: {activeClientCount}名
-                    </p>
-                  </div> */}
                 </CardContent>
               </Card>
+            </div>
 
               {/* <Card className="bg-gradient-to-br from-orange-50 to-orange-100 border-orange-200">
                 <CardHeader className="pb-3">
@@ -822,7 +834,6 @@ export default function Dashboard() {
                   </div>
                 </CardContent>
               </Card> */}
-            </div>
 
             {/* 管理者向けクイックアクション */}
             <div>
@@ -1136,6 +1147,28 @@ export default function Dashboard() {
                 className="w-full"
               />
             </div>
+            <div className="space-y-2">
+              <Label htmlFor="receipt-greeting">領収書の挨拶文</Label>
+              <textarea
+                id="receipt-greeting"
+                placeholder="例: ありがとうございます。改行で複数行可"
+                value={receiptGreetingInput}
+                onChange={(e) => setReceiptGreetingInput(e.target.value)}
+                className="w-full min-h-[80px] rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                rows={3}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="store-id">店舗ID（領収書最下部）</Label>
+              <Input
+                id="store-id"
+                type="text"
+                placeholder="店舗IDを入力"
+                value={storeIdInput}
+                onChange={(e) => setStoreIdInput(e.target.value)}
+                className="w-full"
+              />
+            </div>
 
             <div className="flex justify-end space-x-2">
               <Button
@@ -1145,6 +1178,8 @@ export default function Dashboard() {
                   setStoreNameInput('');
                   setStoreAddressInput('');
                   setStorePhoneInput('');
+                  setReceiptGreetingInput('');
+                  setStoreIdInput('');
                 }}
               >
                 キャンセル
@@ -1350,7 +1385,7 @@ export default function Dashboard() {
                 localStorage.removeItem('admin_auth');
                 localStorage.removeItem('cast_auth');
                 setShowLogoutDialog(false);
-                router.push('/login');
+                router.push('/');
               }}
             >
               <FiLogOut className="w-4 h-4 mr-2" />
