@@ -89,16 +89,13 @@ export default function Home() {
               </div>
             </div>
             <div className="flex items-center space-x-2 sm:space-x-4">
-              {/* <Badge variant="secondary" className="bg-green-100 text-green-800 text-xs sm:text-sm">
-                MVP v1.0
-              </Badge> */}
-              <Button 
-                onClick={() => router.push('/login')}
+              {/* <Button 
+                onClick={() => router.push('/admin-login')}
                 size="sm"
                 className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white text-sm sm:text-base"
               >
-                ログイン
-              </Button>
+                管理者ログイン
+              </Button> */}
             </div>
           </div>
         </div>
@@ -121,13 +118,13 @@ export default function Home() {
                 キャストがテーブルで注文を管理し、指名・サービス注文まで一つのシステムで完結します。
               </p>
               <div className="flex flex-col sm:flex-row gap-4">
-                <Button 
+                {/* <Button 
                   size="lg" 
-                  onClick={() => router.push('/login')}
+                  onClick={() => router.push('/table-login')}
                   className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white px-8 py-3 text-lg shadow-lg hover:shadow-xl transition-all duration-300"
                 >
-                  ログイン・テーブルログイン
-                </Button>
+                  テーブルログイン
+                </Button> */}
               </div>
               
               {/* Trust Indicators */}

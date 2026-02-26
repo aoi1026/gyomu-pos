@@ -44,13 +44,13 @@ export default function CastDashboard() {
     // 従来の認証システムも確認
     const currentUser = getCurrentUser();
     if (!currentUser) {
-      router.push('/login');
+      router.push('/cast-login');
       return;
     }
     
     // キャスト・管理者・システム管理者のみアクセス可能
     if (!currentUser.roles.some(role => ['cast', 'admin', 'superadmin'].includes(role))) {
-      router.push('/login');
+      router.push('/cast-login');
       return;
     }
     
@@ -172,7 +172,7 @@ export default function CastDashboard() {
                 onClick={() => {
                   localStorage.removeItem('auth_user');
                   localStorage.removeItem('cast_auth');
-                  router.push('/login');
+                  router.push('/cast-login');
                 }}
               >
                 <span className="hidden sm:inline">ログアウト</span>

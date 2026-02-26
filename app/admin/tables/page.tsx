@@ -67,7 +67,7 @@ export default function TablesPage() {
     }
     
     // 管理者認証情報がない場合はログインページにリダイレクト
-    router.push('/login');
+    router.push('/admin-login');
   }, [router]);
 
   const fetchTables = async () => {

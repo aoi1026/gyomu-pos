@@ -32,7 +32,7 @@ export default function CastDailyPerformancePage() {
     }
     const currentUser = getCurrentUser();
     if (!currentUser) {
-      router.push('/login');
+      router.push('/cast-login');
       return;
     }
     setUser(currentUser);

@@ -45,7 +45,7 @@ export default function AdminProfilePage() {
     // 従来の認証にもフォールバック
     const currentUser = getCurrentUser();
     if (!currentUser) {
-      router.push('/login');
+      router.push('/admin-login');
       return;
     }
     setUser(currentUser);

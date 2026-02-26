@@ -45,7 +45,7 @@ export default function CastProfilePage() {
     // 従来の認証にもフォールバック
     const currentUser = getCurrentUser();
     if (!currentUser) {
-      router.push('/login');
+      router.push('/cast-login');
       return;
     }
     setUser(currentUser);

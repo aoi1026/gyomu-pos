@@ -56,7 +56,7 @@ export default function CastNominationsPage() {
     // 現在のキャスト情報を取得（実際のAPIでは認証から取得）
     const currentCast = mockStaff.find(s => s.roles.includes('cast'));
     if (!currentCast) {
-      router.push('/login');
+      router.push('/cast-login');
       return;
     }
     

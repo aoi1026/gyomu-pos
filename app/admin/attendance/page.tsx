@@ -79,10 +79,10 @@ export default function AdminAttendancePage() {
       } catch (err) {
         console.error('管理者認証情報の解析に失敗しました:', err);
         localStorage.removeItem('admin_auth');
-        router.push('/login');
+        router.push('/admin-login');
       }
     } else {
-      router.push('/login');
+      router.push('/admin-login');
     }
   }, [router]);
 

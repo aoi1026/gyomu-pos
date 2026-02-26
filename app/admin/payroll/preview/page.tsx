@@ -868,7 +868,7 @@ export default function PayrollPreviewPage() {
 
         <div className="max-w-7xl mx-auto px-3 sm:px-4 md:px-6 lg:px-8 py-4 sm:py-6 md:py-8">
           {/* 期間選択（検索条件） */}
-          <Card className="mb-4 sm:mb-6 md:mb-8 shadow-sm">
+          <Card className="mb-4 sm:mb-6 md:mb-4 shadow-sm">
             <CardContent className="p-4 sm:p-5 md:p-6">
               <div className="w-full max-w-4xl mx-auto">
                 <div className="flex justify-between gap-4 sm:gap-5 md:gap-6">
@@ -1009,72 +1009,7 @@ export default function PayrollPreviewPage() {
               </div>
             </CardContent>
           </Card>
-          {/* 統計カード */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 md:gap-6 mb-4 sm:mb-6 md:mb-8">
-            <Card className="bg-blue-50 border-blue-200 shadow-sm hover:shadow-md transition-shadow">
-              <CardContent className="p-4 sm:p-5">
-                <div className="flex items-center">
-                  <div className="w-10 h-10 sm:w-12 sm:h-12 bg-blue-100 rounded-lg flex items-center justify-center mr-3 sm:mr-4 flex-shrink-0">
-                    <DollarSign className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-xs sm:text-sm text-blue-700 font-medium mb-1">総支給額</p>
-                    <p className="text-lg sm:text-xl md:text-2xl font-bold text-blue-900 truncate">
-                      {formatCurrency(castTotals.sumPay)}
-                    </p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="bg-green-50 border-green-200 shadow-sm hover:shadow-md transition-shadow">
-              <CardContent className="p-4 sm:p-5">
-                <div className="flex items-center">
-                  <div className="w-10 h-10 sm:w-12 sm:h-12 bg-green-100 rounded-lg flex items-center justify-center mr-3 sm:mr-4 flex-shrink-0">
-                    <Users className="w-5 h-5 sm:w-6 sm:h-6 text-green-600" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-xs sm:text-sm text-green-700 font-medium mb-1">対象スタッフ</p>
-                    <p className="text-lg sm:text-xl md:text-2xl font-bold text-green-900">
-                      {castTotals.staffCount}名
-                    </p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="bg-purple-50 border-purple-200 shadow-sm hover:shadow-md transition-shadow">
-              <CardContent className="p-4 sm:p-5">
-                <div className="flex items-center">
-                  <div className="w-10 h-10 sm:w-12 sm:h-12 bg-purple-100 rounded-lg flex items-center justify-center mr-3 sm:mr-4 flex-shrink-0">
-                    <Clock className="w-5 h-5 sm:w-6 sm:h-6 text-purple-600" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-xs sm:text-sm text-purple-700 font-medium mb-1">総労働時間</p>
-                    <p className="text-lg sm:text-xl md:text-2xl font-bold text-purple-900">
-                      {castTotals.sumHours.toFixed(1)}h
-                    </p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="bg-orange-50 border-orange-200 shadow-sm hover:shadow-md transition-shadow">
-              <CardContent className="p-4 sm:p-5">
-                <div className="flex items-center">
-                  <div className="w-10 h-10 sm:w-12 sm:h-12 bg-orange-100 rounded-lg flex items-center justify-center mr-3 sm:mr-4 flex-shrink-0">
-                    <TrendingUp className="w-5 h-5 sm:w-6 sm:h-6 text-orange-600" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-xs sm:text-sm text-orange-700 font-medium mb-1">総指名数</p>
-                    <p className="text-lg sm:text-xl md:text-2xl font-bold text-orange-900">
-                      {castTotals.sumNominations}件
-                    </p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
+          
         {/* キャスト別給与計算表 */}
         <Card className="mb-4 sm:mb-6 md:mb-8 shadow-sm">
           <CardHeader className="pb-3 sm:pb-4">
@@ -1663,6 +1598,72 @@ export default function PayrollPreviewPage() {
             </div>
           </CardContent>
         </Card>
+        {/* 統計カード */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 md:gap-6 mb-4 sm:mb-6 md:mb-8">
+            <Card className="bg-blue-50 border-blue-200 shadow-sm hover:shadow-md transition-shadow">
+              <CardContent className="p-4 sm:p-5">
+                <div className="flex items-center">
+                  <div className="w-10 h-10 sm:w-12 sm:h-12 bg-blue-100 rounded-lg flex items-center justify-center mr-3 sm:mr-4 flex-shrink-0">
+                    <DollarSign className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs sm:text-sm text-blue-700 font-medium mb-1">総支給額</p>
+                    <p className="text-lg sm:text-xl md:text-2xl font-bold text-blue-900 truncate">
+                      {formatCurrency(castTotals.sumPay)}
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="bg-green-50 border-green-200 shadow-sm hover:shadow-md transition-shadow">
+              <CardContent className="p-4 sm:p-5">
+                <div className="flex items-center">
+                  <div className="w-10 h-10 sm:w-12 sm:h-12 bg-green-100 rounded-lg flex items-center justify-center mr-3 sm:mr-4 flex-shrink-0">
+                    <Users className="w-5 h-5 sm:w-6 sm:h-6 text-green-600" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs sm:text-sm text-green-700 font-medium mb-1">対象スタッフ</p>
+                    <p className="text-lg sm:text-xl md:text-2xl font-bold text-green-900">
+                      {castTotals.staffCount}名
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="bg-purple-50 border-purple-200 shadow-sm hover:shadow-md transition-shadow">
+              <CardContent className="p-4 sm:p-5">
+                <div className="flex items-center">
+                  <div className="w-10 h-10 sm:w-12 sm:h-12 bg-purple-100 rounded-lg flex items-center justify-center mr-3 sm:mr-4 flex-shrink-0">
+                    <Clock className="w-5 h-5 sm:w-6 sm:h-6 text-purple-600" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs sm:text-sm text-purple-700 font-medium mb-1">総労働時間</p>
+                    <p className="text-lg sm:text-xl md:text-2xl font-bold text-purple-900">
+                      {castTotals.sumHours.toFixed(1)}h
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="bg-orange-50 border-orange-200 shadow-sm hover:shadow-md transition-shadow">
+              <CardContent className="p-4 sm:p-5">
+                <div className="flex items-center">
+                  <div className="w-10 h-10 sm:w-12 sm:h-12 bg-orange-100 rounded-lg flex items-center justify-center mr-3 sm:mr-4 flex-shrink-0">
+                    <TrendingUp className="w-5 h-5 sm:w-6 sm:h-6 text-orange-600" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs sm:text-sm text-orange-700 font-medium mb-1">総指名数</p>
+                    <p className="text-lg sm:text-xl md:text-2xl font-bold text-orange-900">
+                      {castTotals.sumNominations}件
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
           {payrollItems.length > 0 && (
             <>
               {/* サマリー */}

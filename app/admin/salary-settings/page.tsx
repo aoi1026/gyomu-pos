@@ -102,7 +102,7 @@ function SalarySettingsContent() {
     // 従来の認証システムも確認
     const currentUser = getCurrentUser();
     if (!currentUser || !hasRole(currentUser, 'admin')) {
-      router.push('/login');
+      router.push('/admin-login');
       return;
     }
     setUser(currentUser);

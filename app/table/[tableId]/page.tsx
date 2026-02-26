@@ -1553,7 +1553,7 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
       }
 
       if (charges['set_price'] === undefined) {
-        error('エラー', 'セット料金（add_charges: set_price）が未設定です。管理者画面の追加料金設定で登録してください。');
+        error('エラー', 'セット料金（add_charges: set_price）が未設定です。管理者画面の料金設定で登録してください。');
         return;
       }
 
@@ -1841,7 +1841,7 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
     }
 
     if (charges['extension_price'] === undefined) {
-      error('エラー', '延長料金（add_charges: extension_price）が未設定です。管理者画面の追加料金設定で登録してください。');
+      error('エラー', '延長料金（add_charges: extension_price）が未設定です。管理者画面の料金設定で登録してください。');
       return;
     }
 

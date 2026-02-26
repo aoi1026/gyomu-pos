@@ -143,7 +143,7 @@ export default function CastsPage() {
     }
     
     // 管理者認証情報がない場合はログインページにリダイレクト
-    router.push('/login');
+    router.push('/admin-login');
   }, [router]);
 
   const fetchCasts = async () => {

@@ -72,7 +72,13 @@ export default function RoleGate({
       
       if (!user) {
         console.log('RoleGate: ユーザー認証情報が見つかりません');
-        router.push('/login');
+        // ルートや許可ロールから適切なログインページへ誘導
+        const target =
+          (requiredRoute && requiredRoute.startsWith('/cast/')) ||
+          (allowedRoles && allowedRoles.includes('cast') && !allowedRoles.includes('admin'))
+            ? '/cast-login'
+            : '/admin-login';
+        router.push(target);
         return;
       }
 

@@ -171,7 +171,7 @@ export default function AddChargesPage() {
                 <ArrowLeft className="w-4 h-4 mr-2" />
                 ダッシュボードに戻る
               </Button>
-              <h1 className="text-lg sm:text-xl font-bold text-gray-900">追加料金設定</h1>
+              <h1 className="text-lg sm:text-xl font-bold text-gray-900">料金設定</h1>
             </div>
             <Button
               variant="outline"
@@ -191,7 +191,7 @@ export default function AddChargesPage() {
           <CardHeader>
             <CardTitle className="flex items-center">
               <Settings2 className="w-5 h-5 mr-2 text-purple-600" />
-              追加料金設定
+              料金設定
             </CardTitle>
             <CardDescription>
               店舗で利用する各種追加料金の一覧と設定値です。必要に応じて値やメモを更新してください。
