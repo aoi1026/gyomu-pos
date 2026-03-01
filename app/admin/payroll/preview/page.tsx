@@ -42,6 +42,8 @@ export default function PayrollPreviewPage() {
   const [isPrinting, setIsPrinting] = useState(false);
   const [printingRowKey, setPrintingRowKey] = useState<string | null>(null);
   const [monthlyRows, setMonthlyRows] = useState<any[]>([]);
+  const [payrollCategories, setPayrollCategories] = useState<Array<{ id: number; name: string }>>([]);
+  const [payrollCharges, setPayrollCharges] = useState<Record<string, number>>({});
   const [rowUnlocked, setRowUnlocked] = useState<Record<number, boolean>>({});
   const autoSaveTimers = useRef<Record<number, any>>({});
   const rowLockTimers = useRef<Record<number, any>>({});
@@ -92,6 +94,8 @@ export default function PayrollPreviewPage() {
       const result = await res.json();
       if (result.success) {
         setMonthlyRows(result.rows);
+        setPayrollCategories(Array.isArray(result.categories) ? result.categories : []);
+        setPayrollCharges(result.charges && typeof result.charges === 'object' ? result.charges : {});
         if (saveOnLoad && dateMode === 'month') {
           // 初期表示時に全行を保存（UPSERT）
           try {
@@ -109,14 +113,46 @@ export default function PayrollPreviewPage() {
           error('データベースエラー', result.error);
         }
         setMonthlyRows([]);
+        setPayrollCategories([]);
+        setPayrollCharges({});
       }
     } catch (err) {
       console.error('給与データ取得エラー:', err);
       setMonthlyRows([]);
+      setPayrollCategories([]);
+      setPayrollCharges({});
     }
   };
   const saveRowData = async (row: any) => {
     try {
+      if (dateMode === 'date' && singleDate) {
+        // 日付モード: salary_daily に保存（該当キャスト・該当日の1行を upsert）
+        const payload = {
+          date: singleDate,
+          user_id: row.user_id,
+          basic_hours: row.basic_hours != null ? Number(row.basic_hours) : undefined,
+          paid_price: row.paid_price != null ? Number(row.paid_price) : undefined,
+          pickup_yen: row.pickup_yen != null ? Number(row.pickup_yen) : undefined,
+          hairmake_yen: row.hairmake_yen != null ? Number(row.hairmake_yen) : undefined,
+          rental_yen: row.rental_yen != null ? Number(row.rental_yen) : undefined,
+          other_deduct_yen: row.other_deduct_yen != null ? Number(row.other_deduct_yen) : undefined,
+          penalty_yen: row.penalty_yen != null ? Number(row.penalty_yen) : undefined,
+          bonus_yen: row.bonus_yen != null ? Number(row.bonus_yen) : undefined,
+          point_yen: row.point_yen != null ? Number(row.point_yen) : undefined,
+          additional_point_yen: row.additional_point_yen != null ? Number(row.additional_point_yen) : undefined,
+        };
+        const res = await fetch('/api/admin/payroll/daily', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const result = await res.json();
+        if (result.success && singleDate) {
+          // 保存後に再取得して表示を salary_daily に合わせる
+          await fetchMonthlyRows(selectedYear, selectedMonth);
+        }
+        return;
+      }
       const payload = {
         user_id: row.user_id,
         year: selectedYear,
@@ -125,15 +161,28 @@ export default function PayrollPreviewPage() {
         base_pay: Number(row.base_pay || 0),
         main_nomination_count: Number(row.main_nomination_count || 0),
         main_nomination_fee: Number(row.main_nomination_fee || 0),
+        main_nomination_extension_count: Number(row.main_nomination_extension_count || 0),
+        main_nomination_extension_fee: Number(row.main_nomination_extension_fee || 0),
         inside_nomination_count: Number(row.inside_nomination_count || 0),
         inside_nomination_fee: Number(row.inside_nomination_fee || 0),
+        inside_nomination_extension_count: Number(row.inside_nomination_extension_count || 0),
+        inside_nomination_extension_fee: Number(row.inside_nomination_extension_fee || 0),
         together_nomination_cost: Number(row.together_nomination_cost || 0),
         together_nomination_count: Number(row.together_nomination_count || 0),
         together_nomination_fee: Number(row.together_nomination_fee || 0),
         sales_back_yen: Number(row.sales_back_yen || 0),
         overtime_wage_yen: Number(row.overtime_wage_yen || 0),
         deduction_yen: Number(row.deduction_yen || 0),
+        pickup_yen: Number(row.pickup_yen || 0),
+        hairmake_yen: Number(row.hairmake_yen || 0),
+        rental_yen: Number(row.rental_yen || 0),
+        other_deduct_yen: Number(row.other_deduct_yen || 0),
+        penalty_yen: Number(row.penalty_yen || 0),
+        bonus_yen: Number(row.bonus_yen || 0),
+        point_yen: Number(row.point_yen || 0),
+        additional_point_yen: Number(row.additional_point_yen || 0),
         paid_price: Number(row.paid_price || 0),
+        total_pay_yen: Number(row.total_pay_yen || 0),
         realTotal_price: Number(row.realTotal_price || 0)
       };
       await fetch('/api/admin/payroll/monthly', {
@@ -193,16 +242,7 @@ export default function PayrollPreviewPage() {
     const sumHours = monthlyRows.reduce((s, r) => s + Number(r.basic_hours || 0), 0);
     const sumMain = monthlyRows.reduce((s, r) => s + Number(r.main_nomination_count || 0), 0);
     const sumInside = monthlyRows.reduce((s, r) => s + Number(r.inside_nomination_count || 0), 0);
-    const sumPay = monthlyRows.reduce((s, r) => (
-      s +
-      (Number(r.base_pay || 0) +
-       Number(r.main_nomination_fee || 0) +
-       Number(r.inside_nomination_fee || 0) +
-       Number(r.together_nomination_fee || 0) +
-         Number(r.sales_back_yen || 0) +
-       Number(r.overtime_wage_yen || 0) -
-       Number(r.deduction_yen || 0))
-    ), 0);
+    const sumPay = monthlyRows.reduce((s, r) => s + Number(r.total_pay_yen || 0), 0);
     return {
       staffCount: monthlyRows.length,
       sumHours,
@@ -351,6 +391,9 @@ export default function PayrollPreviewPage() {
       const result = await res.json();
       if (result.success) {
         setDailyRowsData((prev) => ({ ...prev, [userId]: result.rows }));
+        if (Array.isArray(result.categories) && result.categories.length > 0) {
+          setPayrollCategories((prev) => (prev.length > 0 ? prev : result.categories));
+        }
       } else {
         console.error('日別給与データ取得失敗:', result.error);
         setDailyRowsData((prev) => ({ ...prev, [userId]: [] }));
@@ -875,6 +918,17 @@ export default function PayrollPreviewPage() {
                   <div className="space-y-3">
                     <div className="text-sm sm:text-base font-medium text-gray-700">検索条件</div>
                     <div className="inline-flex rounded-md border border-gray-300 bg-white overflow-hidden shadow-sm">
+                    <button
+                        type="button"
+                        onClick={() => setDateMode('date')}
+                        className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium border-l border-gray-300 transition-colors ${
+                          dateMode === 'date' 
+                            ? 'bg-purple-600 text-white' 
+                            : 'bg-white text-gray-700 hover:bg-gray-50'
+                        }`}
+                      >
+                        日付
+                      </button>
                       <button
                         type="button"
                         onClick={() => setDateMode('month')}
@@ -897,17 +951,7 @@ export default function PayrollPreviewPage() {
                       >
                         期間
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => setDateMode('date')}
-                        className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium border-l border-gray-300 transition-colors ${
-                          dateMode === 'date' 
-                            ? 'bg-purple-600 text-white' 
-                            : 'bg-white text-gray-700 hover:bg-gray-50'
-                        }`}
-                      >
-                        日付
-                      </button>
+                      
                     </div>
                   </div>
 
@@ -1060,7 +1104,7 @@ export default function PayrollPreviewPage() {
                   <span className="hidden sm:inline">CSV</span>
                   <span className="sm:hidden">CSV</span>
                 </Button>
-                <Button
+                {/* <Button
                   variant="outline"
                   size="sm"
                   onClick={async () => {
@@ -1073,7 +1117,7 @@ export default function PayrollPreviewPage() {
                 >
                   <span className="hidden sm:inline">初期値に戻す</span>
                   <span className="sm:hidden">リセット</span>
-                </Button>
+                </Button> */}
               </div>
             </div>
           </CardHeader>
@@ -1084,22 +1128,36 @@ export default function PayrollPreviewPage() {
                 <table className="text-xs sm:text-sm divide-y divide-gray-200" style={{ minWidth: 'max-content' }}>
                 <thead className="bg-gray-50">
                   <tr className="text-left text-gray-600">
-                    <th className="p-2 sm:p-3 font-semibold sticky left-0 bg-gray-50 z-20 min-w-[100px] sm:min-w-[120px] border-r border-gray-200">キャスト</th>
-                    <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[70px] sm:min-w-[80px]">基本時間</th>
-                    <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[70px] sm:min-w-[80px]">基本給</th>
-                    <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[70px] sm:min-w-[80px]">本指名数</th>
-                    <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[70px] sm:min-w-[80px]">本指名料</th>
-                    <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[70px] sm:min-w-[80px]">場内指名数</th>
-                    <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[70px] sm:min-w-[80px]">場内指名料</th>
-                    <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[60px] sm:min-w-[70px]">同伴者</th>
-                    <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[70px] sm:min-w-[80px]">同伴料</th>
-                    <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[80px] sm:min-w-[100px]">売上バック</th>
-                    <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[80px] sm:min-w-[100px]">残業代</th>
-                    <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[80px] sm:min-w-[100px]">控除</th>
-                    <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[80px] sm:min-w-[100px]">支給額</th>
-                    <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[90px] sm:min-w-[110px]">前払い</th>
-                    <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[90px] sm:min-w-[110px]  right-[80px] bg-gray-50 z-20 border-l border-gray-200 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.05)]">総額</th>
-                    <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[70px] sm:min-w-[80px] sticky right-0 bg-gray-50 z-20 border-l border-gray-200 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.05)]">印刷</th>
+                    <th rowSpan={2} className="p-2 sm:p-3 font-semibold sticky left-0 bg-gray-50 z-20 min-w-[110px] sm:min-w-[130px] border-r border-gray-200">キャスト</th>
+                    <th rowSpan={2} className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[70px]">勤務時間</th>
+                    <th colSpan={5} className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap border-l-2 border-gray-300 border-r-2 border-gray-300">控除</th>
+                    <th rowSpan={2} className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[80px] border-l-2 border-gray-400">ペナルティ</th>
+                    <th rowSpan={2} className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[90px]">控除合計</th>
+                    <th rowSpan={2} className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[70px]">時給</th>
+                    <th rowSpan={2} className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[90px]">時間給</th>
+                    <th colSpan={5 + payrollCategories.length} className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap border-l-2 border-gray-300 border-r-2 border-gray-300">バック</th>
+                    <th rowSpan={2} className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[80px] border-l-2 border-gray-400">ボーナス</th>
+                    <th rowSpan={2} className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[80px]">ポイント</th>
+                    <th rowSpan={2} className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[95px] border-r-2 border-gray-300">追加ポイント</th>
+                    <th rowSpan={2} className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[90px]">バック合計</th>
+                    <th rowSpan={2} className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[90px]">合計</th>
+                    <th rowSpan={2} className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[90px] sticky right-0 bg-gray-50 z-20 border-l border-gray-200 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.05)]">未払い</th>
+                  </tr>
+                  <tr className="text-left text-gray-600 border-t-2 border-gray-400">
+                    <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[90px] border-l-2 border-gray-300">前借日払</th>
+                    <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[70px]">送迎</th>
+                    <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[80px]">ヘアメイク</th>
+                    <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[70px]">レンタル</th>
+                    <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[70px] border-r-2 border-gray-300">その他</th>
+
+                    <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[90px] border-l-2 border-gray-300">本指名</th>
+                    <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[90px]">本指名延長</th>
+                    <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[90px]">場内指名</th>
+                    <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[90px]">場内指名延長</th>
+                    <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[90px]">同伴</th>
+                    {payrollCategories.map((c) => (
+                      <th key={c.id} className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[90px]">{c.name}</th>
+                    ))}
                   </tr>
                 </thead>
                 <tbody>
@@ -1112,27 +1170,46 @@ export default function PayrollPreviewPage() {
                     const updateField = (key: string, value: number) => {
                       const rows = [...monthlyRows];
                       const next = { ...rows[idx], [key]: value };
-                      // 再計算
+                      // 再計算（新フォーマット）
                       const base_pay = Number(next.basic_hours || 0) * Number(next.hourly_price || 0);
-                      const total =
-                        base_pay +
+                      const categoryBackTotal = payrollCategories.reduce((sum, c) => {
+                        const v = Number(next.categoryTotals?.[c.id] ?? next.categoryTotals?.[String(c.id)] ?? 0);
+                        return sum + (Number.isFinite(v) ? v : 0);
+                      }, 0);
+                      const bonus = Number(next.bonus_yen || 0);
+                      const point = Number(next.point_yen || 0);
+                      const addPoint = Number(next.additional_point_yen || 0);
+                      const nominationBack =
                         Number(next.main_nomination_fee || 0) +
+                        Number(next.main_nomination_extension_fee || 0) +
                         Number(next.inside_nomination_fee || 0) +
-                        Number(next.together_nomination_fee || 0) +
-                        Number(next.sales_back_yen || 0) +
-                        Number(next.overtime_wage_yen || 0) -
-                        Number(next.deduction_yen || 0);
+                        Number(next.inside_nomination_extension_fee || 0) +
+                        Number(next.together_nomination_fee || 0);
+                      const back_total = nominationBack + categoryBackTotal;
+                      const total = base_pay + back_total + bonus + point + addPoint;
+
+                      const paid = Number(next.paid_price || 0); // 前借日払
+                      const pickup = Number(next.pickup_yen || 0);
+                      const hairmake = Number(next.hairmake_yen || 0);
+                      const rental = Number(next.rental_yen || 0);
+                      const other = Number(next.other_deduct_yen || 0);
+                      const penalty = Number(next.penalty_yen || 0);
+                      const deduction_yen = paid + pickup + hairmake + rental + other + penalty;
+
                       next.base_pay = base_pay;
+                      next.sales_back_yen = categoryBackTotal;
+                      next.back_total = back_total;
                       next.total_pay_yen = total;
-                      const paid = Number(next.paid_price || 0);
+                      next.deduction_yen = deduction_yen;
+                      // 未払い = 合計 - 前借日払
                       next.realTotal_price = total - paid;
                       rows[idx] = next;
                       setMonthlyRows(rows);
-                      if (dateMode === 'month') {
-                      scheduleAutoSave(next);
+                      if (dateMode === 'month' || dateMode === 'date') {
+                        scheduleAutoSave(next);
                       }
                     };
-                    const isUnlocked = dateMode === 'month' ? !!rowUnlocked[row.user_id] : false;
+                    const isUnlocked = dateMode === 'date' ? !!rowUnlocked[row.user_id] : false;
                     return (
                       <React.Fragment key={row.user_id}>
                         <tr className="border-t hover:bg-gray-50 transition-colors">
@@ -1140,7 +1217,7 @@ export default function PayrollPreviewPage() {
                           <div className="flex flex-col items-start space-y-1">
                             <div className="font-medium text-sm">{row.name}</div>
                             <div className="flex items-center gap-2 flex-wrap">
-                              {dateMode === 'month' && (
+                              {dateMode === 'date' ? (
                                 <button
                                   type="button"
                                   className={`inline-flex items-center text-xs px-2 py-1 rounded border transition-colors ${
@@ -1153,6 +1230,10 @@ export default function PayrollPreviewPage() {
                                 >
                                   {isUnlocked ? <Unlock className="w-3 h-3 mr-1" /> : <Lock className="w-3 h-3 mr-1" />}
                                 </button>
+                              ) : (
+                                <span className="inline-flex items-center justify-center text-xs px-2 py-1 rounded border border-transparent opacity-0 pointer-events-none select-none" aria-hidden="true">
+                                  <Lock className="w-3 h-3 mr-1" />
+                                </span>
                               )}
                               <button
                                 type="button"
@@ -1178,79 +1259,9 @@ export default function PayrollPreviewPage() {
                         <td className="p-2 sm:p-3 text-center whitespace-nowrap">
                           <div className="text-xs sm:text-sm text-gray-700">{formatHours(row.basic_hours)}</div>
                         </td>
-                        <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap">{formatCurrency(row.base_pay || 0)}</td>
-                        <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap">
-                          {Number(row.main_nomination_count || 0)}
-                        </td>
-                        <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap">{formatCurrency(row.main_nomination_fee || 0)}</td>
-                        <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap">
-                          {Number(row.inside_nomination_count || 0)}
-                        </td>
-                        <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap">{formatCurrency(row.inside_nomination_fee || 0)}</td>
-                        <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap">
-                          {Number(row.together_nomination_count || 0)}
-                        </td>
-                        <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap">{formatCurrency(row.together_nomination_fee || 0)}</td>
-                        <td className="p-2 sm:p-3 text-center whitespace-nowrap">
-                          <Input 
-                            type="text" 
-                            value={row.sales_back_yen ?? 0}
-                            className="px-1.5 py-1 text-center h-8 sm:h-9 text-xs sm:text-sm w-full min-w-[70px] sm:min-w-[90px]"
-                            inputMode="decimal"
-                            pattern="[0-9]*[.,]?[0-9]*"
-                            onChange={(e) => { 
-                              if (!isUnlocked) return; 
-                              updateField('sales_back_yen', Number((e.target.value || '').replace(',', '.'))); 
-                              ensureAutoRelock(row.user_id); 
-                            }}
-                            disabled={!isUnlocked}
-                          />
-                        </td>
-                        <td className="p-2 sm:p-3 text-center whitespace-nowrap">
-                          <Input 
-                            type="text" 
-                            value={row.overtime_wage_yen ?? 0}
-                            className="px-1.5 py-1 text-center h-8 sm:h-9 text-xs sm:text-sm w-full min-w-[70px] sm:min-w-[90px]"
-                            inputMode="decimal"
-                            pattern="[0-9]*[.,]?[0-9]*"
-                            onChange={(e) => { 
-                              if (!isUnlocked) return; 
-                              updateField('overtime_wage_yen', Number((e.target.value || '').replace(',', '.'))); 
-                              ensureAutoRelock(row.user_id); 
-                            }}
-                            disabled={!isUnlocked}
-                          />
-                        </td>
-                        <td className="p-2 sm:p-3 text-center whitespace-nowrap">
-                          <div className="flex items-center justify-center space-x-1">
-                            <span className="text-red-600 text-xs">-</span>
-                            <Input
-                              type="text"
-                              className="text-red-600 px-1.5 py-1 text-center h-8 sm:h-9 text-xs sm:text-sm w-full min-w-[70px] sm:min-w-[90px]"
-                              value={row.deduction_yen ?? 0}
-                              inputMode="decimal"
-                              pattern="[0-9]*[.,]?[0-9]*"
-                              onChange={(e) => { 
-                                if (!isUnlocked) return; 
-                                updateField('deduction_yen', Number((e.target.value || '').replace(',', '.'))); 
-                                ensureAutoRelock(row.user_id); 
-                              }}
-                              disabled={!isUnlocked}
-                            />
-                          </div>
-                        </td>
-                        <td className="p-2 sm:p-3 text-center font-semibold text-xs sm:text-sm whitespace-nowrap">
-                          {formatCurrency(
-                            Number(row.base_pay || 0) +
-                            Number(row.main_nomination_fee || 0) +
-                            Number(row.inside_nomination_fee || 0) +
-                            Number(row.together_nomination_fee || 0) +
-                            Number(row.sales_back_yen || 0) +
-                            Number(row.overtime_wage_yen || 0) -
-                            Number(row.deduction_yen || 0)
-                          )}
-                        </td>
-                        <td className="p-2 sm:p-3 text-center whitespace-nowrap">
+
+                        {/* 控除（5項目） */}
+                        <td className="p-2 sm:p-3 text-center whitespace-nowrap border-l-2 border-gray-300">
                           <Input
                             type="text"
                             value={row.paid_price ?? 0}
@@ -1261,44 +1272,190 @@ export default function PayrollPreviewPage() {
                               updateField('paid_price', Number((e.target.value || '').replace(',', '.'))); 
                               ensureAutoRelock(row.user_id); 
                             }}
-                            className="px-1.5 py-1 text-center h-8 sm:h-9 text-xs sm:text-sm w-full min-w-[80px] sm:min-w-[100px]"
+                            className="px-1.5 py-1 text-center h-8 sm:h-9 text-xs sm:text-sm w-full min-w-[80px]"
                             disabled={!isUnlocked}
                           />
                         </td>
-                        <td className="p-2 sm:p-3 text-center font-semibold text-xs sm:text-sm whitespace-nowrap  right-[80px] bg-white z-20 border-l border-gray-200 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.05)] hover:bg-gray-50">
-                          {formatCurrency(
-                            (Number(row.base_pay || 0) +
-                              Number(row.main_nomination_fee || 0) +
-                              Number(row.inside_nomination_fee || 0) +
-                              Number(row.together_nomination_fee || 0) +
-                              Number(row.sales_back_yen || 0) +
-                              Number(row.overtime_wage_yen || 0) -
-                              Number(row.deduction_yen || 0)) -
-                              Number(row.paid_price || 0)
-                          )}
+                        <td className="p-2 sm:p-3 text-center whitespace-nowrap">
+                          <Input
+                            type="text"
+                            value={row.pickup_yen ?? 0}
+                            inputMode="decimal"
+                            pattern="[0-9]*[.,]?[0-9]*"
+                            onChange={(e) => { 
+                              if (!isUnlocked) return; 
+                              updateField('pickup_yen', Number((e.target.value || '').replace(',', '.'))); 
+                              ensureAutoRelock(row.user_id); 
+                            }}
+                            className="px-1.5 py-1 text-center h-8 sm:h-9 text-xs sm:text-sm w-full min-w-[60px]"
+                            disabled={!isUnlocked}
+                          />
                         </td>
-                        <td className="p-2 sm:p-3 text-center whitespace-nowrap sticky right-0 bg-white z-20 border-l border-gray-200 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.05)] hover:bg-gray-50">
-                          <div className="flex items-center justify-center gap-1">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => handlePrintMonthlyRow(row)}
-                              disabled={isPrinting}
-                              className="h-8 sm:h-9 text-xs px-2 sm:px-3"
-                            >
-                              <PrinterIcon className="w-3 h-3 sm:w-4 sm:h-4" />
-                              <span className="hidden xl:inline ml-1">印刷</span>
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => handlePreviewMonthlyRow(row)}
-                              className="h-8 sm:h-9 px-2"
-                              title="プレビュー"
-                            >
-                              <FileText className="w-3 h-3 sm:w-4 sm:h-4" />
-                            </Button>
+                        <td className="p-2 sm:p-3 text-center whitespace-nowrap">
+                          <Input
+                            type="text"
+                            value={row.hairmake_yen ?? 0}
+                            inputMode="decimal"
+                            pattern="[0-9]*[.,]?[0-9]*"
+                            onChange={(e) => { 
+                              if (!isUnlocked) return; 
+                              updateField('hairmake_yen', Number((e.target.value || '').replace(',', '.'))); 
+                              ensureAutoRelock(row.user_id); 
+                            }}
+                            className="px-1.5 py-1 text-center h-8 sm:h-9 text-xs sm:text-sm w-full min-w-[70px]"
+                            disabled={!isUnlocked}
+                          />
+                        </td>
+                        <td className="p-2 sm:p-3 text-center whitespace-nowrap">
+                          <Input
+                            type="text"
+                            value={row.rental_yen ?? 0}
+                            inputMode="decimal"
+                            pattern="[0-9]*[.,]?[0-9]*"
+                            onChange={(e) => { 
+                              if (!isUnlocked) return; 
+                              updateField('rental_yen', Number((e.target.value || '').replace(',', '.'))); 
+                              ensureAutoRelock(row.user_id); 
+                            }}
+                            className="px-1.5 py-1 text-center h-8 sm:h-9 text-xs sm:text-sm w-full min-w-[60px]"
+                            disabled={!isUnlocked}
+                          />
+                        </td>
+                        <td className="p-2 sm:p-3 text-center whitespace-nowrap border-r-2 border-gray-300">
+                          <Input
+                            type="text"
+                            value={row.other_deduct_yen ?? 0}
+                            inputMode="decimal"
+                            pattern="[0-9]*[.,]?[0-9]*"
+                            onChange={(e) => { 
+                              if (!isUnlocked) return; 
+                              updateField('other_deduct_yen', Number((e.target.value || '').replace(',', '.'))); 
+                              ensureAutoRelock(row.user_id); 
+                            }}
+                            className="px-1.5 py-1 text-center h-8 sm:h-9 text-xs sm:text-sm w-full min-w-[60px]"
+                            disabled={!isUnlocked}
+                          />
+                        </td>
+
+                        {/* ペナルティ（控除5項目との区切り線） */}
+                        <td className="p-2 sm:p-3 text-center whitespace-nowrap border-l-2 border-gray-400">
+                          <Input
+                            type="text"
+                            value={row.penalty_yen ?? 0}
+                            inputMode="decimal"
+                            pattern="[0-9]*[.,]?[0-9]*"
+                            onChange={(e) => { 
+                              if (!isUnlocked) return; 
+                              updateField('penalty_yen', Number((e.target.value || '').replace(',', '.'))); 
+                              ensureAutoRelock(row.user_id); 
+                            }}
+                            className="px-1.5 py-1 text-center h-8 sm:h-9 text-xs sm:text-sm w-full min-w-[70px]"
+                            disabled={!isUnlocked}
+                          />
+                        </td>
+
+                        {/* 控除合計 */}
+                        <td className="p-2 sm:p-3 text-center font-semibold text-xs sm:text-sm whitespace-nowrap">
+                          {formatCurrency(Number(row.deduction_yen || 0))}
+                        </td>
+
+                        {/* 時給・時間給 */}
+                        <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap">{formatCurrency(Number(row.hourly_price || 0))}</td>
+                        <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap">{formatCurrency(Number(row.base_pay || 0))}</td>
+
+                        {/* バック（2行） */}
+                        <td className="p-2 sm:p-3 text-center whitespace-nowrap border-l-2 border-gray-300">
+                          <div className="leading-tight">
+                            <div className="text-[10px] text-gray-600">{Number(row.main_nomination_count || 0)}</div>
+                            <div className="font-semibold">{formatCurrency(Number(row.main_nomination_fee || 0))}</div>
                           </div>
+                        </td>
+                        <td className="p-2 sm:p-3 text-center whitespace-nowrap">
+                          <div className="leading-tight">
+                            <div className="text-[10px] text-gray-600">{Number(row.main_nomination_extension_count || 0)}</div>
+                            <div className="font-semibold">{formatCurrency(Number(row.main_nomination_extension_fee || 0))}</div>
+                          </div>
+                        </td>
+                        <td className="p-2 sm:p-3 text-center whitespace-nowrap">
+                          <div className="leading-tight">
+                            <div className="text-[10px] text-gray-600">{Number(row.inside_nomination_count || 0)}</div>
+                            <div className="font-semibold">{formatCurrency(Number(row.inside_nomination_fee || 0))}</div>
+                          </div>
+                        </td>
+                        <td className="p-2 sm:p-3 text-center whitespace-nowrap">
+                          <div className="leading-tight">
+                            <div className="text-[10px] text-gray-600">{Number(row.inside_nomination_extension_count || 0)}</div>
+                            <div className="font-semibold">{formatCurrency(Number(row.inside_nomination_extension_fee || 0))}</div>
+                          </div>
+                        </td>
+                        <td className="p-2 sm:p-3 text-center whitespace-nowrap">
+                          <div className="leading-tight">
+                            <div className="text-[10px] text-gray-600">{Number(row.together_nomination_count || 0)}</div>
+                            <div className="font-semibold">{formatCurrency(Number(row.together_nomination_fee || 0))}</div>
+                          </div>
+                        </td>
+                        {payrollCategories.map((c) => (
+                          <td key={c.id} className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap">
+                            <div className="leading-tight">
+                              <div className="text-[10px] text-gray-600">{Number(row.categoryAmounts?.[c.id] ?? row.categoryAmounts?.[String(c.id)] ?? 0)}</div>
+                              <div className="font-semibold">{formatCurrency(Number(row.categoryTotals?.[c.id] ?? row.categoryTotals?.[String(c.id)] ?? 0))}</div>
+                            </div>
+                          </td>
+                        ))}
+                        <td className="p-2 sm:p-3 text-center whitespace-nowrap border-l-2 border-gray-400">
+                          <Input
+                            type="text"
+                            value={row.bonus_yen ?? 0}
+                            inputMode="decimal"
+                            pattern="[0-9]*[.,]?[0-9]*"
+                            onChange={(e) => { 
+                              if (!isUnlocked) return; 
+                              updateField('bonus_yen', Number((e.target.value || '').replace(',', '.'))); 
+                              ensureAutoRelock(row.user_id); 
+                            }}
+                            className="px-1.5 py-1 text-center h-8 sm:h-9 text-xs sm:text-sm w-full min-w-[70px]"
+                            disabled={!isUnlocked}
+                          />
+                        </td>
+                        <td className="p-2 sm:p-3 text-center whitespace-nowrap">
+                          <Input
+                            type="text"
+                            value={row.point_yen ?? 0}
+                            inputMode="decimal"
+                            pattern="[0-9]*[.,]?[0-9]*"
+                            onChange={(e) => { 
+                              if (!isUnlocked) return; 
+                              updateField('point_yen', Number((e.target.value || '').replace(',', '.'))); 
+                              ensureAutoRelock(row.user_id); 
+                            }}
+                            className="px-1.5 py-1 text-center h-8 sm:h-9 text-xs sm:text-sm w-full min-w-[70px]"
+                            disabled={!isUnlocked}
+                          />
+                        </td>
+                        <td className="p-2 sm:p-3 text-center whitespace-nowrap border-r-2 border-gray-300">
+                          <Input
+                            type="text"
+                            value={row.additional_point_yen ?? 0}
+                            inputMode="decimal"
+                            pattern="[0-9]*[.,]?[0-9]*"
+                            onChange={(e) => { 
+                              if (!isUnlocked) return; 
+                              updateField('additional_point_yen', Number((e.target.value || '').replace(',', '.'))); 
+                              ensureAutoRelock(row.user_id); 
+                            }}
+                            className="px-1.5 py-1 text-center h-8 sm:h-9 text-xs sm:text-sm w-full min-w-[85px]"
+                            disabled={!isUnlocked}
+                          />
+                        </td>
+
+                        <td className="p-2 sm:p-3 text-center font-semibold text-xs sm:text-sm whitespace-nowrap">
+                          {formatCurrency(Number(row.back_total || 0))}
+                        </td>
+                        <td className="p-2 sm:p-3 text-center font-semibold text-xs sm:text-sm whitespace-nowrap">
+                          {formatCurrency(Number(row.total_pay_yen || 0))}
+                        </td>
+                        <td className="p-2 sm:p-3 text-center font-bold text-xs sm:text-sm whitespace-nowrap sticky right-0 bg-white z-20 border-l border-gray-200 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.05)]">
+                          {formatCurrency(Number(row.realTotal_price || 0))}
                         </td>
                         {/* <td className="p-2">
                           <Button size="sm" variant="outline" onClick={saveRow}>保存</Button>
@@ -1306,7 +1463,7 @@ export default function PayrollPreviewPage() {
                       </tr>
                       {expandedDailyRows[row.user_id] && dailyRowsData[row.user_id] && (
                         <tr key={`daily-${row.user_id}`}>
-                          <td colSpan={16} className="p-0 bg-gray-50">
+                          <td colSpan={22 + payrollCategories.length} className="p-0 bg-gray-50">
                             <div className="p-4">
                               <div className="flex items-center justify-between mb-2 gap-4">
                                 <div className="text-sm font-semibold min-w-0">日別内訳: {row.name}</div>
@@ -1337,157 +1494,191 @@ export default function PayrollPreviewPage() {
                                   <table className="text-xs sm:text-sm divide-y divide-gray-200" style={{ minWidth: 'max-content' }}>
                                     <thead className="bg-gray-50">
                                       <tr className="text-left text-gray-600">
-                                        <th className="p-2 sm:p-3 font-semibold sticky left-0 bg-gray-50 z-20 min-w-[113px] sm:min-w-[133px] border-r border-gray-200">日付</th>
-                                        <th className="p-2 sm:p-6 text-center font-semibold whitespace-nowrap min-w-[70px] sm:min-w-[80px]">基本時間</th>
-                                        <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[70px] sm:min-w-[80px]">基本給</th>
-                                        <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[70px] sm:min-w-[80px]">本指名数</th>
-                                        <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[70px] sm:min-w-[80px]">本指名料</th>
-                                        <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[70px] sm:min-w-[80px]">場内指名数</th>
-                                        <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[70px] sm:min-w-[80px]">場内指名料</th>
-                                        <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[60px] sm:min-w-[70px]">同伴者</th>
-                                        <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[70px] sm:min-w-[80px]">同伴料</th>
-                                        <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[180px] sm:min-w-[230px]">売上バック</th>
-                                        <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[180px] sm:min-w-[230px]">残業代</th>
-                                        <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[190px] sm:min-w-[240px]">控除</th>
-                                        <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[80px] sm:min-w-[100px]">支給額</th>
-                                        <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[180px] sm:min-w-[230px]">前払い</th>
-                                        <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[90px] sm:min-w-[110px]">総額</th>
+                                        <th rowSpan={2} className="p-2 sm:p-3 font-semibold sticky left-0 bg-gray-50 z-20 min-w-[110px] sm:min-w-[130px] border-r border-gray-200">日付</th>
+                                        <th rowSpan={2} className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[70px]">勤務時間</th>
+                                        <th colSpan={5} className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap border-l-2 border-gray-300 border-r-2 border-gray-300">控除</th>
+                                        <th rowSpan={2} className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[230px] border-l-2 border-gray-400">ペナルティ</th>
+                                        <th rowSpan={2} className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[90px]">控除合計</th>
+                                        <th rowSpan={2} className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[70px]">時給</th>
+                                        <th rowSpan={2} className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[90px]">時間給</th>
+                                        <th colSpan={5 + payrollCategories.length} className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap border-l-2 border-gray-300 border-r-2 border-gray-300">バック</th>
+                                        <th rowSpan={2} className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[230px] border-l-2 border-gray-400">ボーナス</th>
+                                        <th rowSpan={2} className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[230px]">ポイント</th>
+                                        <th rowSpan={2} className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[230px] border-r-2 border-gray-300">追加ポイント</th>
+                                        <th rowSpan={2} className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[90px]">バック合計</th>
+                                        <th rowSpan={2} className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[90px]">合計</th>
+                                        <th rowSpan={2} className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[90px] sticky right-0 bg-gray-50 z-20 border-l border-gray-200">未払い</th>
+                                      </tr>
+                                      <tr className="text-left text-gray-600 border-t-2 border-gray-400">
+                                        <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[235px] border-l-2 border-gray-300">前借日払</th>
+                                        <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[222px]">送迎</th>
+                                        <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[244px]">ヘアメイク</th>
+                                        <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[208px]">レンタル</th>
+                                        <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[240px] border-r-1 border-gray-300">その他</th>
+
+                                        <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[90px] border-l-2 border-gray-300">本指名</th>
+                                        <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[90px]">本指名延長</th>
+                                        <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[90px]">場内指名</th>
+                                        <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[90px]">場内指名延長</th>
+                                        <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[90px]">同伴</th>
+                                        {payrollCategories.map((c) => (
+                                          <th key={c.id} className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[90px]">{c.name}</th>
+                                        ))}
                                       </tr>
                                     </thead>
-                                  <tbody>
-                                    {dailyRowsData[row.user_id].map((dailyRow: any, dailyIdx: number) => {
-                                      const dailyTotalPay = 
-                                        Number(dailyRow.base_pay || 0) +
-                                        Number(dailyRow.main_nomination_fee || 0) +
-                                        Number(dailyRow.inside_nomination_fee || 0) +
-                                        Number(dailyRow.together_nomination_fee || 0) +
-                                        Number(dailyRow.sales_back_yen || 0) +
-                                        Number(dailyRow.overtime_wage_yen || 0) -
-                                        Number(dailyRow.deduction_yen || 0);
-                                      const dailyPaid = Number(dailyRow.paid_price || 0);
-                                      const dailyRealTotal = dailyTotalPay - dailyPaid;
-                                      return (
+                                    <tbody>
+                                      {dailyRowsData[row.user_id].map((dailyRow: any, dailyIdx: number) => (
                                         <tr key={dailyIdx} className="border-t hover:bg-gray-50 transition-colors">
-                                          <td className="p-2 sm:p-3 whitespace-nowrap sticky left-0 bg-white z-20 border-r border-gray-200">
+                                          <td className="p-2 sm:p-3 whitespace-nowrap sticky left-0 bg-white z-20 border-r border-gray-200 min-w-[110px] sm:min-w-[130px]">
                                             <div className="font-medium text-sm">{formatDisplayDate(dailyRow.date)}</div>
                                           </td>
-                                          <td className="p-2 sm:p-3 text-center whitespace-nowrap">
+                                          <td className="p-2 sm:p-3 text-center whitespace-nowrap min-w-[70px]">
                                             <div className="text-xs sm:text-sm text-gray-700">{formatHours(dailyRow.basic_hours)}</div>
                                           </td>
-                                          <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap">{formatCurrency(dailyRow.base_pay || 0)}</td>
-                                          <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap">{Number(dailyRow.main_nomination_count || 0)}</td>
-                                          <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap">{formatCurrency(dailyRow.main_nomination_fee || 0)}</td>
-                                          <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap">{Number(dailyRow.inside_nomination_count || 0)}</td>
-                                          <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap">{formatCurrency(dailyRow.inside_nomination_fee || 0)}</td>
-                                          <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap">{Number(dailyRow.together_nomination_count || 0)}</td>
-                                          <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap">{formatCurrency(dailyRow.together_nomination_fee || 0)}</td>
-                                          <td className="p-2 sm:p-3 text-center whitespace-nowrap">
-                                            <div className="text-xs sm:text-sm">{formatCurrency(dailyRow.sales_back_yen || 0)}</div>
+                                          <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap border-l-2 border-gray-300 min-w-[90px]">{formatCurrency(dailyRow.paid_price ?? 0)}</td>
+                                          <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap min-w-[70px]">{formatCurrency(dailyRow.pickup_yen ?? 0)}</td>
+                                          <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap min-w-[80px]">{formatCurrency(dailyRow.hairmake_yen ?? 0)}</td>
+                                          <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap min-w-[70px]">{formatCurrency(dailyRow.rental_yen ?? 0)}</td>
+                                          <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap border-r-2 border-gray-300 min-w-[70px]">{formatCurrency(dailyRow.other_deduct_yen ?? 0)}</td>
+                                          <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap min-w-[80px] border-l-2 border-gray-400">{formatCurrency(dailyRow.penalty_yen ?? 0)}</td>
+                                          <td className="p-2 sm:p-3 text-center font-semibold text-xs sm:text-sm whitespace-nowrap min-w-[90px]">{formatCurrency(dailyRow.deduction_yen ?? 0)}</td>
+                                          <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap min-w-[70px]">{formatCurrency(dailyRow.hourly_price ?? 0)}</td>
+                                          <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap min-w-[90px]">{formatCurrency(dailyRow.base_pay ?? 0)}</td>
+                                          <td className="p-2 sm:p-3 text-center whitespace-nowrap border-l-2 border-gray-300 min-w-[90px]">
+                                            <div className="leading-tight">
+                                              <div className="text-[10px] text-gray-600">{Number(dailyRow.main_nomination_count || 0)}</div>
+                                              <div className="font-semibold">{formatCurrency(dailyRow.main_nomination_fee || 0)}</div>
+                                            </div>
                                           </td>
                                           <td className="p-2 sm:p-3 text-center whitespace-nowrap">
-                                            <div className="text-xs sm:text-sm">{formatCurrency(dailyRow.overtime_wage_yen || 0)}</div>
+                                            <div className="leading-tight">
+                                              <div className="text-[10px] text-gray-600">{Number(dailyRow.main_nomination_extension_count || 0)}</div>
+                                              <div className="font-semibold">{formatCurrency(dailyRow.main_nomination_extension_fee || 0)}</div>
+                                            </div>
                                           </td>
                                           <td className="p-2 sm:p-3 text-center whitespace-nowrap">
-                                            <div className="text-xs sm:text-sm">{formatCurrency(dailyRow.deduction_yen || 0)}</div>
+                                            <div className="leading-tight">
+                                              <div className="text-[10px] text-gray-600">{Number(dailyRow.inside_nomination_count || 0)}</div>
+                                              <div className="font-semibold">{formatCurrency(dailyRow.inside_nomination_fee || 0)}</div>
+                                            </div>
                                           </td>
-                                          <td className="p-2 sm:p-3 text-center font-semibold text-xs sm:text-sm whitespace-nowrap">{formatCurrency(dailyTotalPay)}</td>
                                           <td className="p-2 sm:p-3 text-center whitespace-nowrap">
-                                            <div className="text-xs sm:text-sm">{formatCurrency(dailyPaid)}</div>
+                                            <div className="leading-tight">
+                                              <div className="text-[10px] text-gray-600">{Number(dailyRow.inside_nomination_extension_count || 0)}</div>
+                                              <div className="font-semibold">{formatCurrency(dailyRow.inside_nomination_extension_fee || 0)}</div>
+                                            </div>
                                           </td>
-                                          <td className="p-2 sm:p-3 text-center font-semibold text-xs sm:text-sm whitespace-nowrap">{formatCurrency(dailyRealTotal)}</td>
+                                          <td className="p-2 sm:p-3 text-center whitespace-nowrap">
+                                            <div className="leading-tight">
+                                              <div className="text-[10px] text-gray-600">{Number(dailyRow.together_nomination_count || 0)}</div>
+                                              <div className="font-semibold">{formatCurrency(dailyRow.together_nomination_fee || 0)}</div>
+                                            </div>
+                                          </td>
+                                          {payrollCategories.map((c) => (
+                                            <td key={c.id} className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap">
+                                              <div className="leading-tight">
+                                                <div className="text-[10px] text-gray-600">{Number(dailyRow.categoryAmounts?.[c.id] ?? dailyRow.categoryAmounts?.[String(c.id)] ?? 0)}</div>
+                                                <div className="font-semibold">{formatCurrency(Number(dailyRow.categoryTotals?.[c.id] ?? dailyRow.categoryTotals?.[String(c.id)] ?? 0))}</div>
+                                              </div>
+                                            </td>
+                                          ))}
+                                          <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap border-l-2 border-gray-400">{formatCurrency(dailyRow.bonus_yen ?? 0)}</td>
+                                          <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap">{formatCurrency(dailyRow.point_yen ?? 0)}</td>
+                                          <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap border-r-2 border-gray-300">{formatCurrency(dailyRow.additional_point_yen ?? 0)}</td>
+                                          <td className="p-2 sm:p-3 text-center font-semibold text-xs sm:text-sm whitespace-nowrap min-w-[90px]">{formatCurrency(dailyRow.back_total ?? 0)}</td>
+                                          <td className="p-2 sm:p-3 text-center font-semibold text-xs sm:text-sm whitespace-nowrap min-w-[90px]">{formatCurrency(dailyRow.total_pay_yen ?? 0)}</td>
+                                          <td className="p-2 sm:p-3 text-center font-bold text-xs sm:text-sm whitespace-nowrap sticky right-0 bg-white z-20 border-l border-gray-200 min-w-[90px]">{formatCurrency(dailyRow.realTotal_price ?? 0)}</td>
                                         </tr>
-                                      );
-                                    })}
-                                  </tbody>
-                                  <tfoot className="bg-gray-50 sticky bottom-0">
-                                    <tr className="border-t-2 border-gray-300 font-semibold">
-                                      <td className="p-2 sm:p-3 sticky left-0 bg-gray-50 z-20 border-r border-gray-200">合計</td>
-                                      <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap">
-                                        {formatHours(
-                                          dailyRowsData[row.user_id].reduce((sum: number, r: any) => sum + Number(r.basic_hours || 0), 0)
-                                        )}
-                                      </td>
-                                      <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap">
-                                        {formatCurrency(
-                                          dailyRowsData[row.user_id].reduce((sum: number, r: any) => sum + Number(r.base_pay || 0), 0)
-                                        )}
-                                      </td>
-                                      <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap">
-                                        {dailyRowsData[row.user_id].reduce((sum: number, r: any) => sum + Number(r.main_nomination_count || 0), 0)}
-                                      </td>
-                                      <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap">
-                                        {formatCurrency(
-                                          dailyRowsData[row.user_id].reduce((sum: number, r: any) => sum + Number(r.main_nomination_fee || 0), 0)
-                                        )}
-                                      </td>
-                                      <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap">
-                                        {dailyRowsData[row.user_id].reduce((sum: number, r: any) => sum + Number(r.inside_nomination_count || 0), 0)}
-                                      </td>
-                                      <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap">
-                                        {formatCurrency(
-                                          dailyRowsData[row.user_id].reduce((sum: number, r: any) => sum + Number(r.inside_nomination_fee || 0), 0)
-                                        )}
-                                      </td>
-                                      <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap">
-                                        {dailyRowsData[row.user_id].reduce((sum: number, r: any) => sum + Number(r.together_nomination_count || 0), 0)}
-                                      </td>
-                                      <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap">
-                                        {formatCurrency(
-                                          dailyRowsData[row.user_id].reduce((sum: number, r: any) => sum + Number(r.together_nomination_fee || 0), 0)
-                                        )}
-                                      </td>
-                                      <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap">
-                                        {formatCurrency(
-                                          dailyRowsData[row.user_id].reduce((sum: number, r: any) => sum + Number(r.sales_back_yen || 0), 0)
-                                        )}
-                                      </td>
-                                      <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap">
-                                        {formatCurrency(
-                                          dailyRowsData[row.user_id].reduce((sum: number, r: any) => sum + Number(r.overtime_wage_yen || 0), 0)
-                                        )}
-                                      </td>
-                                      <td className="p-2 sm:p-3 text-center text-xs sm:text-sm text-red-600 whitespace-nowrap">
-                                        -{formatCurrency(
-                                          dailyRowsData[row.user_id].reduce((sum: number, r: any) => sum + Number(r.deduction_yen || 0), 0)
-                                        )}
-                                      </td>
-                                      <td className="p-2 sm:p-3 text-center font-semibold text-xs sm:text-sm whitespace-nowrap">
-                                        {formatCurrency(
-                                          dailyRowsData[row.user_id].reduce((sum: number, r: any) => (
-                                            sum +
-                                            Number(r.base_pay || 0) +
-                                            Number(r.main_nomination_fee || 0) +
-                                            Number(r.inside_nomination_fee || 0) +
-                                            Number(r.together_nomination_fee || 0) +
-                                            Number(r.sales_back_yen || 0) +
-                                            Number(r.overtime_wage_yen || 0) -
-                                            Number(r.deduction_yen || 0)
-                                          ), 0)
-                                        )}
-                                      </td>
-                                      <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap">
-                                        {formatCurrency(
-                                          dailyRowsData[row.user_id].reduce((sum: number, r: any) => sum + Number(r.paid_price || 0), 0)
-                                        )}
-                                      </td>
-                                      <td className="p-2 sm:p-3 text-center font-semibold text-xs sm:text-sm whitespace-nowrap">
-                                        {formatCurrency(
-                                          dailyRowsData[row.user_id].reduce((sum: number, r: any) => {
-                                            const totalPay = 
-                                              Number(r.base_pay || 0) +
-                                              Number(r.main_nomination_fee || 0) +
-                                              Number(r.inside_nomination_fee || 0) +
-                                              Number(r.together_nomination_fee || 0) +
-                                              Number(r.sales_back_yen || 0) +
-                                              Number(r.overtime_wage_yen || 0) -
-                                              Number(r.deduction_yen || 0);
-                                            const paid = Number(r.paid_price || 0);
-                                            return sum + (totalPay - paid);
-                                          }, 0)
-                                        )}
-                                      </td>
-                                    </tr>
-                                  </tfoot>
+                                      ))}
+                                    </tbody>
+                                    <tfoot className="bg-gray-50 sticky bottom-0">
+                                      <tr className="border-t-2 border-gray-300 font-semibold">
+                                        <td className="p-2 sm:p-3 sticky left-0 bg-gray-50 z-20 border-r border-gray-200 min-w-[110px] sm:min-w-[130px]">合計</td>
+                                        <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap min-w-[70px]">
+                                          {formatHours(dailyRowsData[row.user_id].reduce((sum: number, r: any) => sum + Number(r.basic_hours || 0), 0))}
+                                        </td>
+                                        <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap border-l-2 border-gray-300 min-w-[90px]">
+                                          {formatCurrency(dailyRowsData[row.user_id].reduce((sum: number, r: any) => sum + Number(r.paid_price || 0), 0))}
+                                        </td>
+                                        <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap min-w-[70px]">
+                                          {formatCurrency(dailyRowsData[row.user_id].reduce((sum: number, r: any) => sum + Number(r.pickup_yen || 0), 0))}
+                                        </td>
+                                        <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap min-w-[80px]">
+                                          {formatCurrency(dailyRowsData[row.user_id].reduce((sum: number, r: any) => sum + Number(r.hairmake_yen || 0), 0))}
+                                        </td>
+                                        <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap min-w-[70px]">
+                                          {formatCurrency(dailyRowsData[row.user_id].reduce((sum: number, r: any) => sum + Number(r.rental_yen || 0), 0))}
+                                        </td>
+                                        <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap border-r-2 border-gray-300 min-w-[70px]">
+                                          {formatCurrency(dailyRowsData[row.user_id].reduce((sum: number, r: any) => sum + Number(r.other_deduct_yen || 0), 0))}
+                                        </td>
+                                        <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap min-w-[80px]">
+                                          {formatCurrency(dailyRowsData[row.user_id].reduce((sum: number, r: any) => sum + Number(r.penalty_yen || 0), 0))}
+                                        </td>
+                                        <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap min-w-[90px]">
+                                          {formatCurrency(dailyRowsData[row.user_id].reduce((sum: number, r: any) => sum + Number(r.deduction_yen || 0), 0))}
+                                        </td>
+                                        <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap text-gray-500 min-w-[70px]">-</td>
+                                        <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap min-w-[90px]">
+                                          {formatCurrency(dailyRowsData[row.user_id].reduce((sum: number, r: any) => sum + Number(r.base_pay || 0), 0))}
+                                        </td>
+                                        <td className="p-2 sm:p-3 text-center whitespace-nowrap border-l-2 border-gray-300 min-w-[90px]">
+                                          <div className="leading-tight">
+                                            <div className="text-[10px] text-gray-600">{dailyRowsData[row.user_id].reduce((sum: number, r: any) => sum + Number(r.main_nomination_count || 0), 0)}</div>
+                                            <div>{formatCurrency(dailyRowsData[row.user_id].reduce((sum: number, r: any) => sum + Number(r.main_nomination_fee || 0), 0))}</div>
+                                          </div>
+                                        </td>
+                                        <td className="p-2 sm:p-3 text-center whitespace-nowrap min-w-[90px]">
+                                          <div className="leading-tight">
+                                            <div className="text-[10px] text-gray-600">{dailyRowsData[row.user_id].reduce((sum: number, r: any) => sum + Number(r.main_nomination_extension_count || 0), 0)}</div>
+                                            <div>{formatCurrency(dailyRowsData[row.user_id].reduce((sum: number, r: any) => sum + Number(r.main_nomination_extension_fee || 0), 0))}</div>
+                                          </div>
+                                        </td>
+                                        <td className="p-2 sm:p-3 text-center whitespace-nowrap min-w-[90px]">
+                                          <div className="leading-tight">
+                                            <div className="text-[10px] text-gray-600">{dailyRowsData[row.user_id].reduce((sum: number, r: any) => sum + Number(r.inside_nomination_count || 0), 0)}</div>
+                                            <div>{formatCurrency(dailyRowsData[row.user_id].reduce((sum: number, r: any) => sum + Number(r.inside_nomination_fee || 0), 0))}</div>
+                                          </div>
+                                        </td>
+                                        <td className="p-2 sm:p-3 text-center whitespace-nowrap min-w-[90px]">
+                                          <div className="leading-tight">
+                                            <div className="text-[10px] text-gray-600">{dailyRowsData[row.user_id].reduce((sum: number, r: any) => sum + Number(r.inside_nomination_extension_count || 0), 0)}</div>
+                                            <div>{formatCurrency(dailyRowsData[row.user_id].reduce((sum: number, r: any) => sum + Number(r.inside_nomination_extension_fee || 0), 0))}</div>
+                                          </div>
+                                        </td>
+                                        <td className="p-2 sm:p-3 text-center whitespace-nowrap min-w-[90px]">
+                                          <div className="leading-tight">
+                                            <div className="text-[10px] text-gray-600">{dailyRowsData[row.user_id].reduce((sum: number, r: any) => sum + Number(r.together_nomination_count || 0), 0)}</div>
+                                            <div>{formatCurrency(dailyRowsData[row.user_id].reduce((sum: number, r: any) => sum + Number(r.together_nomination_fee || 0), 0))}</div>
+                                          </div>
+                                        </td>
+                                        {payrollCategories.map((c) => (
+                                          <td key={c.id} className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap min-w-[90px]">
+                                            <div className="leading-tight">
+                                              <div className="text-[10px] text-gray-600">
+                                                {dailyRowsData[row.user_id].reduce((sum: number, r: any) => sum + Number(r.categoryAmounts?.[c.id] ?? r.categoryAmounts?.[String(c.id)] ?? 0), 0)}
+                                              </div>
+                                              <div>
+                                                {formatCurrency(
+                                                  dailyRowsData[row.user_id].reduce((sum: number, r: any) => {
+                                                    const v = Number(r.categoryTotals?.[c.id] ?? r.categoryTotals?.[String(c.id)] ?? 0);
+                                                    return sum + (Number.isFinite(v) ? v : 0);
+                                                  }, 0)
+                                                )}
+                                              </div>
+                                            </div>
+                                          </td>
+                                        ))}
+                                        <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap min-w-[80px]">{formatCurrency(dailyRowsData[row.user_id].reduce((sum: number, r: any) => sum + Number(r.bonus_yen || 0), 0))}</td>
+                                        <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap min-w-[80px]">{formatCurrency(dailyRowsData[row.user_id].reduce((sum: number, r: any) => sum + Number(r.point_yen || 0), 0))}</td>
+                                        <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap border-r-2 border-gray-300 min-w-[95px]">{formatCurrency(dailyRowsData[row.user_id].reduce((sum: number, r: any) => sum + Number(r.additional_point_yen || 0), 0))}</td>
+                                        <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap min-w-[90px]">{formatCurrency(dailyRowsData[row.user_id].reduce((sum: number, r: any) => sum + Number(r.back_total || 0), 0))}</td>
+                                        <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap min-w-[90px]">{formatCurrency(dailyRowsData[row.user_id].reduce((sum: number, r: any) => sum + Number(r.total_pay_yen || 0), 0))}</td>
+                                        <td className="p-2 sm:p-3 text-center font-bold text-xs sm:text-sm whitespace-nowrap sticky right-0 bg-gray-50 z-20 border-l border-gray-200 min-w-[90px]">
+                                          {formatCurrency(dailyRowsData[row.user_id].reduce((sum: number, r: any) => sum + Number(r.realTotal_price || 0), 0))}
+                                        </td>
+                                      </tr>
+                                    </tfoot>
                                   </table>
                                 </div>
                               </div>
@@ -1502,93 +1693,129 @@ export default function PayrollPreviewPage() {
                 <tfoot className="bg-gray-50 sticky bottom-0">
                   <tr className="border-t-2 border-gray-300 font-semibold">
                     <td className="p-2 sm:p-3 sticky left-0 bg-gray-50 z-20 border-r border-gray-200">合計</td>
-                    {/* <td className="p-2" /> */}
                     <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap">
                       {formatHours(monthlyRows.reduce((sum, r) => sum + Number(r.basic_hours || 0), 0))}
                     </td>
+
+                    {/* 控除（5項目） */}
+                    <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap border-l-2 border-gray-300">
+                      {formatCurrency(monthlyRows.reduce((sum, r) => sum + Number(r.paid_price || 0), 0))}
+                    </td>
+                    <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap">
+                      {formatCurrency(monthlyRows.reduce((sum, r) => sum + Number(r.pickup_yen || 0), 0))}
+                    </td>
+                    <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap">
+                      {formatCurrency(monthlyRows.reduce((sum, r) => sum + Number(r.hairmake_yen || 0), 0))}
+                    </td>
+                    <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap">
+                      {formatCurrency(monthlyRows.reduce((sum, r) => sum + Number(r.rental_yen || 0), 0))}
+                    </td>
+                    <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap border-r-2 border-gray-300">
+                      {formatCurrency(monthlyRows.reduce((sum, r) => sum + Number(r.other_deduct_yen || 0), 0))}
+                    </td>
+
+                    <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap">
+                      {formatCurrency(monthlyRows.reduce((sum, r) => sum + Number(r.penalty_yen || 0), 0))}
+                    </td>
+                    <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap">
+                      {formatCurrency(monthlyRows.reduce((sum, r) => sum + Number(r.deduction_yen || 0), 0))}
+                    </td>
+
+                    {/* 時給（合計は意味が薄いので空欄） */}
+                    <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap text-gray-500">-</td>
+                    {/* 時間給 */}
                     <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap">
                       {formatCurrency(monthlyRows.reduce((sum, r) => sum + Number(r.base_pay || 0), 0))}
                     </td>
+
+                    {/* バック（2行） */}
+                    <td className="p-2 sm:p-3 text-center whitespace-nowrap border-l-2 border-gray-300">
+                      <div className="leading-tight">
+                        <div className="text-[10px] text-gray-600">{monthlyRows.reduce((sum, r) => sum + Number(r.main_nomination_count || 0), 0)}</div>
+                        <div>{formatCurrency(monthlyRows.reduce((sum, r) => sum + Number(r.main_nomination_fee || 0), 0))}</div>
+                      </div>
+                    </td>
+                    <td className="p-2 sm:p-3 text-center whitespace-nowrap">
+                      <div className="leading-tight">
+                        <div className="text-[10px] text-gray-600">{monthlyRows.reduce((sum, r) => sum + Number(r.main_nomination_extension_count || 0), 0)}</div>
+                        <div>{formatCurrency(monthlyRows.reduce((sum, r) => sum + Number(r.main_nomination_extension_fee || 0), 0))}</div>
+                      </div>
+                    </td>
+                    <td className="p-2 sm:p-3 text-center whitespace-nowrap">
+                      <div className="leading-tight">
+                        <div className="text-[10px] text-gray-600">{monthlyRows.reduce((sum, r) => sum + Number(r.inside_nomination_count || 0), 0)}</div>
+                        <div>{formatCurrency(monthlyRows.reduce((sum, r) => sum + Number(r.inside_nomination_fee || 0), 0))}</div>
+                      </div>
+                    </td>
+                    <td className="p-2 sm:p-3 text-center whitespace-nowrap">
+                      <div className="leading-tight">
+                        <div className="text-[10px] text-gray-600">{monthlyRows.reduce((sum, r) => sum + Number(r.inside_nomination_extension_count || 0), 0)}</div>
+                        <div>{formatCurrency(monthlyRows.reduce((sum, r) => sum + Number(r.inside_nomination_extension_fee || 0), 0))}</div>
+                      </div>
+                    </td>
+                    <td className="p-2 sm:p-3 text-center whitespace-nowrap">
+                      <div className="leading-tight">
+                        <div className="text-[10px] text-gray-600">{monthlyRows.reduce((sum, r) => sum + Number(r.together_nomination_count || 0), 0)}</div>
+                        <div>{formatCurrency(monthlyRows.reduce((sum, r) => sum + Number(r.together_nomination_fee || 0), 0))}</div>
+                      </div>
+                    </td>
+                    {payrollCategories.map((c) => (
+                      <td key={c.id} className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap">
+                        <div className="leading-tight">
+                          <div className="text-[10px] text-gray-600">
+                            {monthlyRows.reduce((sum, r) => sum + Number(r.categoryAmounts?.[c.id] ?? r.categoryAmounts?.[String(c.id)] ?? 0), 0)}
+                          </div>
+                          <div>
+                            {formatCurrency(
+                              monthlyRows.reduce((sum, r) => {
+                                const v = Number(r.categoryTotals?.[c.id] ?? r.categoryTotals?.[String(c.id)] ?? 0);
+                                return sum + (Number.isFinite(v) ? v : 0);
+                              }, 0)
+                            )}
+                          </div>
+                        </div>
+                      </td>
+                    ))}
                     <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap">
-                      {monthlyRows.reduce((sum, r) => sum + Number(r.main_nomination_count || 0), 0)}
+                      {formatCurrency(monthlyRows.reduce((sum, r) => sum + Number(r.bonus_yen || 0), 0))}
                     </td>
                     <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap">
-                      {formatCurrency(monthlyRows.reduce((sum, r) => sum + Number(r.main_nomination_fee || 0), 0))}
+                      {formatCurrency(monthlyRows.reduce((sum, r) => sum + Number(r.point_yen || 0), 0))}
+                    </td>
+                    <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap border-r-2 border-gray-300">
+                      {formatCurrency(monthlyRows.reduce((sum, r) => sum + Number(r.additional_point_yen || 0), 0))}
+                    </td>
+
+                    <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap">
+                      {formatCurrency(monthlyRows.reduce((sum, r) => sum + Number(r.back_total || 0), 0))}
                     </td>
                     <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap">
-                      {monthlyRows.reduce((sum, r) => sum + Number(r.inside_nomination_count || 0), 0)}
-                    </td>
-                    <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap">
-                      {formatCurrency(monthlyRows.reduce((sum, r) => sum + Number(r.inside_nomination_fee || 0), 0))}
-                    </td>
-                    <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap">
-                      {monthlyRows.reduce((sum, r) => sum + Number(r.together_nomination_count || 0), 0)}
-                    </td>
-                    <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap">
-                      {formatCurrency(monthlyRows.reduce((sum, r) => sum + Number(r.together_nomination_fee || 0), 0))}
-                    </td>
-                    <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap">
-                      {formatCurrency(monthlyRows.reduce((sum, r) => sum + Number(r.sales_back_yen || 0), 0))}
-                    </td>
-                    <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap">
-                      {formatCurrency(monthlyRows.reduce((sum, r) => sum + Number(r.overtime_wage_yen || 0), 0))}
-                    </td>
-                    <td className="p-2 sm:p-3 text-center text-xs sm:text-sm text-red-600 whitespace-nowrap">
-                      -{formatCurrency(monthlyRows.reduce((sum, r) => sum + Number(r.deduction_yen || 0), 0))}
-                    </td>
-                    <td className="p-2 sm:p-3 text-center font-semibold text-xs sm:text-sm whitespace-nowrap">
-                      {formatCurrency(
-                        monthlyRows.reduce((sum, r) => (
-                          sum +
-                          Number(r.base_pay || 0) +
-                          Number(r.main_nomination_fee || 0) +
-                          Number(r.inside_nomination_fee || 0) +
-                          Number(r.together_nomination_fee || 0) +
-                          Number(r.sales_back_yen || 0) +
-                          Number(r.overtime_wage_yen || 0) -
-                          Number(r.deduction_yen || 0)
-                        ), 0)
-                      )}
-                    </td>
-                    <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap">
-                      {formatCurrency(monthlyRows.reduce((sum, r) => sum + Number(r.paid_price || 0), 0))}
-                    </td>
-                    <td className="p-2 sm:p-3 text-center font-semibold text-xs sm:text-sm whitespace-nowrap right-[80px] bg-gray-50 z-20 border-l border-gray-200 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.05)]">
-                      {formatCurrency(
-                        monthlyRows.reduce((sum, r) => (
-                          sum +
-                          (Number(r.base_pay || 0) +
-                            Number(r.main_nomination_fee || 0) +
-                            Number(r.inside_nomination_fee || 0) +
-                            Number(r.together_nomination_fee || 0) +
-                            Number(r.sales_back_yen || 0) +
-                            Number(r.overtime_wage_yen || 0) -
-                            Number(r.deduction_yen || 0)) -
-                            Number(r.paid_price || 0)
-                        ), 0)
-                      )}
+                      {formatCurrency(monthlyRows.reduce((sum, r) => sum + Number(r.total_pay_yen || 0), 0))}
                     </td>
                     <td className="p-2 sm:p-3 text-center whitespace-nowrap sticky right-0 bg-gray-50 z-20 border-l border-gray-200 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.05)]">
-                      <div className="flex items-center justify-center gap-1">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={handlePrintMonthlyTotals}
-                          disabled={isPrinting}
-                          className="h-8 sm:h-9 text-xs px-2 sm:px-3"
-                        >
-                          <PrinterIcon className="w-3 h-3 sm:w-4 sm:h-4" />
-                          <span className="hidden xl:inline ml-1">印刷</span>
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={handlePreviewMonthlyTotals}
-                          className="h-8 sm:h-9 px-2"
-                          title="プレビュー"
-                        >
-                          <FileText className="w-3 h-3 sm:w-4 sm:h-4" />
-                        </Button>
+                      <div className="flex flex-col items-center gap-2">
+                        <div className="font-bold">{formatCurrency(monthlyRows.reduce((sum, r) => sum + Number(r.realTotal_price || 0), 0))}</div>
+                        <div className="flex items-center justify-center gap-1">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={handlePrintMonthlyTotals}
+                            disabled={isPrinting}
+                            className="h-8 sm:h-9 text-xs px-2 sm:px-3"
+                          >
+                            <PrinterIcon className="w-3 h-3 sm:w-4 sm:h-4" />
+                            <span className="hidden xl:inline ml-1">印刷</span>
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={handlePreviewMonthlyTotals}
+                            className="h-8 sm:h-9 px-2"
+                            title="プレビュー"
+                          >
+                            <FileText className="w-3 h-3 sm:w-4 sm:h-4" />
+                          </Button>
+                        </div>
                       </div>
                     </td>
                   </tr>

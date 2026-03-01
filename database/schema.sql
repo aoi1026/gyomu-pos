@@ -224,6 +224,16 @@ CREATE TABLE IF NOT EXISTS salary (
     inside_nomination_count INTEGER DEFAULT 0 CHECK (inside_nomination_count >= 0),
     inside_nomination_fee DECIMAL(12,2) DEFAULT 0.00 CHECK (inside_nomination_fee >= 0),
     sales_back_yen DECIMAL(12,2) DEFAULT 0.00 CHECK (sales_back_yen >= 0),
+    -- 控除（前借日払=paid_price 以外）
+    pickup_yen DECIMAL(12,2) DEFAULT 0.00 CHECK (pickup_yen >= 0),
+    hairmake_yen DECIMAL(12,2) DEFAULT 0.00 CHECK (hairmake_yen >= 0),
+    rental_yen DECIMAL(12,2) DEFAULT 0.00 CHECK (rental_yen >= 0),
+    other_deduct_yen DECIMAL(12,2) DEFAULT 0.00 CHECK (other_deduct_yen >= 0),
+    penalty_yen DECIMAL(12,2) DEFAULT 0.00 CHECK (penalty_yen >= 0),
+    -- 追加（入力可能）
+    bonus_yen DECIMAL(12,2) DEFAULT 0.00 CHECK (bonus_yen >= 0),
+    point_yen DECIMAL(12,2) DEFAULT 0.00 CHECK (point_yen >= 0),
+    additional_point_yen DECIMAL(12,2) DEFAULT 0.00 CHECK (additional_point_yen >= 0),
     together_nomination_cost DECIMAL(12,2) DEFAULT 0.00 CHECK (together_nomination_cost >= 0),
     together_nomination_count INTEGER DEFAULT 0 CHECK (together_nomination_count >= 0),
     together_nomination_fee DECIMAL(12,2) DEFAULT 0.00 CHECK (together_nomination_fee >= 0),
@@ -242,6 +252,52 @@ CREATE TABLE IF NOT EXISTS salary (
 -- 給与インデックス
 CREATE INDEX IF NOT EXISTS idx_salary_user_month ON salary(user_id, year, month);
 
+-- 日別給与テーブル（キャスト別給与計算表と同じ項目）
+CREATE TABLE IF NOT EXISTS salary_daily (
+    id SERIAL PRIMARY KEY,
+    date DATE NOT NULL,
+    user_id INTEGER NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+    basic_hours DECIMAL(10,2) DEFAULT 0.00 CHECK (basic_hours >= 0),
+    paid_price DECIMAL(12,2) DEFAULT 0.00 CHECK (paid_price >= 0),
+    pickup_yen DECIMAL(12,2) DEFAULT 0.00 CHECK (pickup_yen >= 0),
+    hairmake_yen DECIMAL(12,2) DEFAULT 0.00 CHECK (hairmake_yen >= 0),
+    rental_yen DECIMAL(12,2) DEFAULT 0.00 CHECK (rental_yen >= 0),
+    other_deduct_yen DECIMAL(12,2) DEFAULT 0.00 CHECK (other_deduct_yen >= 0),
+    penalty_yen DECIMAL(12,2) DEFAULT 0.00 CHECK (penalty_yen >= 0),
+    deduction_yen DECIMAL(12,2) DEFAULT 0.00,
+    hourly_price DECIMAL(10,2) DEFAULT 0.00 CHECK (hourly_price >= 0),
+    base_pay DECIMAL(12,2) DEFAULT 0.00 CHECK (base_pay >= 0),
+    main_nomination_count INTEGER DEFAULT 0 CHECK (main_nomination_count >= 0),
+    main_nomination_fee DECIMAL(12,2) DEFAULT 0.00 CHECK (main_nomination_fee >= 0),
+    main_nomination_extension_count INTEGER DEFAULT 0 CHECK (main_nomination_extension_count >= 0),
+    main_nomination_extension_fee DECIMAL(12,2) DEFAULT 0.00 CHECK (main_nomination_extension_fee >= 0),
+    inside_nomination_count INTEGER DEFAULT 0 CHECK (inside_nomination_count >= 0),
+    inside_nomination_fee DECIMAL(12,2) DEFAULT 0.00 CHECK (inside_nomination_fee >= 0),
+    inside_nomination_extension_count INTEGER DEFAULT 0 CHECK (inside_nomination_extension_count >= 0),
+    inside_nomination_extension_fee DECIMAL(12,2) DEFAULT 0.00 CHECK (inside_nomination_extension_fee >= 0),
+    together_nomination_count INTEGER DEFAULT 0 CHECK (together_nomination_count >= 0),
+    together_nomination_fee DECIMAL(12,2) DEFAULT 0.00 CHECK (together_nomination_fee >= 0),
+    category_totals JSONB DEFAULT '{}'::jsonb,
+    bonus_yen DECIMAL(12,2) DEFAULT 0.00 CHECK (bonus_yen >= 0),
+    point_yen DECIMAL(12,2) DEFAULT 0.00 CHECK (point_yen >= 0),
+    additional_point_yen DECIMAL(12,2) DEFAULT 0.00 CHECK (additional_point_yen >= 0),
+    back_total DECIMAL(12,2) DEFAULT 0.00 CHECK (back_total >= 0),
+    total_pay_yen DECIMAL(12,2) DEFAULT 0.00,
+    realTotal_price DECIMAL(12,2) DEFAULT 0.00,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(date, user_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_salary_daily_date ON salary_daily(date);
+CREATE INDEX IF NOT EXISTS idx_salary_daily_user_id ON salary_daily(user_id);
+CREATE INDEX IF NOT EXISTS idx_salary_daily_date_user ON salary_daily(date, user_id);
+
+DROP TRIGGER IF EXISTS update_salary_daily_updated_at ON salary_daily;
+CREATE TRIGGER update_salary_daily_updated_at
+    BEFORE UPDATE ON salary_daily
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
 -- 経費テーブル
 CREATE TABLE IF NOT EXISTS deduct (
     id SERIAL PRIMARY KEY,
@@ -255,6 +311,7 @@ CREATE TABLE IF NOT EXISTS deduct (
 
 CREATE INDEX IF NOT EXISTS idx_deduct_date ON deduct(date);
 
+DROP TRIGGER IF EXISTS update_deduct_updated_at ON deduct;
 CREATE TRIGGER update_deduct_updated_at
     BEFORE UPDATE ON deduct
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
@@ -300,6 +357,7 @@ CREATE TABLE IF NOT EXISTS session_payments (
 CREATE INDEX IF NOT EXISTS idx_session_payments_session_id ON session_payments(session_id);
 CREATE INDEX IF NOT EXISTS idx_session_payments_created_at ON session_payments(created_at);
 
+DROP TRIGGER IF EXISTS update_session_payments_updated_at ON session_payments;
 CREATE TRIGGER update_session_payments_updated_at
     BEFORE UPDATE ON session_payments
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();

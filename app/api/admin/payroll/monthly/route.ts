@@ -82,88 +82,26 @@ export async function GET(request: NextRequest) {
       useSalary = true;
     }
 
-    const sql = useSalary
-      ? `
+    // マスタ取得（カテゴリ・指名単価）
+    const [categoriesRes, chargesRes] = await Promise.all([
+      client.query(`SELECT id, name FROM category ORDER BY id`),
+      client.query(
+        `SELECT charge_name, COALESCE(value, 0) AS value FROM add_charges WHERE charge_name IN ('main','inside','together')`
+      ),
+    ]);
+    const categories = categoriesRes.rows as Array<{ id: number; name: string }>;
+    const charges: Record<string, number> = {};
+    for (const r of chargesRes.rows) charges[String(r.charge_name)] = Number(r.value) || 0;
+
+    let result: { rows: any[] };
+    let catBackMap: Record<string, Record<string, number>> = {};
+
+    if (mode === 'date') {
+      // 単日: 従来の集計SQLで1日分を取得し、salary_daily があればその行で上書き
+      const dateModeSql = `
       WITH casts AS (
-        SELECT id AS user_id, name, mail AS email, hourly_price, main_nomination, inside_nomination, together_nomination, drink_back, food_back
-        FROM "user"
-        WHERE role = 'cast'
-      ),
-      att AS (
-        SELECT a.staff_id AS user_id, COALESCE(SUM(a.total_work_hours), 0) AS hours
-        FROM attendance a
-         WHERE DATE(a.created_at) >= $1::date AND DATE(a.created_at) < $2::date
-        GROUP BY a.staff_id
-      ),
-      nom_main AS (
-        SELECT n.cast_id AS user_id,
-               COUNT(*) AS cnt,
-               COALESCE(SUM(n.cost_cast), 0) AS sum_fee
-        FROM nomination n
-        WHERE n.type_id = 'main'
-          AND n.created_at >= $1::date AND n.created_at < $2::date
-        GROUP BY n.cast_id
-      ),
-      nom_inside AS (
-        SELECT n.cast_id AS user_id,
-               COUNT(*) AS cnt,
-               COALESCE(SUM(n.cost_cast), 0) AS sum_fee
-        FROM nomination n
-        WHERE n.type_id = 'inside'
-          AND n.created_at >= $1::date AND n.created_at < $2::date
-        GROUP BY n.cast_id
-      ),
-      nom_together AS (
-        SELECT 
-          n.cast_id AS user_id, 
-          COUNT(*) AS cnt,
-          COALESCE(SUM(n.cost), 0) AS sum_cost,
-          COALESCE(SUM(n.cost_cast), 0) AS sum_fee
-        FROM nomination n
-        WHERE n.type_id = 'together'
-          AND DATE(n.created_at) >= $1::date AND DATE(n.created_at) < $2::date
-        GROUP BY n.cast_id
-      ),
-      ac AS (
-        SELECT COALESCE(value, 0) AS together_unit
-        FROM add_charges 
-        WHERE charge_name = 'together'
-        LIMIT 1
-      ),
-      sal AS (
-        SELECT * FROM salary WHERE year = $3 AND month = $4
-      )
-      SELECT 
-        c.user_id,
-        c.name,
-        c.email,
-        COALESCE(att.hours, 0)::DECIMAL(10,2) AS basic_hours,
-        c.hourly_price,
-        (COALESCE(att.hours, 0) * COALESCE(c.hourly_price, 0))::DECIMAL(12,2) AS base_pay,
-        COALESCE(nm.cnt, 0)::INT AS main_nomination_count,
-        COALESCE(nm.sum_fee, 0)::DECIMAL(12,2) AS main_nomination_fee,
-        COALESCE(ni.cnt, 0)::INT AS inside_nomination_count,
-        COALESCE(ni.sum_fee, 0)::DECIMAL(12,2) AS inside_nomination_fee,
-        COALESCE(sal.together_nomination_cost, COALESCE(nt.sum_cost, 0))::DECIMAL(12,2) AS together_nomination_cost,
-        COALESCE(nt.cnt, 0)::INT AS together_nomination_count,
-        COALESCE(nt.sum_fee, 0)::DECIMAL(12,2) AS together_nomination_fee,
-        COALESCE(sal.sales_back_yen, 0)::DECIMAL(12,2) AS sales_back_yen,
-        COALESCE(sal.overtime_wage_yen, 0)::DECIMAL(12,2) AS overtime_wage_yen,
-        COALESCE(sal.deduction_yen, 0)::DECIMAL(12,2) AS deduction_yen,
-        COALESCE(sal.paid_price, 0)::DECIMAL(12,2) AS paid_price,
-        COALESCE(sal.realTotal_price, 0)::DECIMAL(12,2) AS realTotal_price
-      FROM casts c
-      LEFT JOIN att att ON att.user_id = c.user_id
-      LEFT JOIN nom_main nm ON nm.user_id = c.user_id
-      LEFT JOIN nom_inside ni ON ni.user_id = c.user_id
-      LEFT JOIN nom_together nt ON nt.user_id = c.user_id
-      LEFT JOIN sal sal ON sal.user_id = c.user_id
-      LEFT JOIN ac ac ON TRUE
-      ORDER BY c.name
-      `
-      : `
-      WITH casts AS (
-        SELECT id AS user_id, name, mail AS email, hourly_price, main_nomination, inside_nomination, together_nomination, drink_back, food_back
+        SELECT id AS user_id, name, mail AS email,
+               hourly_price, main_nomination, inside_nomination, together_nomination
         FROM "user"
         WHERE role = 'cast'
       ),
@@ -173,114 +111,360 @@ export async function GET(request: NextRequest) {
         WHERE DATE(a.created_at) >= $1::date AND DATE(a.created_at) < $2::date
         GROUP BY a.staff_id
       ),
-      nom_main AS (
-        SELECT n.cast_id AS user_id,
-               COUNT(*) AS cnt,
-               COALESCE(SUM(n.cost_cast), 0) AS sum_fee
+      ext_events AS (
+        SELECT s.id AS session_id,
+               (e->>'timestamp')::bigint AS ts_ms
+        FROM sessions s
+        CROSS JOIN LATERAL jsonb_array_elements(COALESCE(s.set_extensions, '[]'::jsonb)) e
+        WHERE (e->>'timestamp') IS NOT NULL
+          AND to_timestamp(((e->>'timestamp')::numeric)/1000) >= $1::date
+          AND to_timestamp(((e->>'timestamp')::numeric)/1000) < $2::date
+      ),
+      nom AS (
+        SELECT
+          n.cast_id AS user_id,
+          SUM(CASE WHEN n.type_id = 'main' THEN 1 ELSE 0 END)::int AS main_cnt,
+          SUM(CASE WHEN n.type_id = 'inside' THEN 1 ELSE 0 END)::int AS inside_cnt,
+          SUM(CASE WHEN n.type_id = 'together' THEN 1 ELSE 0 END)::int AS together_cnt,
+          SUM(CASE WHEN n.type_id IN ('main','together') THEN COALESCE(ext_after.cnt, 0) ELSE 0 END)::int AS main_ext_cnt,
+          SUM(CASE WHEN n.type_id = 'inside' THEN COALESCE(ext_after.cnt, 0) ELSE 0 END)::int AS inside_ext_cnt
         FROM nomination n
-        WHERE n.type_id = 'main'
-          AND DATE(n.created_at) >= $1::date AND DATE(n.created_at) < $2::date
+        LEFT JOIN LATERAL (
+          SELECT COUNT(*)::int AS cnt
+          FROM ext_events ee
+          WHERE ee.session_id = n.session_id
+            AND ee.ts_ms > (EXTRACT(EPOCH FROM n.created_at) * 1000)::bigint
+        ) ext_after ON TRUE
+        WHERE n.created_at >= $1::date AND n.created_at < $2::date
         GROUP BY n.cast_id
-      ),
-      nom_inside AS (
-        SELECT n.cast_id AS user_id,
-               COUNT(*) AS cnt,
-               COALESCE(SUM(n.cost_cast), 0) AS sum_fee
-        FROM nomination n
-        WHERE n.type_id = 'inside'
-          AND DATE(n.created_at) >= $1::date AND DATE(n.created_at) < $2::date
-        GROUP BY n.cast_id
-      ),
-      nom_together AS (
-        SELECT 
-          n.cast_id AS user_id, 
-          COUNT(*) AS cnt,
-          COALESCE(SUM(n.cost), 0) AS sum_cost,
-          COALESCE(SUM(n.cost_cast), 0) AS sum_fee
-        FROM nomination n
-        WHERE n.type_id = 'together'
-          AND DATE(n.created_at) >= $1::date AND DATE(n.created_at) < $2::date
-        GROUP BY n.cast_id
-      ),
-      ac AS (
-        SELECT COALESCE(value, 0) AS together_unit
-        FROM add_charges 
-        WHERE charge_name = 'together'
-        LIMIT 1
-      ),
-      sales_back AS (
-        SELECT 
-          so.cast_id AS user_id,
-          COALESCE(SUM(
-            CASE 
-              -- castsalary_priceが既に計算されている場合はそれを使用
-              WHEN so.castsalary_price IS NOT NULL AND so.castsalary_price > 0 THEN so.castsalary_price
-              -- カテゴリに応じてバック率を適用
-              WHEN p.category_id IN (1, 2) THEN so.total_price * COALESCE(u.drink_back, 0) / 100.0
-              WHEN p.category_id = 3 THEN so.total_price * COALESCE(u.food_back, 0) / 100.0
-              ELSE 0
-            END
-          ), 0) AS sales_back_yen
-        FROM salesorder so
-        INNER JOIN "user" u ON u.id = so.cast_id AND u.role = 'cast'
-        LEFT JOIN product p ON p.id = so.product_id
-        WHERE so.status = 'accepted'
-          AND so.for_cast = 1
-          AND so.cast_id IS NOT NULL
-          AND DATE(so.accepted_at) >= $1::date 
-          AND DATE(so.accepted_at) < $2::date
-        GROUP BY so.cast_id
       )
-      SELECT 
+      SELECT
         c.user_id,
         c.name,
         c.email,
         COALESCE(att.hours, 0)::DECIMAL(10,2) AS basic_hours,
         c.hourly_price,
+        c.main_nomination,
+        c.inside_nomination,
+        c.together_nomination,
         (COALESCE(att.hours, 0) * COALESCE(c.hourly_price, 0))::DECIMAL(12,2) AS base_pay,
-        COALESCE(nm.cnt, 0)::INT AS main_nomination_count,
-        COALESCE(nm.sum_fee, 0)::DECIMAL(12,2) AS main_nomination_fee,
-        COALESCE(ni.cnt, 0)::INT AS inside_nomination_count,
-        COALESCE(ni.sum_fee, 0)::DECIMAL(12,2) AS inside_nomination_fee,
-        COALESCE(nt.sum_cost, 0)::DECIMAL(12,2) AS together_nomination_cost,
-        COALESCE(nt.cnt, 0)::INT AS together_nomination_count,
-        COALESCE(nt.sum_fee, 0)::DECIMAL(12,2) AS together_nomination_fee,
-        COALESCE(sb.sales_back_yen, 0)::DECIMAL(12,2) AS sales_back_yen,
-        0::DECIMAL(12,2) AS overtime_wage_yen,
-        0::DECIMAL(12,2) AS deduction_yen,
-        0::DECIMAL(12,2) AS paid_price,
-        0::DECIMAL(12,2) AS realTotal_price
+        COALESCE(nom.main_cnt, 0) AS main_nomination_count,
+        COALESCE(nom.main_ext_cnt, 0) AS main_nomination_extension_count,
+        COALESCE(nom.inside_cnt, 0) AS inside_nomination_count,
+        COALESCE(nom.inside_ext_cnt, 0) AS inside_nomination_extension_count,
+        COALESCE(nom.together_cnt, 0) AS together_nomination_count,
+        0::DECIMAL(12,2) AS pickup_yen,
+        0::DECIMAL(12,2) AS hairmake_yen,
+        0::DECIMAL(12,2) AS rental_yen,
+        0::DECIMAL(12,2) AS other_deduct_yen,
+        0::DECIMAL(12,2) AS penalty_yen,
+        0::DECIMAL(12,2) AS bonus_yen,
+        0::DECIMAL(12,2) AS point_yen,
+        0::DECIMAL(12,2) AS additional_point_yen,
+        0::DECIMAL(12,2) AS paid_price
       FROM casts c
       LEFT JOIN att att ON att.user_id = c.user_id
-      LEFT JOIN nom_main nm ON nm.user_id = c.user_id
-      LEFT JOIN nom_inside ni ON ni.user_id = c.user_id
-      LEFT JOIN nom_together nt ON nt.user_id = c.user_id
-      LEFT JOIN sales_back sb ON sb.user_id = c.user_id
-      LEFT JOIN ac ac ON TRUE
+      LEFT JOIN nom nom ON nom.user_id = c.user_id
       ORDER BY c.name
       `;
+      const [dateResult, sdRes, catBackRes] = await Promise.all([
+        client.query(dateModeSql, [rangeStart, rangeEndExclusive]),
+        client.query(`SELECT * FROM salary_daily WHERE date = $1::date`, [rangeStart]).catch(() => ({ rows: [] })),
+        client.query(
+          `SELECT so.cast_id AS user_id, p.category_id,
+             COALESCE(SUM(so.amount), 0)::INT AS sum_amount,
+             COALESCE(SUM(so.castsalary_price), 0)::DECIMAL(12,2) AS sum_yen
+           FROM salesorder so INNER JOIN product p ON p.id = so.product_id
+           WHERE so.status = 'accepted' AND so.for_cast = 1 AND so.cast_id IS NOT NULL
+             AND DATE(so.accepted_at) >= $1::date AND DATE(so.accepted_at) < $2::date
+           GROUP BY so.cast_id, p.category_id`,
+          [rangeStart, rangeEndExclusive]
+        ),
+      ]);
+      const sdByUser: Record<string, any> = {};
+      for (const row of (sdRes.rows as any[])) {
+        sdByUser[String(row.user_id)] = row;
+      }
+      const catAmountMap: Record<string, Record<string, number>> = {};
+      for (const r of catBackRes.rows as any[]) {
+        const uid = String(r.user_id);
+        const cid = String(r.category_id);
+        if (!catBackMap[uid]) catBackMap[uid] = {};
+        if (!catAmountMap[uid]) catAmountMap[uid] = {};
+        catBackMap[uid][cid] = Number(r.sum_yen) || 0;
+        catAmountMap[uid][cid] = Number(r.sum_amount) || 0;
+      }
+      result = {
+        rows: (dateResult.rows as any[]).map((r) => {
+          const uid = String(r.user_id);
+          const sd = sdByUser[uid];
+          if (sd) {
+            const categoryTotals = sd.category_totals && typeof sd.category_totals === 'object' ? sd.category_totals : {};
+            const categoryAmounts = catAmountMap[uid] || {};
+            const sales_back_yen = Object.values(categoryTotals).reduce((s: number, x: any) => s + (Number(x) || 0), 0);
+            return {
+              user_id: r.user_id,
+              name: r.name,
+              email: r.email,
+              basic_hours: Number(sd.basic_hours || 0),
+              hourly_price: Number(sd.hourly_price || 0),
+              main_nomination: r.main_nomination,
+              inside_nomination: r.inside_nomination,
+              together_nomination: r.together_nomination,
+              base_pay: Number(sd.base_pay || 0),
+              main_nomination_count: Number(sd.main_nomination_count || 0),
+              main_nomination_extension_count: Number(sd.main_nomination_extension_count || 0),
+              inside_nomination_count: Number(sd.inside_nomination_count || 0),
+              inside_nomination_extension_count: Number(sd.inside_nomination_extension_count || 0),
+              together_nomination_count: Number(sd.together_nomination_count || 0),
+              paid_price: Number(sd.paid_price || 0),
+              pickup_yen: Number(sd.pickup_yen || 0),
+              hairmake_yen: Number(sd.hairmake_yen || 0),
+              rental_yen: Number(sd.rental_yen || 0),
+              other_deduct_yen: Number(sd.other_deduct_yen || 0),
+              penalty_yen: Number(sd.penalty_yen || 0),
+              bonus_yen: Number(sd.bonus_yen || 0),
+              point_yen: Number(sd.point_yen || 0),
+              additional_point_yen: Number(sd.additional_point_yen || 0),
+              categoryTotals,
+              categoryAmounts,
+              main_nomination_fee: Number(sd.main_nomination_fee || 0),
+              main_nomination_extension_fee: Number(sd.main_nomination_extension_fee || 0),
+              inside_nomination_fee: Number(sd.inside_nomination_fee || 0),
+              inside_nomination_extension_fee: Number(sd.inside_nomination_extension_fee || 0),
+              together_nomination_fee: Number(sd.together_nomination_fee || 0),
+              sales_back_yen,
+              back_total: Number(sd.back_total || 0),
+              deduction_yen: Number(sd.deduction_yen || 0),
+              total_pay_yen: Number(sd.total_pay_yen || 0),
+              realTotal_price: Number(sd.realTotal_price || 0),
+              _fromSalaryDaily: true,
+            };
+          }
+          return { ...r, categoryTotals: catBackMap[uid] || {}, categoryAmounts: catAmountMap[uid] || {} };
+        }),
+      };
+    } else if (mode === 'month' || mode === 'range') {
+      // 月/範囲: salary_daily の集計を利用。カテゴリ列は salesorder から amount・castsalary を取得
+      const [castsRes, aggRes, catAggRes, catSalesRes] = await Promise.all([
+        client.query(
+          `SELECT id AS user_id, name, mail AS email, hourly_price, main_nomination, inside_nomination, together_nomination FROM "user" WHERE role = 'cast' ORDER BY name`
+        ),
+        client.query(
+          `SELECT user_id,
+            COALESCE(SUM(basic_hours), 0)::DECIMAL(10,2) AS basic_hours,
+            COALESCE(SUM(paid_price), 0)::DECIMAL(12,2) AS paid_price,
+            COALESCE(SUM(pickup_yen), 0)::DECIMAL(12,2) AS pickup_yen,
+            COALESCE(SUM(hairmake_yen), 0)::DECIMAL(12,2) AS hairmake_yen,
+            COALESCE(SUM(rental_yen), 0)::DECIMAL(12,2) AS rental_yen,
+            COALESCE(SUM(other_deduct_yen), 0)::DECIMAL(12,2) AS other_deduct_yen,
+            COALESCE(SUM(penalty_yen), 0)::DECIMAL(12,2) AS penalty_yen,
+            COALESCE(SUM(deduction_yen), 0)::DECIMAL(12,2) AS deduction_yen,
+            COALESCE(SUM(base_pay), 0)::DECIMAL(12,2) AS base_pay,
+            COALESCE(SUM(main_nomination_count), 0)::int AS main_nomination_count,
+            COALESCE(SUM(main_nomination_fee), 0)::DECIMAL(12,2) AS main_nomination_fee,
+            COALESCE(SUM(main_nomination_extension_count), 0)::int AS main_nomination_extension_count,
+            COALESCE(SUM(main_nomination_extension_fee), 0)::DECIMAL(12,2) AS main_nomination_extension_fee,
+            COALESCE(SUM(inside_nomination_count), 0)::int AS inside_nomination_count,
+            COALESCE(SUM(inside_nomination_fee), 0)::DECIMAL(12,2) AS inside_nomination_fee,
+            COALESCE(SUM(inside_nomination_extension_count), 0)::int AS inside_nomination_extension_count,
+            COALESCE(SUM(inside_nomination_extension_fee), 0)::DECIMAL(12,2) AS inside_nomination_extension_fee,
+            COALESCE(SUM(together_nomination_count), 0)::int AS together_nomination_count,
+            COALESCE(SUM(together_nomination_fee), 0)::DECIMAL(12,2) AS together_nomination_fee,
+            COALESCE(SUM(bonus_yen), 0)::DECIMAL(12,2) AS bonus_yen,
+            COALESCE(SUM(point_yen), 0)::DECIMAL(12,2) AS point_yen,
+            COALESCE(SUM(additional_point_yen), 0)::DECIMAL(12,2) AS additional_point_yen,
+            COALESCE(SUM(back_total), 0)::DECIMAL(12,2) AS back_total,
+            COALESCE(SUM(total_pay_yen), 0)::DECIMAL(12,2) AS total_pay_yen,
+            COALESCE(SUM(realTotal_price), 0)::DECIMAL(12,2) AS realTotal_price
+           FROM salary_daily
+           WHERE date >= $1::date AND date < $2::date
+           GROUP BY user_id`,
+          [rangeStart, rangeEndExclusive]
+        ).catch(() => ({ rows: [] })),
+        client.query(
+          `SELECT user_id, key AS category_id, SUM((value)::numeric)::DECIMAL(12,2) AS sum_yen
+           FROM salary_daily, jsonb_each_text(COALESCE(category_totals, '{}'::jsonb))
+           WHERE date >= $1::date AND date < $2::date
+           GROUP BY user_id, key`,
+          [rangeStart, rangeEndExclusive]
+        ).catch(() => ({ rows: [] })),
+        client.query(
+          `SELECT so.cast_id AS user_id, p.category_id,
+             COALESCE(SUM(so.amount), 0)::INT AS sum_amount,
+             COALESCE(SUM(so.castsalary_price), 0)::DECIMAL(12,2) AS sum_yen
+           FROM salesorder so INNER JOIN product p ON p.id = so.product_id
+           WHERE so.status = 'accepted' AND so.for_cast = 1 AND so.cast_id IS NOT NULL
+             AND DATE(so.accepted_at) >= $1::date AND DATE(so.accepted_at) < $2::date
+           GROUP BY so.cast_id, p.category_id`,
+          [rangeStart, rangeEndExclusive]
+        ).catch(() => ({ rows: [] })),
+      ]);
+      const casts = castsRes.rows as any[];
+      const aggByUser: Record<string, any> = {};
+      for (const r of (aggRes.rows as any[])) {
+        aggByUser[String(r.user_id)] = r;
+      }
+      const catAmountMapRange: Record<string, Record<string, number>> = {};
+      for (const r of (catAggRes.rows as any[])) {
+        const uid = String(r.user_id);
+        const cid = String(r.category_id);
+        if (!catBackMap[uid]) catBackMap[uid] = {};
+        catBackMap[uid][cid] = Number(r.sum_yen) || 0;
+      }
+      for (const r of (catSalesRes.rows as any[])) {
+        const uid = String(r.user_id);
+        const cid = String(r.category_id);
+        if (!catBackMap[uid]) catBackMap[uid] = {};
+        if (!catAmountMapRange[uid]) catAmountMapRange[uid] = {};
+        catBackMap[uid][cid] = Number(r.sum_yen) || 0;
+        catAmountMapRange[uid][cid] = Number(r.sum_amount) || 0;
+      }
+      result = {
+        rows: casts.map((c) => {
+          const uid = String(c.user_id);
+          const a = aggByUser[uid];
+          const categoryTotals = catBackMap[uid] || {};
+          const categoryAmounts = catAmountMapRange[uid] || {};
+          const categoryBackTotal = Object.values(categoryTotals).reduce((s, x) => s + (Number(x) || 0), 0);
+          if (a) {
+            return {
+              ...c,
+              basic_hours: Number(a.basic_hours || 0),
+              base_pay: Number(a.base_pay || 0),
+              main_nomination_count: Number(a.main_nomination_count || 0),
+              main_nomination_extension_count: Number(a.main_nomination_extension_count || 0),
+              inside_nomination_count: Number(a.inside_nomination_count || 0),
+              inside_nomination_extension_count: Number(a.inside_nomination_extension_count || 0),
+              together_nomination_count: Number(a.together_nomination_count || 0),
+              paid_price: Number(a.paid_price || 0),
+              pickup_yen: Number(a.pickup_yen || 0),
+              hairmake_yen: Number(a.hairmake_yen || 0),
+              rental_yen: Number(a.rental_yen || 0),
+              other_deduct_yen: Number(a.other_deduct_yen || 0),
+              penalty_yen: Number(a.penalty_yen || 0),
+              bonus_yen: Number(a.bonus_yen || 0),
+              point_yen: Number(a.point_yen || 0),
+              additional_point_yen: Number(a.additional_point_yen || 0),
+              categoryTotals,
+              categoryAmounts,
+              main_nomination_fee: Number(a.main_nomination_fee || 0),
+              main_nomination_extension_fee: Number(a.main_nomination_extension_fee || 0),
+              inside_nomination_fee: Number(a.inside_nomination_fee || 0),
+              inside_nomination_extension_fee: Number(a.inside_nomination_extension_fee || 0),
+              together_nomination_fee: Number(a.together_nomination_fee || 0),
+              sales_back_yen: categoryBackTotal,
+              back_total: Number(a.back_total || 0),
+              deduction_yen: Number(a.deduction_yen || 0),
+              total_pay_yen: Number(a.total_pay_yen || 0),
+              realTotal_price: Number(a.realTotal_price || 0),
+            };
+          }
+          return {
+            ...c,
+            basic_hours: 0,
+            base_pay: 0,
+            main_nomination_count: 0,
+            main_nomination_extension_count: 0,
+            inside_nomination_count: 0,
+            inside_nomination_extension_count: 0,
+            together_nomination_count: 0,
+            paid_price: 0,
+            pickup_yen: 0,
+            hairmake_yen: 0,
+            rental_yen: 0,
+            other_deduct_yen: 0,
+            penalty_yen: 0,
+            bonus_yen: 0,
+            point_yen: 0,
+            additional_point_yen: 0,
+            categoryTotals: {},
+            categoryAmounts: {},
+            main_nomination_fee: 0,
+            main_nomination_extension_fee: 0,
+            inside_nomination_fee: 0,
+            inside_nomination_extension_fee: 0,
+            together_nomination_fee: 0,
+            sales_back_yen: 0,
+            back_total: 0,
+            deduction_yen: 0,
+            total_pay_yen: 0,
+            realTotal_price: 0,
+          };
+        }),
+      };
+    } else {
+      result = { rows: [] };
+    }
 
-    const params = useSalary
-      ? [rangeStart, rangeEndExclusive, year, month]
-      : [rangeStart, rangeEndExclusive];
+    const rows = (result.rows as any[]).map((r) => {
+      if (r._fromSalaryDaily || (r.total_pay_yen != null && r.back_total != null)) {
+        const { _fromSalaryDaily, ...rest } = r;
+        return rest;
+      }
+      const userId = String(r.user_id);
+      const mainRate = Number(r.main_nomination || 0) / 100;
+      const insideRate = Number(r.inside_nomination || 0) / 100;
+      const togetherRate = Number(r.together_nomination || 0) / 100;
 
-    const result = await client.query(sql, params);
+      const mainCnt = Number(r.main_nomination_count || 0);
+      const mainExtCnt = Number(r.main_nomination_extension_count || 0);
+      const insideCnt = Number(r.inside_nomination_count || 0);
+      const insideExtCnt = Number(r.inside_nomination_extension_count || 0);
+      const togetherCnt = Number(r.together_nomination_count || 0);
 
-    const rows = result.rows.map((r: any) => {
-      const paid = Number(r.paid_price || 0);
-      const total =
-        Number(r.base_pay || 0) +
-        Number(r.main_nomination_fee || 0) +
-        Number(r.inside_nomination_fee || 0) +
-        Number(r.together_nomination_fee || 0) +
-        Number(r.sales_back_yen || 0) +
-        Number(r.overtime_wage_yen || 0) -
-        Number(r.deduction_yen || 0);
-      const realTotal = total - paid;
-      return { ...r, total_pay_yen: total, paid_price: paid, realTotal_price: realTotal };
+      const mainBack = (charges.main || 0) * mainRate * mainCnt;
+      const mainExtBack = (charges.main || 0) * mainRate * mainExtCnt;
+      const insideBack = (charges.inside || 0) * insideRate * insideCnt;
+      const insideExtBack = (charges.inside || 0) * insideRate * insideExtCnt;
+      const togetherBack = (charges.together || 0) * togetherRate * togetherCnt;
+
+      const categoryTotals = catBackMap[userId] || r.categoryTotals || {};
+      const categoryBackTotal = Object.values(categoryTotals).reduce((s, x) => s + (Number(x) || 0), 0);
+
+      const bonus = Number(r.bonus_yen || 0);
+      const point = Number(r.point_yen || 0);
+      const addPoint = Number(r.additional_point_yen || 0);
+
+      const back_total =
+        mainBack +
+        mainExtBack +
+        insideBack +
+        insideExtBack +
+        togetherBack +
+        categoryBackTotal;
+
+      const total = Number(r.base_pay || 0) + back_total + bonus + point + addPoint;
+
+      const paid = Number(r.paid_price || 0); // 前借日払として扱う
+      const pickup = Number(r.pickup_yen || 0);
+      const hairmake = Number(r.hairmake_yen || 0);
+      const rental = Number(r.rental_yen || 0);
+      const otherDeduct = Number(r.other_deduct_yen || 0);
+      const penalty = Number(r.penalty_yen || 0);
+      const deduction_yen = paid + pickup + hairmake + rental + otherDeduct + penalty;
+
+      const unpaid = total - paid;
+
+      return {
+        ...r,
+        categoryTotals,
+        // back counts + amounts
+        main_nomination_fee: mainBack,
+        main_nomination_extension_fee: mainExtBack,
+        inside_nomination_fee: insideBack,
+        inside_nomination_extension_fee: insideExtBack,
+        together_nomination_fee: togetherBack,
+        // totals
+        sales_back_yen: categoryBackTotal,
+        back_total,
+        deduction_yen,
+        total_pay_yen: total,
+        realTotal_price: unpaid,
+      };
     });
 
-    return NextResponse.json({ success: true, mode, year, month, start: rangeStart, end_exclusive: rangeEndExclusive, rows });
+    return NextResponse.json({ success: true, mode, year, month, start: rangeStart, end_exclusive: rangeEndExclusive, categories, charges, rows });
   } catch (error: any) {
     console.error('月次給与集計エラー:', error);
     const errorMessage = error?.message || '給与集計の取得に失敗しました';
@@ -289,6 +473,12 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ 
         success: false, 
         error: 'データベースマイグレーションが必要です。migration_add_together_nomination_cost.sql を実行してください。' 
+      }, { status: 500 });
+    }
+    if (errorMessage.includes('pickup_yen') && errorMessage.includes('does not exist')) {
+      return NextResponse.json({
+        success: false,
+        error: 'データベースマイグレーションが必要です。salaryに控除/ボーナス列を追加してください（migration_complete.sqlを更新して適用）。',
       }, { status: 500 });
     }
     return NextResponse.json({ success: false, error: errorMessage }, { status: 500 });
@@ -326,27 +516,71 @@ export async function PUT(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { user_id, year, month, basic_hours, main_nomination_count, inside_nomination_count, together_nomination_cost, together_nomination_count, sales_back_yen, overtime_wage_yen, deduction_yen, base_pay, main_nomination_fee, inside_nomination_fee, together_nomination_fee, paid_price } = body;
+    const {
+      user_id,
+      year,
+      month,
+      basic_hours,
+      base_pay,
+      main_nomination_count,
+      main_nomination_fee,
+      main_nomination_extension_count,
+      main_nomination_extension_fee,
+      inside_nomination_count,
+      inside_nomination_fee,
+      inside_nomination_extension_count,
+      inside_nomination_extension_fee,
+      together_nomination_count,
+      together_nomination_fee,
+      sales_back_yen,
+      pickup_yen,
+      hairmake_yen,
+      rental_yen,
+      other_deduct_yen,
+      penalty_yen,
+      bonus_yen,
+      point_yen,
+      additional_point_yen,
+      paid_price,
+      deduction_yen,
+      total_pay_yen,
+      realTotal_price,
+    } = body;
     if (!user_id || !year || !month) {
       return NextResponse.json({ success: false, error: 'user_id, year, month は必須です' }, { status: 400 });
     }
 
     await client.query('BEGIN');
-    const totalPay =
-      (Number(base_pay || 0) +
-        Number(main_nomination_fee || 0) +
-        Number(inside_nomination_fee || 0) +
-        Number(together_nomination_fee || 0) +
-        Number(sales_back_yen || 0) +
-        Number(overtime_wage_yen || 0) -
-        Number(deduction_yen || 0));
     const paid = Number(paid_price || 0);
-    const realTotal = totalPay - paid;
+    const totalPay = Number(total_pay_yen ?? 0);
+    const realTotal = Number(realTotal_price ?? (totalPay - paid));
 
     const upsert = await client.query(
       `
-      INSERT INTO salary (user_id, year, month, basic_hours, base_pay, main_nomination_count, main_nomination_fee, inside_nomination_count, inside_nomination_fee, together_nomination_cost, together_nomination_count, together_nomination_fee, sales_back_yen, overtime_wage_yen, deduction_yen, total_pay_yen, paid_price, realTotal_price)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+      INSERT INTO salary (
+        user_id, year, month,
+        basic_hours, base_pay,
+        main_nomination_count, main_nomination_fee,
+        inside_nomination_count, inside_nomination_fee,
+        together_nomination_count, together_nomination_fee,
+        sales_back_yen,
+        pickup_yen, hairmake_yen, rental_yen, other_deduct_yen, penalty_yen,
+        bonus_yen, point_yen, additional_point_yen,
+        paid_price, deduction_yen,
+        total_pay_yen, realTotal_price
+      )
+      VALUES (
+        $1,$2,$3,
+        $4,$5,
+        $6,$7,
+        $8,$9,
+        $10,$11,
+        $12,
+        $13,$14,$15,$16,$17,
+        $18,$19,$20,
+        $21,$22,
+        $23,$24
+      )
       ON CONFLICT (user_id, year, month)
       DO UPDATE SET 
         basic_hours = EXCLUDED.basic_hours,
@@ -355,11 +589,17 @@ export async function PUT(request: NextRequest) {
         main_nomination_fee = EXCLUDED.main_nomination_fee,
         inside_nomination_count = EXCLUDED.inside_nomination_count,
         inside_nomination_fee = EXCLUDED.inside_nomination_fee,
-        together_nomination_cost = EXCLUDED.together_nomination_cost,
         together_nomination_count = EXCLUDED.together_nomination_count,
         together_nomination_fee = EXCLUDED.together_nomination_fee,
         sales_back_yen = EXCLUDED.sales_back_yen,
-        overtime_wage_yen = EXCLUDED.overtime_wage_yen,
+        pickup_yen = EXCLUDED.pickup_yen,
+        hairmake_yen = EXCLUDED.hairmake_yen,
+        rental_yen = EXCLUDED.rental_yen,
+        other_deduct_yen = EXCLUDED.other_deduct_yen,
+        penalty_yen = EXCLUDED.penalty_yen,
+        bonus_yen = EXCLUDED.bonus_yen,
+        point_yen = EXCLUDED.point_yen,
+        additional_point_yen = EXCLUDED.additional_point_yen,
         deduction_yen = EXCLUDED.deduction_yen,
         total_pay_yen = EXCLUDED.total_pay_yen,
         paid_price = EXCLUDED.paid_price,
@@ -374,15 +614,21 @@ export async function PUT(request: NextRequest) {
         main_nomination_fee ?? 0,
         inside_nomination_count ?? 0,
         inside_nomination_fee ?? 0,
-        together_nomination_cost ?? 0,
         together_nomination_count ?? 0,
         together_nomination_fee ?? 0,
         sales_back_yen ?? 0,
-        overtime_wage_yen ?? 0,
+        pickup_yen ?? 0,
+        hairmake_yen ?? 0,
+        rental_yen ?? 0,
+        other_deduct_yen ?? 0,
+        penalty_yen ?? 0,
+        bonus_yen ?? 0,
+        point_yen ?? 0,
+        additional_point_yen ?? 0,
+        paid,
         deduction_yen ?? 0,
         totalPay,
-        paid,
-        realTotal
+        realTotal,
       ]
     );
     await client.query('COMMIT');

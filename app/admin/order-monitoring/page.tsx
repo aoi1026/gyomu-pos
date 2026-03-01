@@ -145,9 +145,23 @@ export default function OrderMonitoringPage() {
     }
   };
 
+  const getAdminUserId = (): number | null => {
+    if (typeof window === 'undefined') return null;
+    try {
+      const raw = localStorage.getItem('admin_auth');
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      const id = parsed?.id != null ? Number(parsed.id) : null;
+      return Number.isFinite(id) ? id : null;
+    } catch {
+      return null;
+    }
+  };
+
   const handleAcceptRequest = async (orderId: number) => {
     try {
-      console.log('受付処理開始:', { orderId, status: 'accepted' });
+      const acceptedBy = getAdminUserId();
+      console.log('受付処理開始:', { orderId, status: 'accepted', accepted_by: acceptedBy });
       
       const response = await fetch(`/api/salesorder/${orderId}`, {
         method: 'PATCH',
@@ -156,7 +170,7 @@ export default function OrderMonitoringPage() {
         },
         body: JSON.stringify({
           status: 'accepted',
-          accepted_by: 1 // 管理者ID（実際の実装では認証されたユーザーIDを使用）
+          ...(acceptedBy != null && { accepted_by: acceptedBy }),
         }),
       });
 
@@ -178,6 +192,7 @@ export default function OrderMonitoringPage() {
 
   const handleRejectRequest = async (orderId: number) => {
     try {
+      const acceptedBy = getAdminUserId();
       const response = await fetch(`/api/salesorder/${orderId}`, {
         method: 'PATCH',
         headers: {
@@ -185,7 +200,7 @@ export default function OrderMonitoringPage() {
         },
         body: JSON.stringify({
           status: 'rejected',
-          accepted_by: 1 // 管理者ID
+          ...(acceptedBy != null && { accepted_by: acceptedBy }),
         }),
       });
 
@@ -216,7 +231,7 @@ export default function OrderMonitoringPage() {
         },
         body: JSON.stringify({
           status: 'accepted',
-          accepted_by: 1 // 管理者ID（実際の実装では認証されたユーザーIDを使用）
+          ...(getAdminUserId() != null && { accepted_by: getAdminUserId() }),
         }),
       });
 
@@ -245,7 +260,7 @@ export default function OrderMonitoringPage() {
         },
         body: JSON.stringify({
           status: 'rejected',
-          accepted_by: 1 // 管理者ID
+          ...(getAdminUserId() != null && { accepted_by: getAdminUserId() }),
         }),
       });
 

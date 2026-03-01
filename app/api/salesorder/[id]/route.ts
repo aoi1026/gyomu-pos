@@ -58,7 +58,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     const values = [status];
     let paramIndex = 2;
 
-    // accepted_byカラムが存在するかチェックしてから追加
+    // accepted_byカラムが存在するかチェックしてから追加（参照先 user が存在する場合のみ設定）
     try {
       const columnCheck = await client.query(`
         SELECT column_name 
@@ -74,10 +74,16 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         console.log('accepted_byカラムを追加しました');
       }
       
-      if (accepted_by) {
-        updateFields.push(`accepted_by = $${paramIndex}`);
-        values.push(accepted_by);
-        paramIndex++;
+      if (accepted_by != null) {
+        const userCheck = await client.query(
+          `SELECT id FROM "user" WHERE id = $1`,
+          [accepted_by]
+        );
+        if (userCheck.rows.length > 0) {
+          updateFields.push(`accepted_by = $${paramIndex}`);
+          values.push(accepted_by);
+          paramIndex++;
+        }
       }
     } catch (err) {
       console.log('accepted_byカラム処理エラー:', err);
