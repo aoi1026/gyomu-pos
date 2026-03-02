@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import RoleGate from '@/components/auth/RoleGate';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -37,6 +37,7 @@ export default function MonthlySalesPage() {
   const [dailySales, setDailySales] = useState<any[]>([]);
   const [dailyCheckRows, setDailyCheckRows] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const dailyTableScrollRef = useRef<HTMLDivElement | null>(null);
   
   const router = useRouter();
   const { info, error } = useNotificationContext();
@@ -107,6 +108,58 @@ export default function MonthlySalesPage() {
     } finally {
     setIsLoading(false);
     }
+  };
+
+  const dailyCheckRowsCount = dailyCheckRows.length;
+  useEffect(() => {
+    if (dailyCheckRowsCount === 0) return;
+    let cancelled = false;
+    try {
+      const saved = window.sessionStorage.getItem('monthlyDailyTableScroll');
+      if (saved) {
+        const value = Number(saved);
+        window.sessionStorage.removeItem('monthlyDailyTableScroll');
+        if (!Number.isNaN(value) && value > 0) {
+          const tid = setTimeout(() => {
+            if (!cancelled && dailyTableScrollRef.current) {
+              dailyTableScrollRef.current.scrollTop = value;
+            }
+          }, 150);
+          return () => { cancelled = true; clearTimeout(tid); };
+        }
+      }
+    } catch {
+      // ignore sessionStorage errors
+    }
+  }, [dailyCheckRowsCount]);
+
+  const handleOpenDailySales = (date: string) => {
+    try {
+      if (dailyTableScrollRef.current) {
+        window.sessionStorage.setItem(
+          'monthlyDailyTableScroll',
+          String(dailyTableScrollRef.current.scrollTop || 0)
+        );
+      }
+    } catch {
+      // ignore sessionStorage errors
+    }
+    router.push(`/admin/sales/daily?date=${encodeURIComponent(date)}&from=monthly`);
+  };
+
+  const shiftMonth = (offset: number) => {
+    const base = new Date(selectedYear, selectedMonth - 1, 1);
+    base.setMonth(base.getMonth() + offset);
+    const y = base.getFullYear();
+    const m = base.getMonth() + 1;
+    setSelectedYear(y);
+    setSelectedMonth(m);
+  };
+
+  const goCurrentMonth = () => {
+    const current = new Date();
+    setSelectedYear(current.getFullYear());
+    setSelectedMonth(current.getMonth() + 1);
   };
 
   const exportToCSV = () => {
@@ -222,6 +275,28 @@ export default function MonthlySalesPage() {
 	const baseSvgWidth = 480;
 	const svgWidth = leftPad + rightPad + (baseSvgWidth - leftPad - rightPad) * 2; // 間隔を2倍に拡大
 
+  const dailyTotals = dailyCheckRows.reduce(
+    (acc: any, r: any) => {
+      acc.total_sales += Number(r.total_sales) || 0;
+      acc.cash_sales += Number(r.cash_sales) || 0;
+      acc.store_card_sales += Number(r.store_card_sales) || 0;
+      acc.credit_card_sales += Number(r.credit_card_sales) || 0;
+      acc.customer_count += Number(r.customer_count) || 0;
+      acc.cast_salary += Number(r.cast_salary) || 0;
+      acc.deduct_total += Number(r.deduct_total) || 0;
+      return acc;
+    },
+    {
+      total_sales: 0,
+      cash_sales: 0,
+      store_card_sales: 0,
+      credit_card_sales: 0,
+      customer_count: 0,
+      cast_salary: 0,
+      deduct_total: 0,
+    }
+  );
+
   return (
     <RoleGate allowedRoles={['admin', 'superadmin']}>
       <div className="min-h-screen bg-gradient-to-br from-purple-50 via-pink-50 to-blue-50">
@@ -299,9 +374,9 @@ export default function MonthlySalesPage() {
                   </div>
                 </div>
                 
-                <div className="flex items-center space-x-4">
+                <div className="flex items-center space-x-4 flex-wrap">
                   <div className="flex flex-col space-y-2">
-                    <Label htmlFor="year" className="text-sm font-medium text-gray-700">年</Label>
+                    {/* <Label htmlFor="year" className="text-sm font-medium text-gray-700">年</Label> */}
                     <Input
                       id="year"
                       type="number"
@@ -318,7 +393,7 @@ export default function MonthlySalesPage() {
                   </div>
                   
                   <div className="flex flex-col space-y-2">
-                    <Label htmlFor="month" className="text-sm font-medium text-gray-700">月</Label>
+                    {/* <Label htmlFor="month" className="text-sm font-medium text-gray-700">月</Label> */}
                     <select
                       id="month"
                       value={selectedMonth}
@@ -334,29 +409,43 @@ export default function MonthlySalesPage() {
                   </div>
                 </div>
                 
-                <div className="flex items-center space-x-2">
-                  {/* <Button
+                <div className="flex items-center space-x-2 mt-4 sm:mt-0">
+                  <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => loadMonthlySalesData(selectedYear, selectedMonth)}
-                    className="h-10 px-4 border-purple-300 text-purple-700 hover:bg-purple-50 hover:border-purple-400 transition-all duration-200"
+                    onClick={() => shiftMonth(-1)}
+                    className="h-10 px-3 border-purple-300 text-purple-700 hover:bg-purple-50 hover:border-purple-400 transition-all duration-200"
                   >
-                    <RefreshCw className="w-4 h-4 mr-2" />
-                    更新
-                  </Button> */}
+                    前の月
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={goCurrentMonth}
+                    className="h-10 px-3 border-purple-300 text-purple-700 hover:bg-purple-50 hover:border-purple-400 transition-all duration-200"
+                  >
+                    当月
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => shiftMonth(1)}
+                    className="h-10 px-3 border-purple-300 text-purple-700 hover:bg-purple-50 hover:border-purple-400 transition-all duration-200"
+                  >
+                    次の月
+                  </Button>
                 </div>
               </div>
             </CardContent>
           </Card>
 
           {/* KPI カード */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+          {/* <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
             <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
               <CardHeader className="pb-3">
                 <CardTitle className="flex items-center text-blue-800">
                   <DollarSign className="w-5 h-5 mr-2" />
                   合計 
-                  {/* <span className="flex items-center text-sm text-blue-700">(指名料とサービス手数料を含む)</span> */}
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -426,10 +515,10 @@ export default function MonthlySalesPage() {
                 </div>
               </CardContent>
             </Card>
-          </div>
+          </div> */}
 
           {/* 日別売上（折れ線グラフ） */}
-          <Card className="mb-8">
+          {/* <Card className="mb-8">
             <CardHeader>
               <CardTitle>日別売上高（折れ線）</CardTitle>
             </CardHeader>
@@ -453,7 +542,6 @@ export default function MonthlySalesPage() {
                       />
                       ))}
 
-                    {/* Y軸ラベル（金額） */}
                     {[0, 1, 2, 3, 4].map((i) => {
                       const y = topPad + i * ((chartHeight - topPad - bottomPad) / 4);
                       const value = (dailyMax || 0) * (1 - i / 4);
@@ -535,7 +623,7 @@ export default function MonthlySalesPage() {
                 </div>
               )}
             </CardContent>
-          </Card>
+          </Card> */}
 
           {/* 日別売上確認表（折れ線の下） */}
           <Card className="mb-8">
@@ -543,52 +631,69 @@ export default function MonthlySalesPage() {
               <CardTitle>日別売上確認表</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="h-[420px] overflow-auto rounded-md border relative">
-                <Table>
-                  <TableHeader className="sticky top-0 z-20 bg-white/95 backdrop-blur border-b shadow-sm">
-                    <TableRow className="sticky top-0">
-                      <TableHead className="sticky top-0 z-20 bg-white/95 backdrop-blur w-30">日付</TableHead>
-                      <TableHead className="sticky top-0 z-20 bg-white/95 backdrop-blur text-right">売上合計</TableHead>
-                      <TableHead className="sticky top-0 z-20 bg-white/95 backdrop-blur text-right">現金</TableHead>
-                      <TableHead className="sticky top-0 z-20 bg-white/95 backdrop-blur text-right">店舗用カード</TableHead>
-                      <TableHead className="sticky top-0 z-20 bg-white/95 backdrop-blur text-right">クレジットカード</TableHead>
-                      <TableHead className="sticky top-0 z-20 bg-white/95 backdrop-blur text-right">顧客数</TableHead>
-                      <TableHead className="sticky top-0 z-20 bg-white/95 backdrop-blur text-right">キャスト給与</TableHead>
-                      <TableHead className="sticky top-0 z-20 bg-white/95 backdrop-blur text-right">経費金額</TableHead>
-                      <TableHead className="sticky top-0 z-20 bg-white/95 backdrop-blur text-center">詳細情報</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
+              <div
+                className="h-[480px] overflow-auto rounded-md border relative"
+                ref={dailyTableScrollRef}
+              >
+                <table className="w-full caption-bottom text-sm">
+                  <thead className="sticky top-0 z-20 bg-white shadow-[0_2px_6px_-2px_rgba(0,0,0,0.1)] [&_tr]:border-b">
+                    <tr className="border-b">
+                      <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground bg-white w-30">日付</th>
+                      <th className="h-12 px-4 text-right align-middle font-medium text-muted-foreground bg-white">売上合計</th>
+                      <th className="h-12 px-4 text-right align-middle font-medium text-muted-foreground bg-white">現金</th>
+                      <th className="h-12 px-4 text-right align-middle font-medium text-muted-foreground bg-white">店舗用カード</th>
+                      <th className="h-12 px-4 text-right align-middle font-medium text-muted-foreground bg-white">クレジットカード</th>
+                      <th className="h-12 px-4 text-right align-middle font-medium text-muted-foreground bg-white">顧客数</th>
+                      <th className="h-12 px-4 text-right align-middle font-medium text-muted-foreground bg-white">キャスト給与</th>
+                      <th className="h-12 px-4 text-right align-middle font-medium text-muted-foreground bg-white">経費金額</th>
+                      <th className="h-12 px-4 text-center align-middle font-medium text-muted-foreground bg-white">詳細情報</th>
+                    </tr>
+                  </thead>
+                  <tbody className="[&_tr:last-child]:border-0">
                     {dailyCheckRows.map((r: any) => (
-                      <TableRow key={r.date}>
-                        <TableCell className="font-medium">{r.date}</TableCell>
-                        <TableCell className="text-right">{formatCurrency(Number(r.total_sales) || 0)}</TableCell>
-                        <TableCell className="text-right">{formatCurrency(Number(r.cash_sales) || 0)}</TableCell>
-                        <TableCell className="text-right">{formatCurrency(Number(r.store_card_sales) || 0)}</TableCell>
-                        <TableCell className="text-right">{formatCurrency(Number(r.credit_card_sales) || 0)}</TableCell>
-                        <TableCell className="text-right">{formatNumber(Number(r.customer_count) || 0)}</TableCell>
-                        <TableCell className="text-right">{formatCurrency(Number(r.cast_salary) || 0)}</TableCell>
-                        <TableCell className="text-right">{formatCurrency(Number(r.deduct_total) || 0)}</TableCell>
-                        <TableCell className="text-center">
+                      <tr key={r.date} className="border-b transition-colors hover:bg-muted/50">
+                        <td className="p-4 align-middle font-medium">{r.date}</td>
+                        <td className="p-4 align-middle text-right">{formatCurrency(Number(r.total_sales) || 0)}</td>
+                        <td className="p-4 align-middle text-right">{formatCurrency(Number(r.cash_sales) || 0)}</td>
+                        <td className="p-4 align-middle text-right">{formatCurrency(Number(r.store_card_sales) || 0)}</td>
+                        <td className="p-4 align-middle text-right">{formatCurrency(Number(r.credit_card_sales) || 0)}</td>
+                        <td className="p-4 align-middle text-right">{formatNumber(Number(r.customer_count) || 0)}</td>
+                        <td className="p-4 align-middle text-right">{formatCurrency(Number(r.cast_salary) || 0)}</td>
+                        <td className="p-4 align-middle text-right">{formatCurrency(Number(r.deduct_total) || 0)}</td>
+                        <td className="p-4 align-middle text-center">
                           <Button
                             size="sm"
                             variant="outline"
-                            onClick={() => router.push(`/admin/sales/daily?date=${encodeURIComponent(r.date)}`)}
+                            onClick={() => handleOpenDailySales(r.date)}
                           >
                             <ExternalLink className="w-4 h-4 mr-2" />
                             詳細
                           </Button>
-                        </TableCell>
-                      </TableRow>
+                        </td>
+                      </tr>
                     ))}
-                  </TableBody>
-                </Table>
+                  </tbody>
+                  {dailyCheckRows.length > 0 && (
+                    <tfoot className="sticky bottom-0 z-20 bg-gray-50 shadow-[0_-2px_6px_-2px_rgba(0,0,0,0.1)]">
+                      <tr className="border-t-2 border-gray-300">
+                        <td className="p-4 align-middle font-semibold">合計</td>
+                        <td className="p-4 align-middle text-right font-semibold">{formatCurrency(dailyTotals.total_sales)}</td>
+                        <td className="p-4 align-middle text-right font-semibold">{formatCurrency(dailyTotals.cash_sales)}</td>
+                        <td className="p-4 align-middle text-right font-semibold">{formatCurrency(dailyTotals.store_card_sales)}</td>
+                        <td className="p-4 align-middle text-right font-semibold">{formatCurrency(dailyTotals.credit_card_sales)}</td>
+                        <td className="p-4 align-middle text-right font-semibold">{formatNumber(dailyTotals.customer_count)}</td>
+                        <td className="p-4 align-middle text-right font-semibold">{formatCurrency(dailyTotals.cast_salary)}</td>
+                        <td className="p-4 align-middle text-right font-semibold">{formatCurrency(dailyTotals.deduct_total)}</td>
+                        <td className="p-4 align-middle text-center font-semibold text-gray-400 text-xs">-</td>
+                      </tr>
+                    </tfoot>
+                  )}
+                </table>
               </div>
             </CardContent>
           </Card>
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            {/* カテゴリ別売上 */}
+          {/* <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             <Card>
               <CardHeader>
                 <CardTitle>カテゴリ別売上</CardTitle>
@@ -620,7 +725,6 @@ export default function MonthlySalesPage() {
                 </div>
               </CardContent>
             </Card>
-            {/* 製品別売上 */}
             <Card>
               <CardHeader>
                 <CardTitle>製品別売上</CardTitle>
@@ -648,7 +752,6 @@ export default function MonthlySalesPage() {
                 </div>
               </CardContent>
             </Card>
-            {/* スタッフ別売上 */}
             <Card>
               <CardHeader>
                 <CardTitle>スタッフ別売上</CardTitle>
@@ -675,7 +778,7 @@ export default function MonthlySalesPage() {
                 </div>
               </CardContent>
             </Card>
-          </div>
+          </div> */}
         </div>
       </div>
     </RoleGate>

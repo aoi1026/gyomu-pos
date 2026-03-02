@@ -50,6 +50,55 @@ export default function PayrollPreviewPage() {
   const [castSearchQuery, setCastSearchQuery] = useState<string>('');
   const [expandedDailyRows, setExpandedDailyRows] = useState<Record<number, boolean>>({});
   const [dailyRowsData, setDailyRowsData] = useState<Record<number, any[]>>({});
+
+  // モバイル／タブレットでキーボード表示時に入力欄が隠れないよう自動スクロール
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const isTouchDevice =
+      'ontouchstart' in window ||
+      (navigator as any).maxTouchPoints > 0 ||
+      (navigator as any).msMaxTouchPoints > 0;
+    if (!isTouchDevice) return;
+
+    const handleFocus = (event: any) => {
+      const target = event.target as HTMLElement | null;
+      if (!target) return;
+      const isEditable =
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target.isContentEditable;
+      if (!isEditable) return;
+
+      // キーボード表示完了を少し待ってから位置を調整
+      setTimeout(() => {
+        const rect = target.getBoundingClientRect();
+        const vv = (window as any).visualViewport as VisualViewport | undefined;
+
+        if (vv) {
+          const viewportHeight = vv.height;
+          const bottom = rect.bottom;
+          // 入力欄の下端がビューポート下端より下にある場合はスクロール
+          if (bottom > viewportHeight - 16) {
+            const offset = bottom - viewportHeight + 80;
+            window.scrollTo({
+              top: window.scrollY + offset,
+              behavior: 'smooth',
+            });
+            return;
+          }
+        }
+
+        // visualViewport が使えない環境向けのフォールバック
+        target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 150);
+    };
+
+    document.addEventListener('focusin', handleFocus);
+    return () => {
+      document.removeEventListener('focusin', handleFocus);
+    };
+  }, []);
+
   /** DBのstore_address・store_telでペイロードを補完 */
   const enrichPayloadWithStoreInfo = async (payload: ReceiptPayload): Promise<ReceiptPayload> => {
     const [address, phone] = await Promise.all([fetchStoreAddress(), fetchStorePhone()]);

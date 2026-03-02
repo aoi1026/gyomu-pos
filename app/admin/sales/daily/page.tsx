@@ -124,6 +124,21 @@ function DailySalesPageContent() {
     }
   };
 
+  const shiftDay = (offset: number) => {
+    if (!selectedDate) return;
+    const base = new Date(selectedDate);
+    if (Number.isNaN(base.getTime())) return;
+    base.setDate(base.getDate() + offset);
+    const y = base.getFullYear();
+    const m = String(base.getMonth() + 1).padStart(2, '0');
+    const d = String(base.getDate()).padStart(2, '0');
+    setSelectedDate(`${y}-${m}-${d}`);
+  };
+
+  const handleBackToMonthly = () => {
+    router.push('/admin/sales/monthly');
+  };
+
   const loadSalesData = async (date: string) => {
     setIsLoading(true);
     try {
@@ -379,14 +394,42 @@ function DailySalesPageContent() {
                   type="date"
                   value={selectedDate}
                   onChange={(e) => setSelectedDate(e.target.value)}
-                  className="w-48"
+                  className="w-40"
                 />
-                <Button
-                  variant="outline"
-                  onClick={() => setSelectedDate(new Date().toISOString().split('T')[0])}
-                >
-                  今日
-                </Button>
+                <div className="flex items-center space-x-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => shiftDay(-1)}
+                  >
+                    前日
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setSelectedDate(new Date().toISOString().split('T')[0])}
+                  >
+                    本日
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => shiftDay(1)}
+                  >
+                    翌日
+                  </Button>
+                </div>
+                {searchParams.get('from') === 'monthly' && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleBackToMonthly}
+                    className="ml-auto flex items-center space-x-2"
+                  >
+                    <ArrowLeft className="w-4 h-4" />
+                    <span>月次売上に戻る</span>
+                  </Button>
+                )}
                 {/* <div className="text-sm text-gray-500">
                   {formatDate ? formatDate(selectedDate) : selectedDate}
                 </div> */}
