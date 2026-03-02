@@ -1385,7 +1385,7 @@ export default function Dashboard() {
                 localStorage.removeItem('admin_auth');
                 localStorage.removeItem('cast_auth');
                 setShowLogoutDialog(false);
-                router.push('/');
+                router.push('/admin-login');
               }}
             >
               <FiLogOut className="w-4 h-4 mr-2" />

@@ -45,6 +45,7 @@ export default function TableListPage() {
   const [isStartingSession, setIsStartingSession] = useState(false);
   const [remainingTimes, setRemainingTimes] = useState<{ [tableId: number]: number }>({});
   const [elapsedTimes, setElapsedTimes] = useState<{ [tableId: number]: number }>({});
+  const [showLogoutDialog, setShowLogoutDialog] = useState(false);
   const { success, error } = useNotificationContext();
 
   useEffect(() => {
@@ -60,15 +61,15 @@ export default function TableListPage() {
         } else {
           // 認証形式でない場合は削除
           localStorage.removeItem('table_auth');
-          router.push('/');
+          router.push('/table-login');
         }
       } catch (err) {
         console.error('認証情報の解析に失敗しました:', err);
         localStorage.removeItem('table_auth');
-        router.push('/');
+        router.push('/table-login');
       }
     } else {
-      router.push('/');
+      router.push('/table-login');
     }
   }, [router]);
 
@@ -335,8 +336,7 @@ export default function TableListPage() {
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('table_auth');
-    router.push('/');
+    setShowLogoutDialog(true);
   };
 
   const formatElapsedTime = (seconds: number) => {
@@ -638,6 +638,38 @@ export default function TableListPage() {
                 )}
               </Button>
             </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ログアウト確認モーダル */}
+      <Dialog open={showLogoutDialog} onOpenChange={setShowLogoutDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center text-orange-600">
+              ログアウトの確認
+            </DialogTitle>
+            <DialogDescription>
+              ログアウトしますか？現在のテーブルアカウントのセッションが終了します。
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end space-x-2 mt-4">
+            <Button
+              variant="outline"
+              onClick={() => setShowLogoutDialog(false)}
+            >
+              キャンセル
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                localStorage.removeItem('table_auth');
+                setShowLogoutDialog(false);
+                router.push('/table-login');
+              }}
+            >
+              ログアウト
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
