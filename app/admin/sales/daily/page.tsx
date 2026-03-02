@@ -489,10 +489,10 @@ function DailySalesPageContent() {
                 <div className="text-2xl font-bold text-purple-900 mb-1">
                   {formatNumber(salesData.order_count)}件
                 </div>
-                <div className="flex items-center text-sm text-purple-700">
+                {/* <div className="flex items-center text-sm text-purple-700">
                   <TrendingUp className="w-4 h-4 mr-1" />
                   前日比 +15.2%
-                </div>
+                </div> */}
               </CardContent>
             </Card>
 
@@ -507,10 +507,10 @@ function DailySalesPageContent() {
                 <div className="text-2xl font-bold text-orange-900 mb-1">
                   {avgOrderValueDisplay}
                 </div>
-                <div className="flex items-center text-sm text-orange-700">
+                {/* <div className="flex items-center text-sm text-orange-700">
                   <TrendingUp className="w-4 h-4 mr-1" />
                   前日比 +3.8%
-                </div>
+                </div> */}
               </CardContent>
             </Card>
           </div>

@@ -1035,14 +1035,31 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
       return;
     }
 
-    // 延長情報を追加
-    const newExtension = { count, timestamp: Date.now() };
+    // addChargesが空の場合は再取得
+    let charges = addCharges;
+    if (Object.keys(charges).length === 0) {
+      try {
+        const chargesResponse = await fetch('/api/add-charges');
+        const chargesResult = await chargesResponse.json();
+        if (chargesResult.success && chargesResult.charges) {
+          const chargesMap: {[key: string]: number} = {};
+          chargesResult.charges.forEach((charge: any) => {
+            chargesMap[charge.charge_name] = parseFloat(charge.value) || 0;
+          });
+          charges = chargesMap;
+          setAddCharges(chargesMap);
+        }
+      } catch (err) {
+        console.error('追加料金取得エラー:', err);
+      }
+    }
+
+    const extensionUnitPrice = charges['extension_price'] || 0;
+    const newExtension = { count, timestamp: Date.now(), price: extensionUnitPrice * count };
     const updatedExtensions = [...setExtensions, newExtension];
-    
-    // セットカウントを1増加
+
     const newSetCount = (session.set_count || 1) + 1;
-    
-    // DBにset_countとset_extensionsを同期
+
     try {
       const response = await fetch(`/api/sessions/${session.id}`, {
         method: 'PATCH',
@@ -1057,11 +1074,49 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
       if (!result.success) {
         throw new Error(result.error || 'セット延長に失敗しました');
       }
-      
+
+      // 各指名のcostを更新（延長のたびに本指名料金を加算）
+      const mainCharge = charges['main'] || 0;
+      for (const nomination of nominations) {
+        const charge = mainCharge;
+        if (charge > 0) {
+          try {
+            await fetch(`/api/nominations/${nomination.id}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                cost: charge,
+                ...(nomination.type_id === 'inside' ? { tomain_nomination: 1 } : {}),
+                rank_cost_add: (count > 0 ? (newExtension.price ?? 0) / count : 0) + charge,
+                rank_point_add: 1
+              })
+            });
+          } catch (err) {
+            console.error(`指名ID ${nomination.id} のcost更新エラー:`, err);
+          }
+        }
+      }
+
+      // 指名のUI即時反映
+      if (nominations.length > 0 && mainCharge > 0) {
+        setNominations(prev =>
+          prev.map((n: any) => {
+            const currentCost = Number(n.cost);
+            const nextCost = (Number.isFinite(currentCost) ? currentCost : 0) + mainCharge;
+            return {
+              ...n,
+              cost: nextCost,
+              ...(n.type_id === 'inside' ? { tomain_nomination: 1 } : {}),
+            };
+          })
+        );
+      }
+
       setSetExtensions(updatedExtensions);
       setShowSetExtensionDialog(false);
       setExtensionGuestCount('');
       await loadSession();
+      if (session?.id) await loadNominations(session.id);
       success('セット延長', `${count}名でセットを延長しました（60分追加）`);
     } catch (err) {
       console.error('セット延長エラー:', err);
