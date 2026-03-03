@@ -36,21 +36,24 @@ export function NotificationModal({ isOpen, onClose, config }: NotificationModal
   useEffect(() => {
     if (isOpen && config.autoClose && config.type !== 'confirm') {
       setTimeLeft(Math.floor(config.autoClose / 1000));
-      
+
       const interval = setInterval(() => {
-        setTimeLeft(prev => {
-          if (prev && prev > 1) {
-            return prev - 1;
-          } else {
-            onClose();
-            return null;
-          }
-        });
+        setTimeLeft(prev => (prev != null && prev > 0 ? prev - 1 : 0));
       }, 1000);
 
       return () => clearInterval(interval);
+    } else {
+      setTimeLeft(null);
     }
-  }, [isOpen, config.autoClose, config.type, onClose]);
+  }, [isOpen, config.autoClose, config.type]);
+
+  // When countdown reaches 0, close the modal (deferred so we don't setState in parent during child render)
+  useEffect(() => {
+    if (isOpen && timeLeft === 0 && config.autoClose && config.type !== 'confirm') {
+      const id = setTimeout(() => onClose(), 0);
+      return () => clearTimeout(id);
+    }
+  }, [isOpen, timeLeft, config.autoClose, config.type, onClose]);
 
   const handleConfirm = async () => {
     if (config.onConfirm) {
