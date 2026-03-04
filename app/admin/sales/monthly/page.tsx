@@ -38,6 +38,7 @@ export default function MonthlySalesPage() {
   const [dailyCheckRows, setDailyCheckRows] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const dailyTableScrollRef = useRef<HTMLDivElement | null>(null);
+  const [hasInitialPeriodLoaded, setHasInitialPeriodLoaded] = useState(false);
   
   const router = useRouter();
   const { info, error } = useNotificationContext();
@@ -45,23 +46,29 @@ export default function MonthlySalesPage() {
   // Restore period (year/month) when coming back from daily page
   useEffect(() => {
     try {
-      if (typeof window === 'undefined') return;
-      const saved = window.sessionStorage.getItem('monthlyPeriodFromDaily');
-      if (saved) {
-        const parsed = JSON.parse(saved) as { year?: number; month?: number };
-        if (parsed.year && parsed.month) {
-          setSelectedYear(parsed.year);
-          setSelectedMonth(parsed.month);
+      if (typeof window !== 'undefined') {
+        const saved = window.sessionStorage.getItem('monthlyPeriodFromDaily');
+        if (saved) {
+          const parsed = JSON.parse(saved) as { year?: number; month?: number };
+          if (parsed.year && parsed.month) {
+            setSelectedYear(parsed.year);
+            setSelectedMonth(parsed.month);
+          }
+          // 一度適用したら以後の初期表示には使わない
+          window.sessionStorage.removeItem('monthlyPeriodFromDaily');
         }
       }
     } catch {
       // ignore JSON / storage errors
+    } finally {
+      setHasInitialPeriodLoaded(true);
     }
   }, []);
 
   useEffect(() => {
+    if (!hasInitialPeriodLoaded) return;
     loadMonthlySalesData(selectedYear, selectedMonth);
-  }, [selectedYear, selectedMonth]);
+  }, [selectedYear, selectedMonth, hasInitialPeriodLoaded]);
 
   const loadMonthlySalesData = async (year: number, month: number) => {
     setIsLoading(true);

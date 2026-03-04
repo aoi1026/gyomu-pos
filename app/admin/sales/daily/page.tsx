@@ -454,17 +454,15 @@ function DailySalesPageContent() {
                     </Button>
                   </div>
                 </div>
-                {searchParams.get('from') === 'monthly' && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={handleGoToMonthlyListReset}
-                    className="flex items-center space-x-2"
-                  >
-                    <ArrowLeft className="w-4 h-4" />
-                    <span>日報リスト</span>
-                  </Button>
-                )}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleGoToMonthlyListReset}
+                  className="flex items-center space-x-2"
+                >
+                  <ArrowLeft className="w-4 h-4" />
+                  <span>日報リスト</span>
+                </Button>
               </div>
             </CardContent>
           </Card>
