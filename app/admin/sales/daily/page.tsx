@@ -47,6 +47,7 @@ function DailySalesPageContent() {
   });
   const [isDeductLoading, setIsDeductLoading] = useState(false);
   const [isAddDeductOpen, setIsAddDeductOpen] = useState(false);
+  const [editingDeductId, setEditingDeductId] = useState<number | null>(null);
   const [deductForm, setDeductForm] = useState<{ date: string; value: string; reason: string; other: string }>({
     date: new Date().toISOString().split('T')[0],
     value: '',
@@ -81,11 +82,23 @@ function DailySalesPageContent() {
   };
 
   const openAddDeduct = () => {
+    setEditingDeductId(null);
     setDeductForm({
       date: selectedDate || new Date().toISOString().split('T')[0],
       value: '',
       reason: '',
       other: '',
+    });
+    setIsAddDeductOpen(true);
+  };
+
+  const openEditDeduct = (d: any) => {
+    setEditingDeductId(Number(d.id));
+    setDeductForm({
+      date: String(d.date ?? selectedDate ?? new Date().toISOString().split('T')[0]),
+      value: String(d.value ?? ''),
+      reason: String(d.reason ?? ''),
+      other: String(d.other ?? ''),
     });
     setIsAddDeductOpen(true);
   };
@@ -101,8 +114,11 @@ function DailySalesPageContent() {
       return;
     }
     try {
-      const res = await fetch('/api/deduct', {
-        method: 'POST',
+      const isEdit = editingDeductId != null;
+      const url = isEdit ? `/api/deduct/${editingDeductId}` : '/api/deduct';
+      const method = isEdit ? 'PATCH' : 'POST';
+      const res = await fetch(url, {
+        method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           date: deductForm.date,
@@ -113,12 +129,13 @@ function DailySalesPageContent() {
       });
       const result = await res.json();
       if (!result.success) {
-        error('エラー', result.error || '経費の保存に失敗しました');
+        error('エラー', result.error || (isEdit ? '経費の更新に失敗しました' : '経費の保存に失敗しました'));
         return;
       }
       setIsAddDeductOpen(false);
+      setEditingDeductId(null);
       await loadDeducts(selectedDate);
-      info('保存完了', '経費を追加しました', 2000);
+      info('保存完了', isEdit ? '経費を更新しました' : '経費を追加しました', 2000);
     } catch (e) {
       error('エラー', `経費の保存に失敗しました: ${e instanceof Error ? e.message : '不明なエラー'}`);
     }
@@ -135,7 +152,15 @@ function DailySalesPageContent() {
     setSelectedDate(`${y}-${m}-${d}`);
   };
 
-  const handleBackToMonthly = () => {
+  const handleGoToMonthlyListReset = () => {
+    try {
+      if (typeof window !== 'undefined') {
+        window.sessionStorage.removeItem('monthlyDailyTableScroll');
+        window.sessionStorage.removeItem('monthlyPeriodFromDaily');
+      }
+    } catch {
+      // ignore sessionStorage errors
+    }
     router.push('/admin/sales/monthly');
   };
 
@@ -335,11 +360,19 @@ function DailySalesPageContent() {
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => router.push('/dashboard')}
+                  onClick={() => {
+                    if (searchParams.get('from') === 'monthly') {
+                      router.push('/admin/sales/monthly');
+                    } else {
+                      router.push('/dashboard');
+                    }
+                  }}
                   className="self-start sm:self-auto"
                 >
                   <ArrowLeft className="w-4 h-4 mr-2" />
-                  <span className="hidden sm:inline">ダッシュボード</span>
+                  <span className="hidden sm:inline">
+                    {searchParams.get('from') === 'monthly' ? '月次売上に戻る' : 'ダッシュボード'}
+                  </span>
                   <span className="sm:hidden">戻る</span>
                 </Button>
                 <div className="flex flex-col sm:flex-row sm:items-center space-y-1 sm:space-y-0 sm:space-x-3">
@@ -384,55 +417,54 @@ function DailySalesPageContent() {
           {/* 日付選択 */}
           <Card className="mb-8">
             <CardContent className="p-6">
-              <div className="flex items-center space-x-4">
-                <div className="flex items-center space-x-2">
-                  <Calendar className="w-5 h-5 text-gray-500" />
-                  <Label htmlFor="date">対象日</Label>
-                </div>
-                <Input
-                  id="date"
-                  type="date"
-                  value={selectedDate}
-                  onChange={(e) => setSelectedDate(e.target.value)}
-                  className="w-40"
-                />
-                <div className="flex items-center space-x-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => shiftDay(-1)}
-                  >
-                    前日
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setSelectedDate(new Date().toISOString().split('T')[0])}
-                  >
-                    本日
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => shiftDay(1)}
-                  >
-                    翌日
-                  </Button>
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex items-center gap-4 flex-wrap">
+                  <div className="flex items-center space-x-2">
+                    <Calendar className="w-5 h-5 text-gray-500" />
+                    <Label htmlFor="date">対象日</Label>
+                  </div>
+                  <Input
+                    id="date"
+                    type="date"
+                    value={selectedDate}
+                    onChange={(e) => setSelectedDate(e.target.value)}
+                    className="w-40"
+                  />
+                  <div className="flex items-center space-x-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => shiftDay(-1)}
+                    >
+                      前日
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setSelectedDate(new Date().toISOString().split('T')[0])}
+                    >
+                      本日
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => shiftDay(1)}
+                    >
+                      翌日
+                    </Button>
+                  </div>
                 </div>
                 {searchParams.get('from') === 'monthly' && (
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={handleBackToMonthly}
-                    className="ml-auto flex items-center space-x-2"
+                    onClick={handleGoToMonthlyListReset}
+                    className="flex items-center space-x-2"
                   >
                     <ArrowLeft className="w-4 h-4" />
-                    <span>月次売上に戻る</span>
+                    <span>日報リスト</span>
                   </Button>
                 )}
-                {/* <div className="text-sm text-gray-500">
-                  {formatDate ? formatDate(selectedDate) : selectedDate}
-                </div> */}
               </div>
             </CardContent>
           </Card>
@@ -597,20 +629,67 @@ function DailySalesPageContent() {
                                 <TableHead className="text-right w-32">金額</TableHead>
                                 <TableHead>理由</TableHead>
                                 <TableHead>備考</TableHead>
+                                <TableHead className="w-32 text-center">操作</TableHead>
                               </TableRow>
                             </TableHeader>
                             <TableBody>
                               {deducts.map((d: any) => (
                                 <TableRow key={d.id}>
                                   <TableCell>{String(d.date ?? '')}</TableCell>
-                                  <TableCell className="text-right font-medium">{formatCurrency(Number(d.value) || 0)}</TableCell>
+                                  <TableCell className="text-right font-medium">
+                                    {formatCurrency(Number(d.value) || 0)}
+                                  </TableCell>
                                   <TableCell className="whitespace-pre-wrap">{d.reason || '-'}</TableCell>
                                   <TableCell className="whitespace-pre-wrap">{d.other || '-'}</TableCell>
+                                  <TableCell className="text-center space-x-2">
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => openEditDeduct(d)}
+                                    >
+                                      編集
+                                    </Button>
+                                    
+                                  </TableCell>
+                                  <TableCell className="text-left space-x-2">
+                                  <Button
+                                      size="sm"
+                                      variant="destructive"
+                                      onClick={async () => {
+                                        const ok = window.confirm('この経費を削除しますか？');
+                                        if (!ok) return;
+                                        try {
+                                          const res = await fetch(`/api/deduct/${d.id}`, {
+                                            method: 'DELETE',
+                                          });
+                                          const result = await res.json();
+                                          if (!result.success) {
+                                            error('エラー', result.error || '経費の削除に失敗しました');
+                                            return;
+                                          }
+                                          await loadDeducts(selectedDate);
+                                          info('削除完了', '経費を削除しました', 2000);
+                                        } catch (e) {
+                                          error(
+                                            'エラー',
+                                            `経費の削除に失敗しました: ${
+                                              e instanceof Error ? e.message : '不明なエラー'
+                                            }`
+                                          );
+                                        }
+                                      }}
+                                    >
+                                      削除
+                                    </Button>
+                                  </TableCell>
                                 </TableRow>
                               ))}
                               <TableRow>
                                 <TableCell className="font-semibold">合計</TableCell>
-                                <TableCell className="text-right font-bold">{formatCurrency(totalDeduct)}</TableCell>
+                                <TableCell className="text-right font-bold">
+                                  {formatCurrency(totalDeduct)}
+                                </TableCell>
+                                <TableCell />
                                 <TableCell />
                                 <TableCell />
                               </TableRow>
@@ -823,10 +902,18 @@ function DailySalesPageContent() {
           </Card> */}
 
 
-          <Dialog open={isAddDeductOpen} onOpenChange={setIsAddDeductOpen}>
+          <Dialog
+            open={isAddDeductOpen}
+            onOpenChange={(open) => {
+              setIsAddDeductOpen(open);
+              if (!open) {
+                setEditingDeductId(null);
+              }
+            }}
+          >
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>経費追加</DialogTitle>
+                <DialogTitle>{editingDeductId ? '経費編集' : '経費追加'}</DialogTitle>
               </DialogHeader>
               <div className="space-y-4">
                 <div className="space-y-2">

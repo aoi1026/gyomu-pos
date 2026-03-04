@@ -42,6 +42,23 @@ export default function MonthlySalesPage() {
   const router = useRouter();
   const { info, error } = useNotificationContext();
 
+  // Restore period (year/month) when coming back from daily page
+  useEffect(() => {
+    try {
+      if (typeof window === 'undefined') return;
+      const saved = window.sessionStorage.getItem('monthlyPeriodFromDaily');
+      if (saved) {
+        const parsed = JSON.parse(saved) as { year?: number; month?: number };
+        if (parsed.year && parsed.month) {
+          setSelectedYear(parsed.year);
+          setSelectedMonth(parsed.month);
+        }
+      }
+    } catch {
+      // ignore JSON / storage errors
+    }
+  }, []);
+
   useEffect(() => {
     loadMonthlySalesData(selectedYear, selectedMonth);
   }, [selectedYear, selectedMonth]);
@@ -141,6 +158,10 @@ export default function MonthlySalesPage() {
           String(dailyTableScrollRef.current.scrollTop || 0)
         );
       }
+      window.sessionStorage.setItem(
+        'monthlyPeriodFromDaily',
+        JSON.stringify({ year: selectedYear, month: selectedMonth })
+      );
     } catch {
       // ignore sessionStorage errors
     }
