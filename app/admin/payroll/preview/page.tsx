@@ -20,7 +20,7 @@ import { useNotificationContext } from '@/lib/notification-context';
 import { usePrinter } from '@/lib/printer-context';
 import { buildEscPosRasterReceipt } from '@/lib/printing/escpos-raster';
 import type { ReceiptPayload } from '@/lib/printing/escpos-raster';
-import { previewReceiptInWindow } from '@/lib/printing/os-print';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { fetchStoreName, fetchStoreAddress, fetchStorePhone } from '@/lib/printing/receipt-builders';
 
 export default function PayrollPreviewPage() {
@@ -50,6 +50,8 @@ export default function PayrollPreviewPage() {
   const [castSearchQuery, setCastSearchQuery] = useState<string>('');
   const [expandedDailyRows, setExpandedDailyRows] = useState<Record<number, boolean>>({});
   const [dailyRowsData, setDailyRowsData] = useState<Record<number, any[]>>({});
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewPayloads, setPreviewPayloads] = useState<ReceiptPayload[]>([]);
 
   // モバイル／タブレットでキーボード表示時に入力欄が隠れないよう自動スクロール
   useEffect(() => {
@@ -151,7 +153,8 @@ export default function PayrollPreviewPage() {
     const result = await getPayload();
     const raw = Array.isArray(result) ? result : [result];
     const payloads = await Promise.all(raw.map((p) => enrichPayloadWithStoreInfo(p)));
-    previewReceiptInWindow(payloads);
+    setPreviewPayloads(payloads);
+    setPreviewOpen(true);
   };
   const fetchMonthlyRows = async (year: number, month: number, useSessions?: boolean, saveOnLoad?: boolean) => {
     try {
@@ -1178,7 +1181,7 @@ export default function PayrollPreviewPage() {
                 <table className="text-xs sm:text-sm divide-y divide-gray-200 w-max">
                 <thead className="bg-gray-50">
                   <tr className="text-left text-gray-600">
-                    <th rowSpan={2} className="p-2 sm:p-3 font-semibold sticky left-0 bg-gray-50 z-20 min-w-[110px] sm:min-w-[130px] border-r border-gray-200">キャスト</th>
+                    <th rowSpan={2} className="p-2 sm:p-3 font-semibold min-w-[110px] sm:min-w-[130px] border-r border-gray-200">キャスト</th>
                     <th rowSpan={2} className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[70px]">勤務時間</th>
                     <th colSpan={5} className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap border-l-2 border-gray-300 border-r-2 border-gray-300">控除</th>
                     <th rowSpan={2} className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[80px] border-l-2 border-gray-400">ペナルティ</th>
@@ -1191,7 +1194,7 @@ export default function PayrollPreviewPage() {
                     <th rowSpan={2} className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[95px] border-r-2 border-gray-300">追加ポイント</th>
                     <th rowSpan={2} className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[90px]">バック合計</th>
                     <th rowSpan={2} className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[90px]">合計</th>
-                    <th rowSpan={2} className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[90px] sticky right-0 bg-gray-50 z-20 border-l border-gray-200 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.05)]">未払い</th>
+                    <th rowSpan={2} className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[90px] border-l border-gray-200">未払い</th>
                   </tr>
                   <tr className="text-left text-gray-600 border-t-2 border-gray-400">
                     <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[90px] border-l-2 border-gray-300">前借日払</th>
@@ -1263,7 +1266,7 @@ export default function PayrollPreviewPage() {
                     return (
                       <React.Fragment key={row.user_id}>
                         <tr className="border-t hover:bg-gray-50 transition-colors">
-                        <td className="p-2 sm:p-3 whitespace-nowrap sticky left-0 bg-white z-20 border-r border-gray-200">
+                        <td className="p-2 sm:p-3 whitespace-nowrap border-r border-gray-200">
                           <div className="flex flex-col items-start space-y-1">
                             <div className="font-medium text-sm">{row.name}</div>
                             <div className="flex items-center gap-2 flex-wrap">
@@ -1504,7 +1507,7 @@ export default function PayrollPreviewPage() {
                         <td className="p-2 sm:p-3 text-center font-semibold text-xs sm:text-sm whitespace-nowrap">
                           {formatCurrency(Number(row.total_pay_yen || 0))}
                         </td>
-                        <td className="p-2 sm:p-3 text-center font-bold text-xs sm:text-sm whitespace-nowrap sticky right-0 bg-white z-20 border-l border-gray-200 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.05)]">
+                        <td className="p-2 sm:p-3 text-center font-bold text-xs sm:text-sm whitespace-nowrap border-l border-gray-200">
                           {formatCurrency(Number(row.realTotal_price || 0))}
                         </td>
                         {/* <td className="p-2">
@@ -1517,7 +1520,7 @@ export default function PayrollPreviewPage() {
                             <div className="p-4">
                               <div className="flex items-center justify-between mb-2 gap-4">
                                 <div className="text-sm font-semibold min-w-0">日別内訳: {row.name}</div>
-                                {/* <div className="flex-shrink-0 sticky right-3 pl-4 bg-gray-50 z-30 flex items-center gap-1">
+                                <div className="flex-shrink-0 sticky right-3 pl-4 bg-gray-50 z-30 flex items-center gap-1">
                                   <Button
                                     variant="outline"
                                     size="sm"
@@ -1537,13 +1540,13 @@ export default function PayrollPreviewPage() {
                                   >
                                     <FileText className="w-3 h-3 sm:w-4 sm:h-4" />
                                   </Button>
-                                </div> */}
+                                </div>
                               </div>
-                              <div className="overflow-x-auto border border-gray-200 rounded-md" style={{ maxWidth: 'calc(100vw - 4rem)' }}>
-                                  <table className="text-xs sm:text-sm divide-y divide-gray-200 w-max">
+                              <div className="w-full overflow-x-auto">
+                                  <table className="text-xs sm:text-sm divide-y divide-gray-200 w-full">
                                     <thead className="bg-gray-50">
                                       <tr className="text-left text-gray-600">
-                                        <th rowSpan={2} className="p-2 sm:p-3 font-semibold sticky left-0 bg-gray-50 z-20 min-w-[110px] sm:min-w-[130px] border-r border-gray-200 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.08)]">日付</th>
+                                        <th rowSpan={2} className="p-2 sm:p-3 font-semibold min-w-[110px] sm:min-w-[130px] border-r border-gray-200">日付</th>
                                         <th rowSpan={2} className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[70px]">勤務時間</th>
                                         <th colSpan={5} className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap border-l-2 border-gray-300 border-r-2 border-gray-300">控除</th>
                                         <th rowSpan={2} className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[230px] border-l-2 border-gray-400">ペナルティ</th>
@@ -1556,7 +1559,7 @@ export default function PayrollPreviewPage() {
                                         <th rowSpan={2} className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[230px] border-r-2 border-gray-300">追加ポイント</th>
                                         <th rowSpan={2} className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[90px]">バック合計</th>
                                         <th rowSpan={2} className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[90px]">合計</th>
-                                        <th rowSpan={2} className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[90px] sticky right-0 bg-gray-50 z-20 border-l border-gray-200 shadow-[-2px_0_4px_-2px_rgba(0,0,0,0.08)]">未払い</th>
+                                        <th rowSpan={2} className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[90px] border-l border-gray-200">未払い</th>
                                       </tr>
                                       <tr className="text-left text-gray-600 border-t-2 border-gray-400">
                                         <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[235px] border-l-2 border-gray-300">前借日払</th>
@@ -1578,7 +1581,7 @@ export default function PayrollPreviewPage() {
                                     <tbody>
                                       {dailyRowsData[row.user_id].map((dailyRow: any, dailyIdx: number) => (
                                         <tr key={dailyIdx} className="border-t hover:bg-gray-50 transition-colors">
-                                          <td className="p-2 sm:p-3 whitespace-nowrap sticky left-0 bg-white z-20 border-r border-gray-200 min-w-[110px] sm:min-w-[130px] shadow-[2px_0_4px_-2px_rgba(0,0,0,0.08)]">
+                                          <td className="p-2 sm:p-3 whitespace-nowrap border-r border-gray-200 min-w-[110px] sm:min-w-[130px]">
                                             <div className="font-medium text-sm">{formatDisplayDate(dailyRow.date)}</div>
                                           </td>
                                           <td className="p-2 sm:p-3 text-center whitespace-nowrap min-w-[70px]">
@@ -1636,13 +1639,13 @@ export default function PayrollPreviewPage() {
                                           <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap border-r-2 border-gray-300">{formatCurrency(dailyRow.additional_point_yen ?? 0)}</td>
                                           <td className="p-2 sm:p-3 text-center font-semibold text-xs sm:text-sm whitespace-nowrap min-w-[90px]">{formatCurrency(dailyRow.back_total ?? 0)}</td>
                                           <td className="p-2 sm:p-3 text-center font-semibold text-xs sm:text-sm whitespace-nowrap min-w-[90px]">{formatCurrency(dailyRow.total_pay_yen ?? 0)}</td>
-                                          <td className="p-2 sm:p-3 text-center font-bold text-xs sm:text-sm whitespace-nowrap sticky right-0 bg-white z-20 border-l border-gray-200 min-w-[90px] shadow-[-2px_0_4px_-2px_rgba(0,0,0,0.08)]">{formatCurrency(dailyRow.realTotal_price ?? 0)}</td>
+                                          <td className="p-2 sm:p-3 text-center font-bold text-xs sm:text-sm whitespace-nowrap border-l border-gray-200 min-w-[90px]">{formatCurrency(dailyRow.realTotal_price ?? 0)}</td>
                                         </tr>
                                       ))}
                                     </tbody>
                                     <tfoot className="bg-gray-50">
                                       <tr className="border-t-2 border-gray-300 font-semibold">
-                                        <td className="p-2 sm:p-3 sticky left-0 bg-gray-50 z-20 border-r border-gray-200 min-w-[110px] sm:min-w-[130px] shadow-[2px_0_4px_-2px_rgba(0,0,0,0.08)]">合計</td>
+                                        <td className="p-2 sm:p-3 border-r border-gray-200 min-w-[110px] sm:min-w-[130px]">合計</td>
                                         <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap min-w-[70px]">
                                           {formatHours(dailyRowsData[row.user_id].reduce((sum: number, r: any) => sum + Number(r.basic_hours || 0), 0))}
                                         </td>
@@ -1723,7 +1726,7 @@ export default function PayrollPreviewPage() {
                                         <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap border-r-2 border-gray-300 min-w-[95px]">{formatCurrency(dailyRowsData[row.user_id].reduce((sum: number, r: any) => sum + Number(r.additional_point_yen || 0), 0))}</td>
                                         <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap min-w-[90px]">{formatCurrency(dailyRowsData[row.user_id].reduce((sum: number, r: any) => sum + Number(r.back_total || 0), 0))}</td>
                                         <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap min-w-[90px]">{formatCurrency(dailyRowsData[row.user_id].reduce((sum: number, r: any) => sum + Number(r.total_pay_yen || 0), 0))}</td>
-                                        <td className="p-2 sm:p-3 text-center font-bold text-xs sm:text-sm whitespace-nowrap sticky right-0 bg-gray-50 z-20 border-l border-gray-200 min-w-[90px] shadow-[-2px_0_4px_-2px_rgba(0,0,0,0.08)]">
+                                        <td className="p-2 sm:p-3 text-center font-bold text-xs sm:text-sm whitespace-nowrap border-l border-gray-200 min-w-[90px]">
                                           {formatCurrency(dailyRowsData[row.user_id].reduce((sum: number, r: any) => sum + Number(r.realTotal_price || 0), 0))}
                                         </td>
                                       </tr>
@@ -1738,9 +1741,9 @@ export default function PayrollPreviewPage() {
                     );
                   })}
                 </tbody>
-                <tfoot className="bg-gray-50 sticky bottom-0">
+                <tfoot className="bg-gray-50">
                   <tr className="border-t-2 border-gray-300 font-semibold">
-                    <td className="p-2 sm:p-3 sticky left-0 bg-gray-50 z-20 border-r border-gray-200">合計</td>
+                    <td className="p-2 sm:p-3 border-r border-gray-200">合計</td>
                     <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap">
                       {formatHours(monthlyRows.reduce((sum, r) => sum + Number(r.basic_hours || 0), 0))}
                     </td>
@@ -1840,10 +1843,10 @@ export default function PayrollPreviewPage() {
                     <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap">
                       {formatCurrency(monthlyRows.reduce((sum, r) => sum + Number(r.total_pay_yen || 0), 0))}
                     </td>
-                    <td className="p-2 sm:p-3 text-center whitespace-nowrap sticky right-0 bg-gray-50 z-20 border-l border-gray-200 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.05)]">
+                    <td className="p-2 sm:p-3 text-center whitespace-nowrap border-l border-gray-200">
                       <div className="flex flex-col items-center gap-2">
                         <div className="font-bold">{formatCurrency(monthlyRows.reduce((sum, r) => sum + Number(r.realTotal_price || 0), 0))}</div>
-                        <div className="flex items-center justify-center gap-1">
+                        {/* <div className="flex items-center justify-center gap-1">
                           <Button
                             size="sm"
                             variant="outline"
@@ -1863,7 +1866,7 @@ export default function PayrollPreviewPage() {
                           >
                             <FileText className="w-3 h-3 sm:w-4 sm:h-4" />
                           </Button>
-                        </div>
+                        </div> */}
                       </div>
                     </td>
                   </tr>
@@ -2254,6 +2257,49 @@ export default function PayrollPreviewPage() {
           )} */}
         </div>
       </div>
+
+      {/* プレビューモーダル */}
+      <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
+        <DialogContent className="max-w-sm w-full max-h-[85vh] flex flex-col p-0">
+          <DialogHeader className="px-4 pt-4 pb-2 border-b">
+            <DialogTitle>プレビュー</DialogTitle>
+          </DialogHeader>
+          <div className="overflow-y-auto flex-1 px-4 py-3 space-y-4">
+            {previewPayloads.map((payload, i) => (
+              <div key={i} className="border border-gray-200 rounded p-4 bg-white font-mono text-sm">
+                <div className="text-center font-bold text-base mb-0.5">{payload.storeName}</div>
+                <div className="text-center text-xs text-gray-500 mb-0.5">{payload.tableName}</div>
+                <div className="text-center text-xs font-semibold mb-2">【{payload.title}】</div>
+                <div className="border-t border-dashed border-gray-400 my-2" />
+                <div className="space-y-1 mb-2">
+                  {payload.lines.map((line, j) => (
+                    <div key={j} className={`flex text-xs ${line.right ? 'justify-between' : 'justify-center text-gray-500'}`}>
+                      <span>{line.left}</span>
+                      {line.right && <span className="ml-2 font-medium">{line.right}</span>}
+                    </div>
+                  ))}
+                </div>
+                <div className="border-t border-dashed border-gray-400 my-2" />
+                <div className="flex justify-between font-bold text-sm">
+                  <span>{payload.totalLabel}</span>
+                  <span>¥{payload.totalAmount.toLocaleString('ja-JP')}</span>
+                </div>
+                <div className="text-center text-xs text-gray-400 mt-2">
+                  発行: {payload.issuedAt instanceof Date
+                    ? `${payload.issuedAt.getFullYear()}/${String(payload.issuedAt.getMonth()+1).padStart(2,'0')}/${String(payload.issuedAt.getDate()).padStart(2,'0')} ${String(payload.issuedAt.getHours()).padStart(2,'0')}:${String(payload.issuedAt.getMinutes()).padStart(2,'0')}`
+                    : String(payload.issuedAt)}
+                </div>
+                {(payload.footerAddress || payload.footerPhone) && (
+                  <div className="text-center text-xs text-gray-400 mt-1 space-y-0.5">
+                    {payload.footerAddress && <div>{payload.footerAddress}</div>}
+                    {payload.footerPhone && <div>TEL: {payload.footerPhone}</div>}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
 
     </RoleGate>
   );

@@ -166,7 +166,7 @@ export default function PrintConfirmModal({
                     </div>
                   )}
 
-                  <Button
+                  {/* <Button
                     className="w-full"
                     variant="outline"
                     disabled={isConnecting}
@@ -178,7 +178,7 @@ export default function PrintConfirmModal({
                       <Search className="w-4 h-4 mr-2" />
                     )}
                     {isConnecting && !connectingDeviceId ? '検索中...' : 'Bluetoothデバイスを検索'}
-                  </Button>
+                  </Button> */}
                 </>
               )}
             </div>
