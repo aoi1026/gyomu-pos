@@ -8,6 +8,7 @@ type CompressOptions = {
   maxDimension?: number;
   /**
    * Output format preference. If the input has alpha channel, PNG is used.
+   * Falls back to image/jpeg when WebP canvas encoding is not supported (e.g. iOS < 14).
    */
   preferFormat?: 'image/webp' | 'image/jpeg';
   /**
@@ -34,6 +35,10 @@ function loadImage(dataUrl: string): Promise<HTMLImageElement> {
   });
 }
 
+/**
+ * Returns false (not true) on any error so that JPEG is preferred over PNG
+ * when alpha channel detection fails (e.g. iOS memory pressure / security restrictions).
+ */
 function hasAlphaChannel(ctx: CanvasRenderingContext2D, w: number, h: number): boolean {
   try {
     const data = ctx.getImageData(0, 0, w, h).data;
@@ -41,17 +46,48 @@ function hasAlphaChannel(ctx: CanvasRenderingContext2D, w: number, h: number): b
       if (data[i] !== 255) return true;
     }
   } catch {
-    // If we can't inspect, assume alpha might exist to be safe.
-    return true;
+    // Cannot inspect pixels — assume no alpha to avoid forcing large PNG output
+    return false;
   }
   return false;
 }
 
 /**
+ * Returns true only if the browser's canvas can actually encode WebP.
+ * iOS Safari < 14 silently falls back to PNG, so we detect this explicitly.
+ */
+function canvasSupportsWebP(): boolean {
+  try {
+    const probe = document.createElement('canvas');
+    probe.width = 1;
+    probe.height = 1;
+    return probe.toDataURL('image/webp').startsWith('data:image/webp');
+  } catch {
+    return false;
+  }
+}
+
+function renderToCanvas(img: HTMLImageElement, w: number, h: number): HTMLCanvasElement {
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  if (ctx) {
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(img, 0, 0, w, h);
+  }
+  return canvas;
+}
+
+/**
  * Compress an image file into a Data URL suitable for storing in DB.
  * - Downscales large images (default max 1280px on long side).
- * - Uses WebP/JPEG for non-alpha images (default webp@0.8).
- * - Uses PNG for images with alpha (keeps transparency; downscaling still applies).
+ * - Uses WebP for non-alpha images only when the browser supports canvas WebP encoding.
+ *   Falls back to JPEG (never falls back to PNG for non-alpha images).
+ * - Uses PNG only for images that genuinely have an alpha channel.
+ * - On any canvas encoding failure, retries with JPEG before falling back to the
+ *   original data URL (avoiding silent return of multi-MB uncompressed blobs).
  */
 export async function compressImageFileToDataUrl(
   file: File,
@@ -72,29 +108,35 @@ export async function compressImageFileToDataUrl(
   const dstW = Math.max(1, Math.round(srcW * scale));
   const dstH = Math.max(1, Math.round(srcH * scale));
 
-  const canvas = document.createElement('canvas');
-  canvas.width = dstW;
-  canvas.height = dstH;
+  const canvas = renderToCanvas(img, dstW, dstH);
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
-  if (!ctx) return dataUrl;
 
-  // Draw (downscale)
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = 'high';
-  ctx.drawImage(img, 0, 0, dstW, dstH);
+  // Determine output format
+  const alpha = ctx ? hasAlphaChannel(ctx, dstW, dstH) : false;
 
-  const alpha = hasAlphaChannel(ctx, dstW, dstH);
+  let mime: string;
+  if (alpha) {
+    mime = 'image/png';
+  } else if (preferFormat === 'image/webp' && canvasSupportsWebP()) {
+    mime = 'image/webp';
+  } else {
+    // iOS < 14 does not support WebP canvas encoding; always use JPEG as safe fallback
+    mime = 'image/jpeg';
+  }
 
-  // Pick output mime
-  const mime = alpha ? 'image/png' : preferFormat;
-
-  // Convert to DataURL
+  // Primary encode attempt
   try {
-    if (mime === 'image/png') return canvas.toDataURL('image/png');
-    return canvas.toDataURL(mime, quality);
+    return mime === 'image/png'
+      ? canvas.toDataURL('image/png')
+      : canvas.toDataURL(mime, quality);
   } catch {
-    // Fallback to original if conversion fails
-    return dataUrl;
+    // Secondary attempt: JPEG is universally supported for lossy encoding
+    try {
+      return canvas.toDataURL('image/jpeg', quality);
+    } catch {
+      // Last resort: return original data URL
+      // (only reached if the browser cannot encode canvas at all)
+      return dataUrl;
+    }
   }
 }
-

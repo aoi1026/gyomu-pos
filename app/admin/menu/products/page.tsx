@@ -268,12 +268,35 @@ export default function ProductManagementPage() {
       error('エラー', '画像ファイルを選択してください');
       return;
     }
-    if (file.size > 5 * 1024 * 1024) {
-      error('エラー', '画像サイズが大きすぎます（5MB以下にしてください）');
+    // Allow up to 20MB originals — mobile camera photos (HEIC/JPEG) can exceed 5MB
+    if (file.size > 20 * 1024 * 1024) {
+      error('エラー', '画像サイズが大きすぎます（20MB以下にしてください）');
       return;
     }
     setImageFileName(file.name);
-    const dataUrl = await compressImageFileToDataUrl(file, { maxDimension: 1280, preferFormat: 'image/webp', quality: 0.82 });
+
+    // First attempt: standard settings
+    let dataUrl = await compressImageFileToDataUrl(file, {
+      maxDimension: 1280,
+      preferFormat: 'image/webp',
+      quality: 0.82,
+    });
+
+    // If output is still large (e.g. PNG with alpha, or WebP fallback), retry smaller
+    if (dataUrl.length > 1.5 * 1024 * 1024) {
+      dataUrl = await compressImageFileToDataUrl(file, {
+        maxDimension: 800,
+        preferFormat: 'image/jpeg',
+        quality: 0.72,
+      });
+    }
+
+    // Final safety check — should not be reached under normal circumstances
+    if (dataUrl.length > 3 * 1024 * 1024) {
+      error('エラー', '画像の圧縮に失敗しました。より小さい画像を選択してください。');
+      return;
+    }
+
     setForm((prev) => ({ ...prev, image: dataUrl }));
   };
 
@@ -625,7 +648,7 @@ export default function ProductManagementPage() {
                         </Button>
                       </div>
                     )}
-                    <p className="text-xs text-gray-500">※ 最大5MB（保存時に圧縮します）</p>
+                    <p className="text-xs text-gray-500">※ 最大20MB（自動圧縮します）</p>
                   </div>
                   
                   <div className="space-y-2">
