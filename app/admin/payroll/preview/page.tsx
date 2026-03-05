@@ -1293,13 +1293,13 @@ export default function PayrollPreviewPage() {
                               >
                                 {expandedDailyRows[row.user_id] ? (
                                   <>
-                                    <ChevronUp className="w-3 h-3 mr-1" />
-                                    日別内訳
+                                    <ChevronUp className="w-3 h-3 sm:mr-1" />
+                                    <span className="hidden sm:inline">日別内訳</span>
                                   </>
                                 ) : (
                                   <>
-                                    <ChevronDown className="w-3 h-3 mr-1" />
-                                    日別内訳
+                                    <ChevronDown className="w-3 h-3 sm:mr-1" />
+                                    <span className="hidden sm:inline">日別内訳</span>
                                   </>
                                 )}
                               </button>
