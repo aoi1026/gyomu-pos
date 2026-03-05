@@ -1,6 +1,12 @@
 import type { ReceiptPayload, FullReceiptPayload } from '@/lib/printing/escpos-raster';
 import { formatYen } from '@/lib/printing/escpos-raster';
 
+function isIOS(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && (navigator as any).maxTouchPoints > 1);
+}
+
 function formatIssuedAt(d: Date): string {
   const yyyy = d.getFullYear();
   const mm = String(d.getMonth() + 1).padStart(2, '0');
@@ -122,18 +128,85 @@ function fullReceiptToHtml(p: FullReceiptPayload): string {
   `;
 }
 
-/**
- * OSの印刷ダイアログを使用してレシートを印刷します。
- * iPadなどWeb Bluetooth非対応環境でも、デバイスレベルで接続済みのプリンターに印刷できます。
- */
-export function printReceiptViaOs(payloads: ReceiptPayload | ReceiptPayload[]): void {
-  const list = Array.isArray(payloads) ? payloads : [payloads];
-  if (list.length === 0) return;
+function buildReceiptPageHtml(bodyContent: string, title: string): string {
+  return `<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>${title}</title>
+    <style>${PRINT_STYLES}</style>
+  </head>
+  <body>${bodyContent}</body>
+</html>`;
+}
 
+function printViaIframe(fullHtml: string): void {
+  const FRAME_ID = 'pos-print-frame';
+  let iframe = document.getElementById(FRAME_ID) as HTMLIFrameElement | null;
+  if (iframe) iframe.remove();
+
+  iframe = document.createElement('iframe');
+  iframe.id = FRAME_ID;
+  Object.assign(iframe.style, {
+    position: 'fixed',
+    right: '0',
+    bottom: '0',
+    width: '0',
+    height: '0',
+    border: 'none',
+    overflow: 'hidden',
+    opacity: '0',
+    pointerEvents: 'none',
+  });
+  document.body.appendChild(iframe);
+
+  const doc = iframe.contentDocument || iframe.contentWindow?.document;
+  if (!doc) {
+    iframe.remove();
+    throw new Error('印刷用フレームにアクセスできませんでした');
+  }
+
+  doc.open();
+  doc.write(fullHtml);
+  doc.close();
+
+  const iframeRef = iframe;
+  setTimeout(() => {
+    try {
+      iframeRef.contentWindow?.focus();
+      iframeRef.contentWindow?.print();
+    } catch {
+      printViaPopup(fullHtml);
+    }
+  }, 300);
+}
+
+function printViaPopup(fullHtml: string): void {
   const w = window.open('', 'pos_os_print', 'width=420,height=680');
   if (!w) {
     throw new Error('ポップアップがブロックされました。ポップアップ許可後に再度お試しください。');
   }
+  w.document.open();
+  w.document.write(fullHtml + `<script>setTimeout(function(){window.print();window.onafterprint=function(){window.close()};},150)<\/script>`);
+  w.document.close();
+}
+
+function doPrint(fullHtml: string): void {
+  if (isIOS()) {
+    printViaIframe(fullHtml);
+  } else {
+    printViaPopup(fullHtml);
+  }
+}
+
+/**
+ * OSの印刷ダイアログを使用してレシートを印刷します。
+ * iPadではiframeベースで印刷ダイアログを表示（ポップアップブロック回避）。
+ * デスクトップではポップアップウィンドウを使用。
+ */
+export function printReceiptViaOs(payloads: ReceiptPayload | ReceiptPayload[]): void {
+  const list = Array.isArray(payloads) ? payloads : [payloads];
+  if (list.length === 0) return;
 
   const receiptsHtml = list
     .map((p, i) => {
@@ -143,24 +216,7 @@ export function printReceiptViaOs(payloads: ReceiptPayload | ReceiptPayload[]): 
     })
     .join('');
 
-  w.document.open();
-  w.document.write(`
-<!doctype html>
-<html>
-  <head>
-    <meta charset="utf-8" />
-    <title>印刷</title>
-    <style>${PRINT_STYLES}</style>
-  </head>
-  <body>
-    ${receiptsHtml}
-    <script>
-      setTimeout(function() { window.print(); window.onafterprint = function() { window.close(); }; }, 150);
-    </script>
-  </body>
-</html>
-  `);
-  w.document.close();
+  doPrint(buildReceiptPageHtml(receiptsHtml, '印刷'));
 }
 
 /**
@@ -168,28 +224,7 @@ export function printReceiptViaOs(payloads: ReceiptPayload | ReceiptPayload[]): 
  */
 export function printFullReceiptViaOs(payload: FullReceiptPayload): void {
   const html = fullReceiptToHtml(payload);
-  const w = window.open('', 'pos_os_print', 'width=420,height=680');
-  if (!w) {
-    throw new Error('ポップアップがブロックされました。ポップアップ許可後に再度お試しください。');
-  }
-  w.document.open();
-  w.document.write(`
-<!doctype html>
-<html>
-  <head>
-    <meta charset="utf-8" />
-    <title>領収書 印刷</title>
-    <style>${PRINT_STYLES}</style>
-  </head>
-  <body>
-    <div class="paper">${html}</div>
-    <script>
-      setTimeout(function() { window.print(); window.onafterprint = function() { window.close(); }; }, 150);
-    </script>
-  </body>
-</html>
-  `);
-  w.document.close();
+  doPrint(buildReceiptPageHtml(`<div class="paper">${html}</div>`, '領収書 印刷'));
 }
 
 /**
@@ -197,24 +232,13 @@ export function printFullReceiptViaOs(payload: FullReceiptPayload): void {
  */
 export function previewFullReceiptInWindow(payload: FullReceiptPayload): void {
   const html = fullReceiptToHtml(payload);
+  const fullHtml = buildReceiptPageHtml(`<div class="paper">${html}</div>`, '領収書 プレビュー');
   const w = window.open('', 'pos_os_preview', 'width=420,height=680');
   if (!w) {
     throw new Error('ポップアップがブロックされました。ポップアップ許可後に再度お試しください。');
   }
   w.document.open();
-  w.document.write(`
-<!doctype html>
-<html>
-  <head>
-    <meta charset="utf-8" />
-    <title>領収書 プレビュー</title>
-    <style>${PRINT_STYLES}</style>
-  </head>
-  <body>
-    <div class="paper">${html}</div>
-  </body>
-</html>
-  `);
+  w.document.write(fullHtml);
   w.document.close();
 }
 
@@ -225,11 +249,6 @@ export function previewReceiptInWindow(payloads: ReceiptPayload | ReceiptPayload
   const list = Array.isArray(payloads) ? payloads : [payloads];
   if (list.length === 0) return;
 
-  const w = window.open('', 'pos_os_preview', 'width=420,height=680');
-  if (!w) {
-    throw new Error('ポップアップがブロックされました。ポップアップ許可後に再度お試しください。');
-  }
-
   const receiptsHtml = list
     .map((p, i) => {
       const html = payloadToHtml(p);
@@ -238,19 +257,12 @@ export function previewReceiptInWindow(payloads: ReceiptPayload | ReceiptPayload
     })
     .join('');
 
+  const fullHtml = buildReceiptPageHtml(receiptsHtml, 'プレビュー');
+  const w = window.open('', 'pos_os_preview', 'width=420,height=680');
+  if (!w) {
+    throw new Error('ポップアップがブロックされました。ポップアップ許可後に再度お試しください。');
+  }
   w.document.open();
-  w.document.write(`
-<!doctype html>
-<html>
-  <head>
-    <meta charset="utf-8" />
-    <title>プレビュー</title>
-    <style>${PRINT_STYLES}</style>
-  </head>
-  <body>
-    ${receiptsHtml}
-  </body>
-</html>
-  `);
+  w.document.write(fullHtml);
   w.document.close();
 }

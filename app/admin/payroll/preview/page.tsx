@@ -20,7 +20,7 @@ import { useNotificationContext } from '@/lib/notification-context';
 import { usePrinter } from '@/lib/printer-context';
 import { buildEscPosRasterReceipt } from '@/lib/printing/escpos-raster';
 import type { ReceiptPayload } from '@/lib/printing/escpos-raster';
-import { printReceiptViaOs, previewReceiptInWindow } from '@/lib/printing/os-print';
+import { previewReceiptInWindow } from '@/lib/printing/os-print';
 import { fetchStoreName, fetchStoreAddress, fetchStorePhone } from '@/lib/printing/receipt-builders';
 
 export default function PayrollPreviewPage() {
@@ -99,6 +99,29 @@ export default function PayrollPreviewPage() {
     };
   }, []);
 
+  // 画面回転時にスクロールコンテナの幅を再計算させる
+  const payrollScrollRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    let tid: ReturnType<typeof setTimeout> | null = null;
+    const forceRelayout = () => {
+      if (tid) clearTimeout(tid);
+      tid = setTimeout(() => {
+        const el = payrollScrollRef.current;
+        if (!el) return;
+        el.style.overflow = 'hidden';
+        void el.offsetWidth;
+        el.style.overflow = '';
+      }, 200);
+    };
+    window.addEventListener('orientationchange', forceRelayout);
+    window.addEventListener('resize', forceRelayout);
+    return () => {
+      if (tid) clearTimeout(tid);
+      window.removeEventListener('orientationchange', forceRelayout);
+      window.removeEventListener('resize', forceRelayout);
+    };
+  }, []);
+
   /** DBのstore_address・store_telでペイロードを補完 */
   const enrichPayloadWithStoreInfo = async (payload: ReceiptPayload): Promise<ReceiptPayload> => {
     const [address, phone] = await Promise.all([fetchStoreAddress(), fetchStorePhone()]);
@@ -109,15 +132,19 @@ export default function PayrollPreviewPage() {
     };
   };
 
-  const doPrint = async (getPayload: () => Promise<ReceiptPayload | ReceiptPayload[]>) => {
+  const doPrint = async (getPayload: () => Promise<ReceiptPayload | ReceiptPayload[]>, label?: string) => {
     const result = await getPayload();
     const raw = Array.isArray(result) ? result : [result];
     const payloads = await Promise.all(raw.map((p) => enrichPayloadWithStoreInfo(p)));
-    if (printer.status === 'connected') {
-      for (const p of payloads) await printer.write(buildEscPosRasterReceipt(p));
-    } else {
-      printReceiptViaOs(payloads);
+    const parts = payloads.map((p) => buildEscPosRasterReceipt(p));
+    const totalLen = parts.reduce((s, p) => s + p.length, 0);
+    const combined = new Uint8Array(totalLen);
+    let offset = 0;
+    for (const part of parts) {
+      combined.set(part, offset);
+      offset += part.length;
     }
+    printer.requestPrint(combined, label || '給与明細印刷');
   };
 
   const doPreview = async (getPayload: () => Promise<ReceiptPayload | ReceiptPayload[]>) => {
@@ -513,15 +540,10 @@ export default function PayrollPreviewPage() {
   };
 
   const handlePrintMonthlyRow = async (row: any) => {
-    if (isPrinting) return;
-    setIsPrinting(true);
     try {
-      await doPrint(() => getPayloadForMonthlyRow(row));
-      success('印刷', '印刷しました');
+      await doPrint(() => getPayloadForMonthlyRow(row), `給与明細印刷（${row?.name ?? ''}）`);
     } catch (e: any) {
       error('印刷に失敗しました', e?.message || String(e));
-    } finally {
-      setIsPrinting(false);
     }
   };
   const handlePreviewMonthlyRow = async (row: any) => {
@@ -561,20 +583,15 @@ export default function PayrollPreviewPage() {
   };
 
   const handlePrintDailyBreakdown = async (row: any) => {
-    if (isPrinting) return;
     const dailyRows = dailyRowsData[row.user_id];
     if (!dailyRows?.length) {
       info('印刷', '日別内訳データがありません');
       return;
     }
-    setIsPrinting(true);
     try {
-      await doPrint(() => getPayloadForDailyBreakdown(row));
-      success('印刷', '印刷しました');
+      await doPrint(() => getPayloadForDailyBreakdown(row), `日別内訳印刷（${row?.name ?? ''}）`);
     } catch (e: any) {
       error('印刷に失敗しました', e?.message || String(e));
-    } finally {
-      setIsPrinting(false);
     }
   };
   const handlePreviewDailyBreakdown = async (row: any) => {
@@ -607,19 +624,14 @@ export default function PayrollPreviewPage() {
   };
 
   const handlePrintMonthlyAll = async () => {
-    if (isPrinting) return;
     if (!monthlyRows.length) {
       info('印刷', '印刷するデータがありません');
       return;
     }
-    setIsPrinting(true);
     try {
-      await doPrint(getPayloadForMonthlyAll);
-      success('印刷', '印刷しました');
+      await doPrint(getPayloadForMonthlyAll, 'キャスト別給与（全員）印刷');
     } catch (e: any) {
       error('印刷に失敗しました', e?.message || String(e));
-    } finally {
-      setIsPrinting(false);
     }
   };
   const handlePreviewMonthlyAll = async () => {
@@ -702,19 +714,14 @@ export default function PayrollPreviewPage() {
   };
 
   const handlePrintMonthlyTotals = async () => {
-    if (isPrinting) return;
     if (!monthlyRows.length) {
       info('印刷', '印刷するデータがありません');
       return;
     }
-    setIsPrinting(true);
     try {
-      await doPrint(getPayloadForMonthlyTotals);
-      success('印刷', '印刷しました');
+      await doPrint(getPayloadForMonthlyTotals, 'キャスト別給与（合計）印刷');
     } catch (e: any) {
       error('印刷に失敗しました', e?.message || String(e));
-    } finally {
-      setIsPrinting(false);
     }
   };
   const handlePreviewMonthlyTotals = async () => {
@@ -756,15 +763,10 @@ export default function PayrollPreviewPage() {
   };
 
   const handlePrintPayrollItemRow = async (item: PayrollItem) => {
-    if (isPrinting) return;
-    setIsPrinting(true);
     try {
-      await doPrint(() => getPayloadForPayrollItemRow(item));
-      success('印刷', '印刷しました');
+      await doPrint(() => getPayloadForPayrollItemRow(item), `給与明細印刷（${item.staff.name}）`);
     } catch (e: any) {
       error('印刷に失敗しました', e?.message || String(e));
-    } finally {
-      setIsPrinting(false);
     }
   };
   const handlePreviewPayrollItemRow = async (item: PayrollItem) => {
@@ -958,7 +960,7 @@ export default function PayrollPreviewPage() {
           </div>
         </header>
 
-        <div className="max-w-7xl mx-auto px-3 sm:px-4 md:px-6 lg:px-8 py-4 sm:py-6 md:py-8">
+        <div className="max-w-7xl mx-auto px-3 sm:px-4 md:px-6 lg:px-8 py-4 sm:py-6 md:py-8 min-w-0">
           {/* 期間選択（検索条件） */}
           <Card className="mb-4 sm:mb-6 md:mb-4 shadow-sm">
             <CardContent className="p-4 sm:p-5 md:p-6">
@@ -1104,7 +1106,7 @@ export default function PayrollPreviewPage() {
           </Card>
           
         {/* キャスト別給与計算表 */}
-        <Card className="mb-4 sm:mb-6 md:mb-8 shadow-sm">
+        <Card className="mb-4 sm:mb-6 md:mb-8 shadow-sm overflow-hidden">
           <CardHeader className="pb-3 sm:pb-4">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
               <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
@@ -1172,9 +1174,8 @@ export default function PayrollPreviewPage() {
           </CardHeader>
           <CardContent className="p-0 sm:p-4 md:p-6">
             {/* テーブル表示（全画面サイズで水平スクロール） */}
-            <div className="w-full max-w-full overflow-x-auto">
-              <div className="inline-block align-middle">
-                <table className="text-xs sm:text-sm divide-y divide-gray-200" style={{ minWidth: 'max-content' }}>
+            <div ref={payrollScrollRef} className="w-full min-w-0 overflow-x-auto">
+                <table className="text-xs sm:text-sm divide-y divide-gray-200 w-max">
                 <thead className="bg-gray-50">
                   <tr className="text-left text-gray-600">
                     <th rowSpan={2} className="p-2 sm:p-3 font-semibold sticky left-0 bg-gray-50 z-20 min-w-[110px] sm:min-w-[130px] border-r border-gray-200">キャスト</th>
@@ -1538,9 +1539,8 @@ export default function PayrollPreviewPage() {
                                   </Button>
                                 </div>
                               </div>
-                              <div className="w-full max-w-full overflow-x-auto">
-                                <div className="inline-block align-middle">
-                                  <table className="text-xs sm:text-sm divide-y divide-gray-200" style={{ minWidth: 'max-content' }}>
+                              <div className="w-full min-w-0 overflow-x-auto">
+                                  <table className="text-xs sm:text-sm divide-y divide-gray-200 w-max">
                                     <thead className="bg-gray-50">
                                       <tr className="text-left text-gray-600">
                                         <th rowSpan={2} className="p-2 sm:p-3 font-semibold sticky left-0 bg-gray-50 z-20 min-w-[110px] sm:min-w-[130px] border-r border-gray-200">日付</th>
@@ -1729,7 +1729,6 @@ export default function PayrollPreviewPage() {
                                       </tr>
                                     </tfoot>
                                   </table>
-                                </div>
                               </div>
                             </div>
                           </td>
@@ -1870,7 +1869,6 @@ export default function PayrollPreviewPage() {
                   </tr>
                 </tfoot>
                 </table>
-              </div>
             </div>
           </CardContent>
         </Card>

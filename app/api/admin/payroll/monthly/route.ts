@@ -121,8 +121,8 @@ export async function GET(request: NextRequest) {
           AND to_timestamp(((e->>'timestamp')::numeric)/1000) < $2::date
       ),
       nom AS (
-        SELECT
-          n.cast_id AS user_id,
+        SELECT 
+          n.cast_id AS user_id, 
           SUM(CASE WHEN n.type_id = 'main' THEN 1 ELSE 0 END)::int AS main_cnt,
           SUM(CASE WHEN n.type_id = 'inside' THEN 1 ELSE 0 END)::int AS inside_cnt,
           SUM(CASE WHEN n.type_id = 'together' THEN 1 ELSE 0 END)::int AS together_cnt,
@@ -138,7 +138,7 @@ export async function GET(request: NextRequest) {
         WHERE n.created_at >= $1::date AND n.created_at < $2::date
         GROUP BY n.cast_id
       )
-      SELECT
+      SELECT 
         c.user_id,
         c.name,
         c.email,

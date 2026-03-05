@@ -29,7 +29,7 @@ import {
 } from '@/lib/printing/receipt-builders';
 import { buildFullReceiptEscPos } from '@/lib/printing/escpos-raster';
 import type { FullReceiptPayload } from '@/lib/printing/escpos-raster';
-import { printFullReceiptViaOs, previewFullReceiptInWindow } from '@/lib/printing/os-print';
+import { previewFullReceiptInWindow } from '@/lib/printing/os-print';
 
 interface TableViewerProps {
   tableId: number | null;
@@ -182,15 +182,11 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
     try {
       const payload = await buildReceiptData();
       if (!payload) return;
-      if (printer.status === 'connected') {
-        await printer.write(buildFullReceiptEscPos(payload));
-      } else {
-        printFullReceiptViaOs(payload);
-      }
-      success('印刷', '領収書を印刷しました');
+      const escposData = buildFullReceiptEscPos(payload);
+      printer.requestPrint(escposData, '領収書印刷');
     } catch (e) {
       console.error('領収書印刷エラー:', e);
-      error('エラー', '領収書の印刷に失敗しました');
+      error('エラー', '領収書データの生成に失敗しました');
     }
   };
 
@@ -2499,20 +2495,31 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
                     </div>
 
                     <div className="space-y-2">
-                      {/* 商品合計 */}
+                      {/* 商品の明細（個別表示） */}
                       {(() => {
-                        const productTotal = cartOrders.reduce((sum, order) => {
+                        const acceptedOrders = cartOrders.filter(order => {
                           const status = orderRequestStatus[order.id] || order.status;
-                          if (status === 'accepted') {
-                            return sum + (Number(order.total_price) || 0);
-                          }
-                          return sum;
-                        }, 0);
-                        if (productTotal > 0) {
+                          return status === 'accepted';
+                        });
+                        if (acceptedOrders.length > 0) {
                           return (
-                            <div className="flex justify-between text-sm">
-                              <span>商品合計</span>
-                              <span>{formatCurrency(productTotal)}</span>
+                            <div className="space-y-1">
+                              <div className="text-xs font-semibold text-gray-600 mb-1">商品</div>
+                              {acceptedOrders.map((order) => {
+                                const unitPrice = Number(order.unit_price) || 0;
+                                const qty = Number(order.amount) || 1;
+                                const total = Number(order.total_price) || 0;
+                                const breakdown = qty > 1 ? `¥${unitPrice.toLocaleString()} × ${qty}` : `¥${unitPrice.toLocaleString()}`;
+                                return (
+                                  <div key={order.id} className="flex justify-between items-start text-sm pl-3 gap-2">
+                                    <div className="min-w-0 flex-1">
+                                      <div className="text-gray-700 truncate">{order.product_name}</div>
+                                      <div className="text-gray-400 text-xs mt-0.5">{breakdown}</div>
+                                    </div>
+                                    <span className="flex-shrink-0">{formatCurrency(total)}</span>
+                                  </div>
+                                );
+                              })}
                             </div>
                           );
                         }
@@ -2520,41 +2527,92 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
                       })()}
 
                       {/* セッション料金 */}
-                      {guestCount && (
-                        <div className="flex justify-between text-sm">
-                          <span>セッション料金 ({guestCount}名)</span>
-                          <span>{formatCurrency((addCharges['set_price'] || 0) * parseInt(guestCount || '0'))}</span>
-                        </div>
-                      )}
+                      {(() => {
+                        if (guestCount && guestCount.trim() !== '') {
+                          const cnt = parseInt(guestCount);
+                          const unitPrice = addCharges['set_price'] || 0;
+                          if (!isNaN(cnt) && cnt > 0 && unitPrice > 0) {
+                            return (
+                              <div className="flex justify-between items-start text-sm gap-2">
+                                <div className="min-w-0 flex-1">
+                                  <div>セッション料金</div>
+                                  <div className="text-gray-400 text-xs mt-0.5">¥{unitPrice.toLocaleString()} × {cnt}名</div>
+                                </div>
+                                <span className="flex-shrink-0">{formatCurrency(unitPrice * cnt)}</span>
+                              </div>
+                            );
+                          }
+                        }
+                        return null;
+                      })()}
 
                       {/* セット延長料金 */}
-                      {setExtensions.map((extension, index) => (
-                        <div key={index} className="flex justify-between text-sm">
-                          <span>セット延長 ({extension.count}名)</span>
-                          <span>{formatCurrency(Number(extension.price ?? ((addCharges['extension_price'] || 0) * extension.count)) || 0)}</span>
-                        </div>
-                      ))}
+                      {setExtensions.map((extension, index) => {
+                        const extensionUnit = addCharges['extension_price'] || 0;
+                        const total = Number(extension.price ?? (extensionUnit * extension.count)) || 0;
+                        return (
+                          <div key={index} className="flex justify-between items-start text-sm gap-2">
+                            <div className="min-w-0 flex-1">
+                              <div>セット延長 ({index + 1}回目)</div>
+                              <div className="text-gray-400 text-xs mt-0.5">¥{extensionUnit.toLocaleString()} × {extension.count}名</div>
+                            </div>
+                            <span className="flex-shrink-0">{formatCurrency(total)}</span>
+                          </div>
+                        );
+                      })}
 
                       {/* 指名料金の明細 */}
                       {nominations.length > 0 && (
                         <div className="border-t pt-2 space-y-1">
                           <div className="text-xs font-semibold text-gray-600 mb-1">指名料金</div>
                           {nominations.map((nomination) => {
-                            let chargeLabel = '';
-                            
+                            let typeLabel = '';
                             if (nomination.type_id === 'together') {
-                              chargeLabel = `${getNominationTypeLabel(nomination.type_id)} - ${nomination.cast_name}`;
+                              typeLabel = `${getNominationTypeLabel(nomination.type_id)} - ${nomination.cast_name}`;
                             } else if (nomination.type_id === 'main') {
-                              chargeLabel = `${getNominationTypeLabel(nomination.type_id)} - ${nomination.cast_name}`;
+                              typeLabel = `${getNominationTypeLabel(nomination.type_id)} - ${nomination.cast_name}`;
                             } else if (nomination.type_id === 'inside') {
                               const promoted = Number((nomination as any).tomain_nomination) === 1;
-                              chargeLabel = `${getNominationTypeLabel(nomination.type_id)}${promoted ? '（本指名へ昇格）' : ''} - ${nomination.cast_name}`;
+                              typeLabel = `${getNominationTypeLabel(nomination.type_id)}${promoted ? '（本指名へ昇格）' : ''} - ${nomination.cast_name}`;
                             }
-                            
+
+                            const totalCost = Number((nomination as any).cost) || 0;
+                            const mainCharge = addCharges['main'] || 0;
+                            const togetherCharge = addCharges['together'] || 0;
+                            const createdMs = Date.parse(String(nomination.created_at || (nomination as any).updated_at || '')) || 0;
+                            const extCountSince = setExtensions.filter((e: any) => {
+                              const ts = Number(e?.timestamp);
+                              return Number.isFinite(ts) && ts > createdMs;
+                            }).length;
+                            const extAdd = mainCharge * extCountSince;
+                            const initialCost = Math.max(0, totalCost - extAdd);
+
+                            let breakdownText = '';
+                            if (nomination.type_id === 'together') {
+                              if (togetherCharge > 0 || mainCharge > 0) {
+                                breakdownText = `¥${togetherCharge.toLocaleString()}＋¥${mainCharge.toLocaleString()}`;
+                                if (extCountSince > 0) {
+                                  breakdownText += `＋¥${mainCharge.toLocaleString()}×${extCountSince}`;
+                                }
+                              }
+                            } else if (extCountSince > 0 && extAdd > 0) {
+                              breakdownText = `¥${initialCost.toLocaleString()} + ¥${mainCharge.toLocaleString()} × ${extCountSince}`;
+                            } else {
+                              const typeCharge = addCharges[nomination.type_id] || 0;
+                              if (typeCharge > 0) {
+                                breakdownText = `¥${typeCharge.toLocaleString()}`;
+                              }
+                            }
+
                             return (
-                              <div key={nomination.id} className="flex justify-between text-sm pl-3">
-                                <span className="text-gray-700">{chargeLabel}</span>
-                                <span>{formatCurrency(Number((nomination as any).cost) || 0)}</span>
+                              <div key={nomination.id} className="flex justify-between items-start text-sm pl-3 gap-2">
+                                <div className="min-w-0 flex-1">
+                                  <div className="text-gray-700 truncate">{typeLabel}</div>
+                                  {breakdownText && (
+                                    <div className="text-gray-400 text-xs mt-0.5">{breakdownText}</div>
+                                  )}
+                                </div>
+                                <span className="flex-shrink-0">{formatCurrency(totalCost)}</span>
                               </div>
                             );
                           })}
@@ -2567,18 +2625,32 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
                           <div className="text-xs font-semibold text-gray-600 mb-1">追加サービス</div>
                           {additionalServices.map((service, index) => {
                             let serviceLabel = '';
+                            let breakdownText = '';
                             if (service.type === 'bottle_keep') {
                               serviceLabel = 'ボトルキープ';
                             } else if (service.type === 'vip_room') {
-                              serviceLabel = `VIPルーム利用 (${service.count}部屋)`;
+                              serviceLabel = 'VIPルーム利用';
+                              if (service.count > 1) {
+                                const unitCharge = service.charge / service.count;
+                                breakdownText = `¥${unitCharge.toLocaleString()} × ${service.count}部屋`;
+                              }
                             } else if (service.type === 'karaoke') {
-                              serviceLabel = `カラオケ利用 (${service.count}曲)`;
+                              serviceLabel = 'カラオケ利用';
+                              if (service.count > 1) {
+                                const unitCharge = service.charge / service.count;
+                                breakdownText = `¥${unitCharge.toLocaleString()} × ${service.count}曲`;
+                              }
                             }
                             
                             return (
-                              <div key={index} className="flex justify-between text-sm pl-3">
-                                <span className="text-gray-700">{serviceLabel}</span>
-                                <span>{formatCurrency(service.charge)}</span>
+                              <div key={index} className="flex justify-between items-start text-sm pl-3 gap-2">
+                                <div className="min-w-0 flex-1">
+                                  <div className="text-gray-700 truncate">{serviceLabel}</div>
+                                  {breakdownText && (
+                                    <div className="text-gray-400 text-xs mt-0.5">{breakdownText}</div>
+                                  )}
+                                </div>
+                                <span className="flex-shrink-0">{formatCurrency(service.charge)}</span>
                               </div>
                             );
                           })}

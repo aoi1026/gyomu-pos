@@ -1,12 +1,14 @@
 'use client';
 
-import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import {
   connectBluetoothEscPosPrinter,
   connectToBluetoothDevice,
   listPairedBluetoothDevices,
   writeEscPos,
 } from '@/lib/printing/bluetooth-escpos';
+import PrintConfirmModal from '@/components/admin/PrintConfirmModal';
+import type { PendingPrintJob } from '@/components/admin/PrintConfirmModal';
 
 type PrinterStatus = 'disconnected' | 'connecting' | 'connected';
 
@@ -20,6 +22,7 @@ type PrinterContextValue = {
   connectById: (deviceId: string) => Promise<void>;
   disconnect: () => void;
   write: (data: Uint8Array) => Promise<void>;
+  requestPrint: (data: Uint8Array, label?: string) => void;
 };
 
 const PrinterContext = createContext<PrinterContextValue | null>(null);
@@ -33,6 +36,9 @@ export function PrinterProvider({ children }: { children: React.ReactNode }) {
   const [pairedDevices, setPairedDevices] = useState<Array<{ id: string; name: string }>>([]);
   const [characteristic, setCharacteristic] = useState<BluetoothRemoteGATTCharacteristic | null>(null);
   const [device, setDevice] = useState<BluetoothDevice | null>(null);
+
+  const [pendingJob, setPendingJob] = useState<PendingPrintJob | null>(null);
+  const [showPrintConfirm, setShowPrintConfirm] = useState(false);
 
   const refreshPairedDevices = async () => {
     try {
@@ -104,6 +110,11 @@ export function PrinterProvider({ children }: { children: React.ReactNode }) {
     await writeEscPos(characteristic, data);
   };
 
+  const requestPrint = useCallback((data: Uint8Array, label?: string) => {
+    setPendingJob({ data, label: label || '印刷' });
+    setShowPrintConfirm(true);
+  }, []);
+
   // Initial load: refresh paired + try auto reconnect to last device
   useEffect(() => {
     (async () => {
@@ -135,11 +146,36 @@ export function PrinterProvider({ children }: { children: React.ReactNode }) {
       connectById,
       disconnect,
       write,
+      requestPrint,
     }),
-    [status, deviceName, deviceId, pairedDevices]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [status, deviceName, deviceId, pairedDevices, requestPrint]
   );
 
-  return <PrinterContext.Provider value={value}>{children}</PrinterContext.Provider>;
+  return (
+    <PrinterContext.Provider value={value}>
+      {children}
+      <PrintConfirmModal
+        open={showPrintConfirm}
+        onOpenChange={(v) => {
+          setShowPrintConfirm(v);
+          if (!v) setPendingJob(null);
+        }}
+        pendingJob={pendingJob}
+        printerStatus={status}
+        deviceName={deviceName}
+        pairedDevices={pairedDevices}
+        onRefreshDevices={refreshPairedDevices}
+        onRequestConnect={requestAndConnect}
+        onConnectById={connectById}
+        onWrite={write}
+        onComplete={() => {
+          setShowPrintConfirm(false);
+          setPendingJob(null);
+        }}
+      />
+    </PrinterContext.Provider>
+  );
 }
 
 export function usePrinter() {
@@ -147,4 +183,3 @@ export function usePrinter() {
   if (!ctx) throw new Error('usePrinter must be used within PrinterProvider');
   return ctx;
 }
-

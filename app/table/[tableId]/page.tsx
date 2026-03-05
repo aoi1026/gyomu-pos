@@ -3964,22 +3964,31 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
                     )}
 
                     <div className="space-y-2">
-                      {/* 商品の合計 */}
+                      {/* 商品の明細（個別表示） */}
                       {(() => {
-                        const productTotal = cartOrders.reduce((sum, order) => {
+                        const acceptedOrders = cartOrders.filter(order => {
                           const status = orderRequestStatus[order.id] || order.status;
-                          if (status === 'accepted') {
-                            const price = Number(order.total_price);
-                            const validPrice = isNaN(price) ? 0 : price;
-                            return sum + validPrice;
-                          }
-                          return sum;
-                        }, 0);
-                        if (productTotal > 0) {
+                          return status === 'accepted';
+                        });
+                        if (acceptedOrders.length > 0) {
                           return (
-                            <div className="flex justify-between text-xs sm:text-sm">
-                              <span>商品合計</span>
-                              <span>{formatCurrency(productTotal)}</span>
+                            <div className="space-y-1">
+                              <div className="text-[10px] sm:text-xs font-semibold text-gray-600 mb-1">商品</div>
+                              {acceptedOrders.map((order) => {
+                                const unitPrice = Number(order.unit_price) || 0;
+                                const qty = Number(order.amount) || 1;
+                                const total = Number(order.total_price) || 0;
+                                const breakdown = qty > 1 ? `¥${unitPrice.toLocaleString()} × ${qty}` : `¥${unitPrice.toLocaleString()}`;
+                                return (
+                                  <div key={order.id} className="flex justify-between items-start text-xs sm:text-sm pl-2 sm:pl-3 gap-2">
+                                    <div className="min-w-0 flex-1">
+                                      <div className="text-gray-700 truncate">{order.product_name}</div>
+                                      <div className="text-gray-400 text-[10px] sm:text-xs mt-0.5">{breakdown}</div>
+                                    </div>
+                                    <span className="flex-shrink-0">{formatCurrency(total)}</span>
+                                  </div>
+                                );
+                              })}
                             </div>
                           );
                         }
@@ -3989,13 +3998,16 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
                       {/* セッション開始時の料金 */}
                       {(() => {
                         if (guestCount && guestCount.trim() !== '') {
-                          const initialGuestCount = parseInt(guestCount);
-                          if (!isNaN(initialGuestCount) && initialGuestCount > 0) {
-                            const sessionFee = (addCharges['set_price'] || 0) * initialGuestCount;
+                          const cnt = parseInt(guestCount);
+                          const unitPrice = addCharges['set_price'] || 0;
+                          if (!isNaN(cnt) && cnt > 0 && unitPrice > 0) {
                             return (
-                              <div className="flex justify-between text-xs sm:text-sm">
-                                <span>セッション料金 ({guestCount}名)</span>
-                                <span>{formatCurrency(sessionFee)}</span>
+                              <div className="flex justify-between items-start text-xs sm:text-sm gap-2">
+                                <div className="min-w-0 flex-1">
+                                  <div>セッション料金</div>
+                                  <div className="text-gray-400 text-[10px] sm:text-xs mt-0.5">¥{unitPrice.toLocaleString()} × {cnt}名</div>
+                                </div>
+                                <span className="flex-shrink-0">{formatCurrency(unitPrice * cnt)}</span>
                               </div>
                             );
                           }
@@ -4004,33 +4016,72 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
                       })()}
 
                       {/* セット延長料金 */}
-                      {setExtensions.length > 0 && setExtensions.map((extension, index) => (
-                        <div key={index} className="flex justify-between text-xs sm:text-sm">
-                          <span>セット延長 ({extension.count}名)</span>
-                          <span>{formatCurrency(extension.price ?? ((addCharges['extension_price'] || 0) * extension.count))}</span>
-                        </div>
-                      ))}
+                      {setExtensions.length > 0 && setExtensions.map((extension, index) => {
+                        const extensionUnit = addCharges['extension_price'] || 0;
+                        const total = Number(extension.price ?? (extensionUnit * extension.count)) || 0;
+                        return (
+                          <div key={index} className="flex justify-between items-start text-xs sm:text-sm gap-2">
+                            <div className="min-w-0 flex-1">
+                              <div>セット延長 ({index + 1}回目)</div>
+                              <div className="text-gray-400 text-[10px] sm:text-xs mt-0.5">¥{extensionUnit.toLocaleString()} × {extension.count}名</div>
+                            </div>
+                            <span className="flex-shrink-0">{formatCurrency(total)}</span>
+                          </div>
+                        );
+                      })}
 
                       {/* 指名料金の明細 */}
                       {nominations.length > 0 && (
                         <div className="border-t pt-2 space-y-1">
                           <div className="text-[10px] sm:text-xs font-semibold text-gray-600 mb-1">指名料金</div>
-                          {nominations.map((nomination, index) => {
-                            let chargeLabel = '';
-
+                          {nominations.map((nomination) => {
+                            let typeLabel = '';
                             if (nomination.type_id === 'together') {
-                              chargeLabel = `${getNominationTypeLabel(nomination.type_id)} - ${nomination.cast_name}`;
+                              typeLabel = `${getNominationTypeLabel(nomination.type_id)} - ${nomination.cast_name}`;
                             } else if (nomination.type_id === 'main') {
-                              chargeLabel = `${getNominationTypeLabel(nomination.type_id)} - ${nomination.cast_name}`;
+                              typeLabel = `${getNominationTypeLabel(nomination.type_id)} - ${nomination.cast_name}`;
                             } else if (nomination.type_id === 'inside') {
                               const promoted = Number((nomination as any).tomain_nomination) === 1;
-                              chargeLabel = `${getNominationTypeLabel(nomination.type_id)}${promoted ? '（本指名へ昇格）' : ''} - ${nomination.cast_name}`;
+                              typeLabel = `${getNominationTypeLabel(nomination.type_id)}${promoted ? '（本指名へ昇格）' : ''} - ${nomination.cast_name}`;
+                            }
+
+                            const totalCost = Number((nomination as any).cost) || 0;
+                            const mainCharge = addCharges['main'] || 0;
+                            const togetherCharge = addCharges['together'] || 0;
+                            const createdMs = Date.parse(String(nomination.created_at || (nomination as any).updated_at || '')) || 0;
+                            const extCountSince = setExtensions.filter((e: any) => {
+                              const ts = Number(e?.timestamp);
+                              return Number.isFinite(ts) && ts > createdMs;
+                            }).length;
+                            const extAdd = mainCharge * extCountSince;
+                            const initialCost = Math.max(0, totalCost - extAdd);
+
+                            let breakdownText = '';
+                            if (nomination.type_id === 'together') {
+                              if (togetherCharge > 0 || mainCharge > 0) {
+                                breakdownText = `¥${togetherCharge.toLocaleString()}＋¥${mainCharge.toLocaleString()}`;
+                                if (extCountSince > 0) {
+                                  breakdownText += `＋¥${mainCharge.toLocaleString()}×${extCountSince}`;
+                                }
+                              }
+                            } else if (extCountSince > 0 && extAdd > 0) {
+                              breakdownText = `¥${initialCost.toLocaleString()} + ¥${mainCharge.toLocaleString()} × ${extCountSince}`;
+                            } else {
+                              const typeCharge = addCharges[nomination.type_id] || 0;
+                              if (typeCharge > 0) {
+                                breakdownText = `¥${typeCharge.toLocaleString()}`;
+                              }
                             }
 
                             return (
-                              <div key={nomination.id} className="flex justify-between text-xs sm:text-sm pl-2 sm:pl-3">
-                                <span className="text-gray-700 truncate pr-2">{chargeLabel}</span>
-                                <span className="flex-shrink-0">{formatCurrency(Number((nomination as any).cost) || 0)}</span>
+                              <div key={nomination.id} className="flex justify-between items-start text-xs sm:text-sm pl-2 sm:pl-3 gap-2">
+                                <div className="min-w-0 flex-1">
+                                  <div className="text-gray-700 truncate">{typeLabel}</div>
+                                  {breakdownText && (
+                                    <div className="text-gray-400 text-[10px] sm:text-xs mt-0.5">{breakdownText}</div>
+                                  )}
+                                </div>
+                                <span className="flex-shrink-0">{formatCurrency(totalCost)}</span>
                               </div>
                             );
                           })}
@@ -4043,17 +4094,31 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
                           <div className="text-[10px] sm:text-xs font-semibold text-gray-600 mb-1">追加サービス</div>
                           {additionalServices.map((service, index) => {
                             let serviceLabel = '';
+                            let breakdownText = '';
                             if (service.type === 'bottle_keep') {
                               serviceLabel = 'ボトルキープ';
                             } else if (service.type === 'vip_room') {
-                              serviceLabel = `VIPルーム利用 (${service.count}部屋)`;
+                              serviceLabel = 'VIPルーム利用';
+                              if (service.count > 1) {
+                                const unitCharge = service.charge / service.count;
+                                breakdownText = `¥${unitCharge.toLocaleString()} × ${service.count}部屋`;
+                              }
                             } else if (service.type === 'karaoke') {
-                              serviceLabel = `カラオケ利用 (${service.count}曲)`;
+                              serviceLabel = 'カラオケ利用';
+                              if (service.count > 1) {
+                                const unitCharge = service.charge / service.count;
+                                breakdownText = `¥${unitCharge.toLocaleString()} × ${service.count}曲`;
+                              }
                             }
 
                             return (
-                              <div key={index} className="flex justify-between text-xs sm:text-sm pl-2 sm:pl-3">
-                                <span className="text-gray-700 truncate pr-2">{serviceLabel}</span>
+                              <div key={index} className="flex justify-between items-start text-xs sm:text-sm pl-2 sm:pl-3 gap-2">
+                                <div className="min-w-0 flex-1">
+                                  <div className="text-gray-700 truncate">{serviceLabel}</div>
+                                  {breakdownText && (
+                                    <div className="text-gray-400 text-[10px] sm:text-xs mt-0.5">{breakdownText}</div>
+                                  )}
+                                </div>
                                 <span className="flex-shrink-0">{formatCurrency(service.charge)}</span>
                               </div>
                             );
