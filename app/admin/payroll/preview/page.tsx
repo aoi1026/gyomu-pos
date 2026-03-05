@@ -1517,7 +1517,7 @@ export default function PayrollPreviewPage() {
                             <div className="p-4">
                               <div className="flex items-center justify-between mb-2 gap-4">
                                 <div className="text-sm font-semibold min-w-0">日別内訳: {row.name}</div>
-                                <div className="flex-shrink-0 sticky right-3 pl-4 bg-gray-50 z-30 flex items-center gap-1">
+                                {/* <div className="flex-shrink-0 sticky right-3 pl-4 bg-gray-50 z-30 flex items-center gap-1">
                                   <Button
                                     variant="outline"
                                     size="sm"
@@ -1537,7 +1537,7 @@ export default function PayrollPreviewPage() {
                                   >
                                     <FileText className="w-3 h-3 sm:w-4 sm:h-4" />
                                   </Button>
-                                </div>
+                                </div> */}
                               </div>
                               <div className="w-full min-w-0 overflow-x-auto">
                                   <table className="text-xs sm:text-sm divide-y divide-gray-200 w-max">
