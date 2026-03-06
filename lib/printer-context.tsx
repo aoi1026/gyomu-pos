@@ -115,7 +115,13 @@ export function PrinterProvider({ children }: { children: React.ReactNode }) {
   };
 
   const networkPrint = useCallback(async (data: Uint8Array) => {
-    const base64 = btoa(String.fromCharCode(...data));
+    let binary = '';
+    const chunk = 8192;
+    for (let i = 0; i < data.length; i += chunk) {
+      const sub = data.subarray(i, Math.min(i + chunk, data.length));
+      binary += String.fromCharCode.apply(null, Array.from(sub));
+    }
+    const base64 = btoa(binary);
     const res = await fetch('/api/print', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
