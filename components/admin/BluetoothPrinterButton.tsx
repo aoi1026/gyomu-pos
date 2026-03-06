@@ -13,7 +13,8 @@ import { useNotificationContext } from '@/lib/notification-context';
 function detectIsIOS(): boolean {
   if (typeof navigator === 'undefined') return false;
   return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-    (navigator.platform === 'MacIntel' && (navigator as any).maxTouchPoints > 1);
+    (navigator.platform === 'MacIntel' && (navigator as any).maxTouchPoints > 1) ||
+    (/Macintosh/.test(navigator.userAgent) && typeof document !== 'undefined' && 'ontouchend' in document);
 }
 
 export default function BluetoothPrinterButton() {

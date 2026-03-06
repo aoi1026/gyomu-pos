@@ -128,7 +128,8 @@ export default function PayrollPreviewPage() {
   function isIOS(): boolean {
     if (typeof navigator === 'undefined') return false;
     return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-      (navigator.platform === 'MacIntel' && (navigator as any).maxTouchPoints > 1);
+      (navigator.platform === 'MacIntel' && (navigator as any).maxTouchPoints > 1) ||
+      (/Macintosh/.test(navigator.userAgent) && typeof document !== 'undefined' && 'ontouchend' in document);
   }
 
   /** DBのstore_address・store_telでペイロードを補完 */
@@ -160,7 +161,8 @@ export default function PayrollPreviewPage() {
       combined.set(part, offset);
       offset += part.length;
     }
-    printer.requestPrint(combined, label || '給与明細印刷');
+    // OS印刷フォールバックを渡す（Web Bluetooth非対応ブラウザ用）
+    printer.requestPrint(combined, label || '給与明細印刷', () => printReceiptViaOs(payloads));
   };
 
   const doPreview = async (getPayload: () => Promise<ReceiptPayload | ReceiptPayload[]>) => {

@@ -6,12 +6,21 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Bluetooth, Printer, CheckCircle2, Loader2, Search, XCircle } from 'lucide-react';
+import { Bluetooth, Printer, CheckCircle2, Loader2, Search, XCircle, Smartphone } from 'lucide-react';
 import { useNotificationContext } from '@/lib/notification-context';
+
+function detectIsIOS(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && (navigator as any).maxTouchPoints > 1) ||
+    (/Macintosh/.test(navigator.userAgent) && typeof document !== 'undefined' && 'ontouchend' in document);
+}
 
 export type PendingPrintJob = {
   data: Uint8Array;
   label: string;
+  /** OS印刷フォールバック（Web Bluetooth非対応時に使用） */
+  osFallback?: () => void;
 };
 
 interface PrintConfirmModalProps {
@@ -47,11 +56,15 @@ export default function PrintConfirmModal({
   const [connectingDeviceId, setConnectingDeviceId] = useState<string | null>(null);
   const [printResult, setPrintResult] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
+  const isIOS = useMemo(() => detectIsIOS(), []);
+
   const webBluetoothSupported = useMemo(() => {
     if (typeof window === 'undefined') return false;
     const bt = (navigator as any)?.bluetooth;
     return !!bt && typeof bt.requestDevice === 'function';
   }, []);
+
+  const hasOsFallback = !!pendingJob?.osFallback;
 
   useEffect(() => {
     if (open) {
@@ -108,6 +121,16 @@ export default function PrintConfirmModal({
     }
   };
 
+  const handleOsPrint = () => {
+    if (!pendingJob?.osFallback) return;
+    try {
+      pendingJob.osFallback();
+      setPrintResult({ type: 'success', message: '印刷ダイアログを表示しました。プリンターを選択して印刷してください。' });
+    } catch (e: any) {
+      setPrintResult({ type: 'error', message: e?.message || '印刷ダイアログを開けませんでした' });
+    }
+  };
+
   const handleClose = () => {
     if (printResult?.type === 'success') {
       onComplete();
@@ -144,6 +167,24 @@ export default function PrintConfirmModal({
               </div>
               <Badge className="bg-green-600 flex-shrink-0">接続中</Badge>
             </div>
+          ) : !webBluetoothSupported && hasOsFallback ? (
+            /* Web Bluetooth非対応（iPad/Safari等）: OS印刷フォールバック */
+            <div className="space-y-3">
+              <div className="flex items-center gap-3 p-3 rounded-lg bg-blue-50 border border-blue-200">
+                <Smartphone className="w-5 h-5 text-blue-600 flex-shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium text-blue-800">
+                    {isIOS ? 'iPad印刷' : 'OS印刷'}
+                  </div>
+                  <div className="text-xs text-blue-600">
+                    {isIOS
+                      ? 'iPadの印刷ダイアログからBluetoothペアリング済みプリンターで印刷できます'
+                      : 'OSの印刷ダイアログからプリンターを選択して印刷できます'}
+                  </div>
+                </div>
+                <Badge className="bg-blue-600 flex-shrink-0">OS印刷</Badge>
+              </div>
+            </div>
           ) : (
             <div className="space-y-3">
               <div className="flex items-center gap-3 p-3 rounded-lg bg-amber-50 border border-amber-200">
@@ -153,7 +194,9 @@ export default function PrintConfirmModal({
                   <div className="text-xs text-amber-600">
                     {webBluetoothSupported
                       ? 'デバイスを選択するか、検索して接続してください'
-                      : 'このブラウザはWeb Bluetoothに対応していません。Chrome（デスクトップ版）をご利用ください。'}
+                      : hasOsFallback
+                        ? 'OS印刷ダイアログで印刷できます'
+                        : 'このブラウザはWeb Bluetoothに対応していません。Chrome（デスクトップ版）をご利用ください。'}
                   </div>
                 </div>
               </div>
@@ -181,20 +224,6 @@ export default function PrintConfirmModal({
                       ))}
                     </div>
                   )}
-
-                  {/* <Button
-                    className="w-full"
-                    variant="outline"
-                    disabled={isConnecting}
-                    onClick={handleSearchAndConnect}
-                  >
-                    {isConnecting && !connectingDeviceId ? (
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    ) : (
-                      <Search className="w-4 h-4 mr-2" />
-                    )}
-                    {isConnecting && !connectingDeviceId ? '検索中...' : 'Bluetoothデバイスを検索'}
-                  </Button> */}
                 </>
               )}
             </div>
@@ -247,22 +276,40 @@ export default function PrintConfirmModal({
               <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isPrinting}>
                 キャンセル
               </Button>
-              <Button
-                onClick={handlePrint}
-                disabled={printerStatus !== 'connected' || isPrinting || !pendingJob}
-              >
-                {isPrinting ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    印刷中...
-                  </>
-                ) : (
-                  <>
-                    <Printer className="w-4 h-4 mr-2" />
-                    印刷する
-                  </>
-                )}
-              </Button>
+              {printerStatus === 'connected' ? (
+                <Button
+                  onClick={handlePrint}
+                  disabled={isPrinting || !pendingJob}
+                >
+                  {isPrinting ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      印刷中...
+                    </>
+                  ) : (
+                    <>
+                      <Printer className="w-4 h-4 mr-2" />
+                      印刷する
+                    </>
+                  )}
+                </Button>
+              ) : hasOsFallback ? (
+                <Button
+                  onClick={handleOsPrint}
+                  disabled={isPrinting || !pendingJob}
+                >
+                  <Printer className="w-4 h-4 mr-2" />
+                  {isIOS ? 'iPad印刷で印刷する' : 'OS印刷で印刷する'}
+                </Button>
+              ) : (
+                <Button
+                  onClick={handlePrint}
+                  disabled={true}
+                >
+                  <Printer className="w-4 h-4 mr-2" />
+                  印刷する
+                </Button>
+              )}
             </>
           )}
         </DialogFooter>

@@ -34,7 +34,8 @@ import { previewFullReceiptInWindow, printFullReceiptViaOs } from '@/lib/printin
 function isIOS(): boolean {
   if (typeof navigator === 'undefined') return false;
   return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-    (navigator.platform === 'MacIntel' && (navigator as any).maxTouchPoints > 1);
+    (navigator.platform === 'MacIntel' && (navigator as any).maxTouchPoints > 1) ||
+    (/Macintosh/.test(navigator.userAgent) && typeof document !== 'undefined' && 'ontouchend' in document);
 }
 
 interface TableViewerProps {
@@ -194,7 +195,8 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
         return;
       }
       const escposData = buildFullReceiptEscPos(payload);
-      printer.requestPrint(escposData, '領収書印刷');
+      // OS印刷フォールバックを渡す（Web Bluetooth非対応ブラウザ用）
+      printer.requestPrint(escposData, '領収書印刷', () => printFullReceiptViaOs(payload));
     } catch (e) {
       console.error('領収書印刷エラー:', e);
       error('エラー', '領収書データの生成に失敗しました');

@@ -22,7 +22,7 @@ type PrinterContextValue = {
   connectById: (deviceId: string) => Promise<void>;
   disconnect: () => void;
   write: (data: Uint8Array) => Promise<void>;
-  requestPrint: (data: Uint8Array, label?: string) => void;
+  requestPrint: (data: Uint8Array, label?: string, osFallback?: () => void) => void;
 };
 
 const PrinterContext = createContext<PrinterContextValue | null>(null);
@@ -110,8 +110,8 @@ export function PrinterProvider({ children }: { children: React.ReactNode }) {
     await writeEscPos(characteristic, data);
   };
 
-  const requestPrint = useCallback((data: Uint8Array, label?: string) => {
-    setPendingJob({ data, label: label || '印刷' });
+  const requestPrint = useCallback((data: Uint8Array, label?: string, osFallback?: () => void) => {
+    setPendingJob({ data, label: label || '印刷', osFallback });
     setShowPrintConfirm(true);
   }, []);
 

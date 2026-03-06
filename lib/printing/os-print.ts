@@ -4,7 +4,8 @@ import { formatYen } from '@/lib/printing/escpos-raster';
 function isIOS(): boolean {
   if (typeof navigator === 'undefined') return false;
   return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-    (navigator.platform === 'MacIntel' && (navigator as any).maxTouchPoints > 1);
+    (navigator.platform === 'MacIntel' && (navigator as any).maxTouchPoints > 1) ||
+    (/Macintosh/.test(navigator.userAgent) && typeof document !== 'undefined' && 'ontouchend' in document);
 }
 
 function formatIssuedAt(d: Date): string {
