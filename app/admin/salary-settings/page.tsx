@@ -1070,7 +1070,7 @@ function SalarySettingsContent() {
                               </TableHeader>
                               <TableBody>
                                 {allUsers
-                                  .filter(user => user.role !== 'admin')
+                                  .filter(user => user.role === 'cast')
                                   .map((user) => (
                                   <TableRow key={user.id}>
                                     <TableCell className="font-semibold">{user.name}</TableCell>
@@ -1128,7 +1128,7 @@ function SalarySettingsContent() {
                         {/* タブレット・モバイル表示（カード） */}
                         <div className="lg:hidden space-y-4">
                           {allUsers
-                            .filter(user => user.role !== 'admin')
+                            .filter(user => user.role === 'cast')
                             .map((user) => (
                             <Card key={user.id} className="border border-gray-200">
                               <CardHeader className="pb-3">

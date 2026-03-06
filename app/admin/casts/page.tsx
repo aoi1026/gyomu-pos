@@ -1351,7 +1351,7 @@ export default function CastsPage() {
                 placeholder="パスワードを入力"
               />
             </div>
-            <div className="space-y-2">
+            {/* <div className="space-y-2">
               <Label htmlFor="add-table-user-gender">性別</Label>
               <Select
                 value={addTableUserForm.gender}
@@ -1366,7 +1366,7 @@ export default function CastsPage() {
                   <SelectItem value="other">その他</SelectItem>
                 </SelectContent>
               </Select>
-            </div>
+            </div> */}
             <div className="space-y-2">
               <Label htmlFor="add-table-user-other">備考</Label>
               <Input

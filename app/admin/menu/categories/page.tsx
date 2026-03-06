@@ -257,7 +257,7 @@ export default function CategoryManagementPage() {
                     <p>メニューの分類名（例：飲み物、食べ物、デザートなど）</p>
                   </div>
                   <div>
-                    <h4 className="font-medium text-gray-900 mb-1">備考</h4>
+                    <h4 className="font-medium text-gray-900 mb-1">その他</h4>
                     <p>カテゴリの詳細説明や注意事項</p>
                   </div>
                 </div>
@@ -293,9 +293,9 @@ export default function CategoryManagementPage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>画像</TableHead>
+                      {/* <TableHead>画像</TableHead> */}
                       <TableHead>カテゴリ名</TableHead>
-                      <TableHead>備考</TableHead>
+                      <TableHead>その他</TableHead>
                       <TableHead>作成日</TableHead>
                       <TableHead>更新日</TableHead>
                       <TableHead className="text-center">操作</TableHead>
@@ -304,7 +304,7 @@ export default function CategoryManagementPage() {
                   <TableBody>
                     {sortedCategories.map((category) => (
                       <TableRow key={category.id}>
-                        <TableCell>
+                        {/* <TableCell>
                           {category.image ? (
                             <img
                               src={category.image}
@@ -314,7 +314,7 @@ export default function CategoryManagementPage() {
                           ) : (
                             <span className="text-sm text-gray-400">-</span>
                           )}
-                        </TableCell>
+                        </TableCell> */}
                         <TableCell>
                           <div className="flex items-center space-x-3">
                             <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
@@ -425,7 +425,7 @@ export default function CategoryManagementPage() {
                   />
                 </div>
 
-                <div className="space-y-2">
+                {/* <div className="space-y-2">
                   <Label>画像</Label>
                   <input
                     id="category-image"
@@ -465,10 +465,10 @@ export default function CategoryManagementPage() {
                     </div>
                   )}
                   <p className="text-xs text-gray-500">※ 最大5MB（保存時に圧縮します）</p>
-                </div>
+                </div> */}
                 
                 <div className="space-y-2">
-                  <Label htmlFor="other">備考</Label>
+                  <Label htmlFor="other">その他</Label>
                   <Textarea
                     id="other"
                     value={form.other}

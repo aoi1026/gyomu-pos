@@ -444,9 +444,9 @@ export default function ProductManagementPage() {
                     </Button>
                   </div>
                 ) : (
-                  <div className="overflow-x-auto">
+                  <div className="overflow-auto max-h-[60vh] border border-gray-200 rounded-md">
                     <Table>
-                      <TableHeader>
+                      <TableHeader className="sticky top-0 z-10 bg-white">
                         <TableRow>
                           {selectedCategoryId === null && <TableHead>カテゴリ名</TableHead>}
                           <TableHead>画像</TableHead>
