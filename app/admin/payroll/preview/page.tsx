@@ -19,6 +19,7 @@ import {
 import { useNotificationContext } from '@/lib/notification-context';
 import { usePrinter } from '@/lib/printer-context';
 import { buildEscPosRasterReceipt } from '@/lib/printing/escpos-raster';
+import { printReceiptViaOs } from '@/lib/printing/os-print';
 import type { ReceiptPayload } from '@/lib/printing/escpos-raster';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { fetchStoreName, fetchStoreAddress, fetchStorePhone } from '@/lib/printing/receipt-builders';
@@ -124,6 +125,12 @@ export default function PayrollPreviewPage() {
     };
   }, []);
 
+  function isIOS(): boolean {
+    if (typeof navigator === 'undefined') return false;
+    return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+      (navigator.platform === 'MacIntel' && (navigator as any).maxTouchPoints > 1);
+  }
+
   /** DBのstore_address・store_telでペイロードを補完 */
   const enrichPayloadWithStoreInfo = async (payload: ReceiptPayload): Promise<ReceiptPayload> => {
     const [address, phone] = await Promise.all([fetchStoreAddress(), fetchStorePhone()]);
@@ -138,6 +145,13 @@ export default function PayrollPreviewPage() {
     const result = await getPayload();
     const raw = Array.isArray(result) ? result : [result];
     const payloads = await Promise.all(raw.map((p) => enrichPayloadWithStoreInfo(p)));
+
+    // iPad / iOS では Web Bluetooth に制限があるため、OS の印刷ダイアログ経由で印刷する
+    if (isIOS()) {
+      printReceiptViaOs(payloads);
+      return;
+    }
+
     const parts = payloads.map((p) => buildEscPosRasterReceipt(p));
     const totalLen = parts.reduce((s, p) => s + p.length, 0);
     const combined = new Uint8Array(totalLen);

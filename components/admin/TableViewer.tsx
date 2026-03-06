@@ -29,7 +29,13 @@ import {
 } from '@/lib/printing/receipt-builders';
 import { buildFullReceiptEscPos } from '@/lib/printing/escpos-raster';
 import type { FullReceiptPayload } from '@/lib/printing/escpos-raster';
-import { previewFullReceiptInWindow } from '@/lib/printing/os-print';
+import { previewFullReceiptInWindow, printFullReceiptViaOs } from '@/lib/printing/os-print';
+
+function isIOS(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && (navigator as any).maxTouchPoints > 1);
+}
 
 interface TableViewerProps {
   tableId: number | null;
@@ -182,6 +188,11 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
     try {
       const payload = await buildReceiptData();
       if (!payload) return;
+      // iPad / iOS では Web Bluetooth に制限があるため、OS の印刷ダイアログ経由で印刷する
+      if (isIOS()) {
+        printFullReceiptViaOs(payload);
+        return;
+      }
       const escposData = buildFullReceiptEscPos(payload);
       printer.requestPrint(escposData, '領収書印刷');
     } catch (e) {

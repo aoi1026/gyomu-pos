@@ -6,7 +6,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Bluetooth, Printer, CheckCircle2, Loader2, Search } from 'lucide-react';
+import { Bluetooth, Printer, CheckCircle2, Loader2, Search, XCircle } from 'lucide-react';
 import { useNotificationContext } from '@/lib/notification-context';
 
 export type PendingPrintJob = {
@@ -45,6 +45,7 @@ export default function PrintConfirmModal({
   const [isPrinting, setIsPrinting] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [connectingDeviceId, setConnectingDeviceId] = useState<string | null>(null);
+  const [printResult, setPrintResult] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   const webBluetoothSupported = useMemo(() => {
     if (typeof window === 'undefined') return false;
@@ -57,6 +58,7 @@ export default function PrintConfirmModal({
       setIsPrinting(false);
       setIsConnecting(false);
       setConnectingDeviceId(null);
+      setPrintResult(null);
       if (webBluetoothSupported) {
         onRefreshDevices().catch(() => {});
       }
@@ -94,19 +96,33 @@ export default function PrintConfirmModal({
   const handlePrint = async () => {
     if (!pendingJob) return;
     setIsPrinting(true);
+    setPrintResult(null);
     try {
       await onWrite(pendingJob.data);
-      success('印刷完了', `${pendingJob.label}を印刷しました`);
-      onComplete();
+      setPrintResult({ type: 'success', message: '正常に印刷されました' });
     } catch (e: any) {
-      error('印刷エラー', e?.message || '印刷に失敗しました。プリンター接続を確認してください。');
+      const reason = e?.message || '印刷に失敗しました。プリンター接続を確認してください。';
+      setPrintResult({ type: 'error', message: reason });
     } finally {
       setIsPrinting(false);
     }
   };
 
+  const handleClose = () => {
+    if (printResult?.type === 'success') {
+      onComplete();
+    }
+    onOpenChange(false);
+  };
+
   return (
-    <Dialog open={open} onOpenChange={(v) => { if (!isPrinting) onOpenChange(v); }}>
+    <Dialog open={open} onOpenChange={(v) => {
+      if (isPrinting) return;
+      if (!v && printResult?.type === 'success') {
+        onComplete();
+      }
+      onOpenChange(v);
+    }}>
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -185,26 +201,70 @@ export default function PrintConfirmModal({
           )}
         </div>
 
-        <DialogFooter className="gap-2 sm:gap-0">
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isPrinting}>
-            キャンセル
-          </Button>
-          <Button
-            onClick={handlePrint}
-            disabled={printerStatus !== 'connected' || isPrinting || !pendingJob}
-          >
-            {isPrinting ? (
-              <>
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                印刷中...
-              </>
+        {printResult && (
+          <div className={`flex items-start gap-3 p-3 border ${
+            printResult.type === 'success'
+              ? 'bg-green-50 border-green-200'
+              : 'bg-red-50 border-red-200'
+          }`}>
+            {printResult.type === 'success' ? (
+              <CheckCircle2 className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
             ) : (
-              <>
-                <Printer className="w-4 h-4 mr-2" />
-                印刷する
-              </>
+              <XCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
             )}
-          </Button>
+            <div className="flex-1 min-w-0">
+              <div className={`text-sm font-medium ${
+                printResult.type === 'success' ? 'text-green-800' : 'text-red-800'
+              }`}>
+                {printResult.type === 'success' ? '印刷完了' : '印刷失敗'}
+              </div>
+              <div className={`text-xs mt-0.5 ${
+                printResult.type === 'success' ? 'text-green-600' : 'text-red-600'
+              }`}>
+                {printResult.message}
+              </div>
+            </div>
+          </div>
+        )}
+
+        <DialogFooter className="gap-2 sm:gap-0">
+          {printResult ? (
+            <>
+              {printResult.type === 'error' && (
+                <Button
+                  variant="outline"
+                  onClick={() => setPrintResult(null)}
+                >
+                  戻る
+                </Button>
+              )}
+              <Button onClick={handleClose}>
+                閉じる
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isPrinting}>
+                キャンセル
+              </Button>
+              <Button
+                onClick={handlePrint}
+                disabled={printerStatus !== 'connected' || isPrinting || !pendingJob}
+              >
+                {isPrinting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    印刷中...
+                  </>
+                ) : (
+                  <>
+                    <Printer className="w-4 h-4 mr-2" />
+                    印刷する
+                  </>
+                )}
+              </Button>
+            </>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>
