@@ -1,10 +1,11 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Bluetooth, Printer, RefreshCw, PlugZap, Unplug, CheckCircle2, Smartphone } from 'lucide-react';
+import { Bluetooth, Printer, RefreshCw, PlugZap, Unplug, CheckCircle2, Smartphone, Wifi, Loader2, Save } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { usePrinter } from '@/lib/printer-context';
@@ -24,6 +25,12 @@ export default function BluetoothPrinterButton() {
   const [open, setOpen] = useState(false);
   const [selectedId, setSelectedId] = useState<string>('');
   const [isBusy, setIsBusy] = useState(false);
+
+  // Network printer state
+  const [networkIpInput, setNetworkIpInput] = useState('');
+  const [networkTestResult, setNetworkTestResult] = useState<{ ok: boolean; message: string } | null>(null);
+  const [isSavingIp, setIsSavingIp] = useState(false);
+  const [isTestingIp, setIsTestingIp] = useState(false);
 
   const isIOS = useMemo(() => detectIsIOS(), []);
 
@@ -118,28 +125,35 @@ export default function BluetoothPrinterButton() {
   useEffect(() => {
     if (!open) return;
     setSelectedId(printer.deviceId || '');
+    setNetworkTestResult(null);
     if (webBluetoothSupported) {
       printer.refreshPairedDevices().catch(() => {});
     }
+    // Load current network printer IP
+    setNetworkIpInput(printer.networkPrinterIp || '');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   const statusBadge = useMemo(() => {
     if (printer.status === 'connected') return <Badge className="bg-green-600">BLE接続中</Badge>;
     if (printer.status === 'connecting') return <Badge className="bg-amber-600">接続中...</Badge>;
+    if (printer.networkPrinterIp) return <Badge className="bg-blue-600">ネットワーク</Badge>;
     if (isIOS) return <Badge variant="outline" className="border-blue-400 text-blue-600">OS印刷</Badge>;
     return <Badge variant="secondary">未接続</Badge>;
-  }, [printer.status, isIOS]);
+  }, [printer.status, printer.networkPrinterIp, isIOS]);
 
   const printMethodDescription = useMemo(() => {
     if (printer.status === 'connected') {
       return `Bluetooth ESC/POS で直接印刷（${printer.deviceName || 'BLE'}）`;
     }
+    if (printer.networkPrinterIp) {
+      return `ネットワーク経由で印刷（IP: ${printer.networkPrinterIp}）`;
+    }
     if (isIOS) {
       return 'iPadの印刷ダイアログ経由で印刷（Bluetooth対応プリンターを自動検出）';
     }
     return 'OSの印刷ダイアログ経由で印刷';
-  }, [printer.status, printer.deviceName, isIOS]);
+  }, [printer.status, printer.deviceName, printer.networkPrinterIp, isIOS]);
 
   return (
     <>
@@ -177,6 +191,127 @@ export default function BluetoothPrinterButton() {
                 {statusBadge}
               </div>
               <p className="text-xs text-gray-600 ml-6">{printMethodDescription}</p>
+            </div>
+
+            {/* Network printer IP configuration */}
+            <div className="space-y-3 pt-2 border-t">
+              <div className="flex items-center gap-2">
+                <Wifi className="w-4 h-4 text-blue-600" />
+                <Label className="font-medium">ネットワークプリンター (TCP/IP)</Label>
+              </div>
+              <div className="text-xs text-gray-600 mb-2">
+                EPSON TM-m30をLANケーブルで接続し、IPアドレスを設定するとネットワーク経由で印刷できます。
+              </div>
+              <div className="flex gap-2">
+                <Input
+                  placeholder="例: 192.168.1.100"
+                  value={networkIpInput}
+                  onChange={(e) => {
+                    setNetworkIpInput(e.target.value);
+                    setNetworkTestResult(null);
+                  }}
+                  className="flex-1"
+                />
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={isSavingIp || !networkIpInput.trim()}
+                  onClick={async () => {
+                    setIsSavingIp(true);
+                    setNetworkTestResult(null);
+                    try {
+                      const res = await fetch('/api/project-variables', {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ name: 'printer_ip', value: networkIpInput.trim(), other: 'プリンターIPアドレス' }),
+                      });
+                      const json = await res.json();
+                      if (json.success) {
+                        success('保存完了', `プリンターIP: ${networkIpInput.trim()}`);
+                        // Reload to update context — simple approach
+                        window.location.reload();
+                      } else {
+                        error('保存エラー', json.error || '保存に失敗しました');
+                      }
+                    } catch (e: any) {
+                      error('保存エラー', e?.message || '保存に失敗しました');
+                    } finally {
+                      setIsSavingIp(false);
+                    }
+                  }}
+                >
+                  {isSavingIp ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                  <span className="ml-1">保存</span>
+                </Button>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="flex-1"
+                  disabled={isTestingIp || !networkIpInput.trim()}
+                  onClick={async () => {
+                    setIsTestingIp(true);
+                    setNetworkTestResult(null);
+                    try {
+                      const res = await fetch(`/api/print?ip=${encodeURIComponent(networkIpInput.trim())}`);
+                      const json = await res.json();
+                      if (json.success) {
+                        setNetworkTestResult({ ok: true, message: `接続成功（${networkIpInput.trim()}:9100）` });
+                      } else {
+                        setNetworkTestResult({ ok: false, message: json.error || '接続に失敗しました' });
+                      }
+                    } catch (e: any) {
+                      setNetworkTestResult({ ok: false, message: e?.message || '接続テストに失敗しました' });
+                    } finally {
+                      setIsTestingIp(false);
+                    }
+                  }}
+                >
+                  {isTestingIp ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Wifi className="w-4 h-4 mr-1" />}
+                  接続テスト
+                </Button>
+                {printer.networkPrinterIp && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="text-red-600"
+                    disabled={isSavingIp}
+                    onClick={async () => {
+                      setIsSavingIp(true);
+                      try {
+                        await fetch('/api/project-variables', {
+                          method: 'PATCH',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ name: 'printer_ip', value: '' }),
+                        });
+                        success('削除完了', 'ネットワークプリンター設定を削除しました');
+                        window.location.reload();
+                      } catch {
+                        error('エラー', '設定の削除に失敗しました');
+                      } finally {
+                        setIsSavingIp(false);
+                      }
+                    }}
+                  >
+                    設定解除
+                  </Button>
+                )}
+              </div>
+              {networkTestResult && (
+                <div className={`flex items-center gap-2 p-2 rounded text-xs ${
+                  networkTestResult.ok
+                    ? 'bg-green-50 text-green-700 border border-green-200'
+                    : 'bg-red-50 text-red-700 border border-red-200'
+                }`}>
+                  {networkTestResult.ok ? (
+                    <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
+                  ) : (
+                    <Wifi className="w-4 h-4 flex-shrink-0" />
+                  )}
+                  {networkTestResult.message}
+                </div>
+              )}
             </div>
 
             {/* iPad / iOS - OS print path */}

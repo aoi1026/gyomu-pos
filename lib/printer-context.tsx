@@ -17,11 +17,13 @@ type PrinterContextValue = {
   deviceName: string | null;
   deviceId: string | null;
   pairedDevices: Array<{ id: string; name: string }>;
+  networkPrinterIp: string | null;
   refreshPairedDevices: () => Promise<void>;
   requestAndConnect: () => Promise<void>;
   connectById: (deviceId: string) => Promise<void>;
   disconnect: () => void;
   write: (data: Uint8Array) => Promise<void>;
+  networkPrint: (data: Uint8Array) => Promise<void>;
   requestPrint: (data: Uint8Array, label?: string, osFallback?: () => void) => void;
 };
 
@@ -36,6 +38,8 @@ export function PrinterProvider({ children }: { children: React.ReactNode }) {
   const [pairedDevices, setPairedDevices] = useState<Array<{ id: string; name: string }>>([]);
   const [characteristic, setCharacteristic] = useState<BluetoothRemoteGATTCharacteristic | null>(null);
   const [device, setDevice] = useState<BluetoothDevice | null>(null);
+
+  const [networkPrinterIp, setNetworkPrinterIp] = useState<string | null>(null);
 
   const [pendingJob, setPendingJob] = useState<PendingPrintJob | null>(null);
   const [showPrintConfirm, setShowPrintConfirm] = useState(false);
@@ -110,14 +114,38 @@ export function PrinterProvider({ children }: { children: React.ReactNode }) {
     await writeEscPos(characteristic, data);
   };
 
+  const networkPrint = useCallback(async (data: Uint8Array) => {
+    const base64 = btoa(String.fromCharCode(...data));
+    const res = await fetch('/api/print', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ data: base64 }),
+    });
+    const json = await res.json();
+    if (!json.success) {
+      throw new Error(json.error || 'ネットワーク印刷に失敗しました');
+    }
+  }, []);
+
   const requestPrint = useCallback((data: Uint8Array, label?: string, osFallback?: () => void) => {
     setPendingJob({ data, label: label || '印刷', osFallback });
     setShowPrintConfirm(true);
   }, []);
 
-  // Initial load: refresh paired + try auto reconnect to last device
+  // Initial load: refresh paired + try auto reconnect + fetch network printer IP
   useEffect(() => {
     (async () => {
+      // Fetch network printer IP
+      try {
+        const res = await fetch('/api/project-variables?name=printer_ip');
+        const json = await res.json();
+        if (json.success && json.data?.value) {
+          setNetworkPrinterIp(json.data.value);
+        }
+      } catch {
+        // no network printer configured
+      }
+
       await refreshPairedDevices();
       let lastId: string | null = null;
       try {
@@ -141,15 +169,17 @@ export function PrinterProvider({ children }: { children: React.ReactNode }) {
       deviceName,
       deviceId,
       pairedDevices,
+      networkPrinterIp,
       refreshPairedDevices,
       requestAndConnect,
       connectById,
       disconnect,
       write,
+      networkPrint,
       requestPrint,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [status, deviceName, deviceId, pairedDevices, requestPrint]
+    [status, deviceName, deviceId, pairedDevices, networkPrinterIp, requestPrint, networkPrint]
   );
 
   return (
@@ -165,10 +195,12 @@ export function PrinterProvider({ children }: { children: React.ReactNode }) {
         printerStatus={status}
         deviceName={deviceName}
         pairedDevices={pairedDevices}
+        networkPrinterIp={networkPrinterIp}
         onRefreshDevices={refreshPairedDevices}
         onRequestConnect={requestAndConnect}
         onConnectById={connectById}
         onWrite={write}
+        onNetworkPrint={networkPrint}
         onComplete={() => {
           setShowPrintConfirm(false);
           setPendingJob(null);

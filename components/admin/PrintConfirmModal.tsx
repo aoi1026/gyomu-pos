@@ -6,7 +6,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Bluetooth, Printer, CheckCircle2, Loader2, Search, XCircle, Smartphone } from 'lucide-react';
+import { Bluetooth, Printer, CheckCircle2, Loader2, Search, XCircle, Smartphone, Wifi } from 'lucide-react';
 import { useNotificationContext } from '@/lib/notification-context';
 
 function detectIsIOS(): boolean {
@@ -30,10 +30,12 @@ interface PrintConfirmModalProps {
   printerStatus: 'disconnected' | 'connecting' | 'connected';
   deviceName: string | null;
   pairedDevices: Array<{ id: string; name: string }>;
+  networkPrinterIp: string | null;
   onRefreshDevices: () => Promise<void>;
   onRequestConnect: () => Promise<void>;
   onConnectById: (id: string) => Promise<void>;
   onWrite: (data: Uint8Array) => Promise<void>;
+  onNetworkPrint: (data: Uint8Array) => Promise<void>;
   onComplete: () => void;
 }
 
@@ -44,10 +46,12 @@ export default function PrintConfirmModal({
   printerStatus,
   deviceName,
   pairedDevices,
+  networkPrinterIp,
   onRefreshDevices,
   onRequestConnect,
   onConnectById,
   onWrite,
+  onNetworkPrint,
   onComplete,
 }: PrintConfirmModalProps) {
   const { success, error } = useNotificationContext();
@@ -131,6 +135,20 @@ export default function PrintConfirmModal({
     }
   };
 
+  const handleNetworkPrint = async () => {
+    if (!pendingJob) return;
+    setIsPrinting(true);
+    setPrintResult(null);
+    try {
+      await onNetworkPrint(pendingJob.data);
+      setPrintResult({ type: 'success', message: 'ネットワーク経由で印刷しました' });
+    } catch (e: any) {
+      setPrintResult({ type: 'error', message: e?.message || 'ネットワーク印刷に失敗しました' });
+    } finally {
+      setIsPrinting(false);
+    }
+  };
+
   const handleClose = () => {
     if (printResult?.type === 'success') {
       onComplete();
@@ -166,6 +184,16 @@ export default function PrintConfirmModal({
                 <div className="text-xs text-green-600 truncate">{deviceName || 'Bluetooth デバイス'}</div>
               </div>
               <Badge className="bg-green-600 flex-shrink-0">接続中</Badge>
+            </div>
+          ) : networkPrinterIp ? (
+            /* ネットワークプリンター設定済み */
+            <div className="flex items-center gap-3 p-3 rounded-lg bg-blue-50 border border-blue-200">
+              <Wifi className="w-5 h-5 text-blue-600 flex-shrink-0" />
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-medium text-blue-800">ネットワークプリンター</div>
+                <div className="text-xs text-blue-600 truncate">IP: {networkPrinterIp}</div>
+              </div>
+              <Badge className="bg-blue-600 flex-shrink-0">ネットワーク</Badge>
             </div>
           ) : !webBluetoothSupported && hasOsFallback ? (
             /* Web Bluetooth非対応（iPad/Safari等）: OS印刷フォールバック */
@@ -290,6 +318,23 @@ export default function PrintConfirmModal({
                     <>
                       <Printer className="w-4 h-4 mr-2" />
                       印刷する
+                    </>
+                  )}
+                </Button>
+              ) : networkPrinterIp ? (
+                <Button
+                  onClick={handleNetworkPrint}
+                  disabled={isPrinting || !pendingJob}
+                >
+                  {isPrinting ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      印刷中...
+                    </>
+                  ) : (
+                    <>
+                      <Wifi className="w-4 h-4 mr-2" />
+                      ネットワーク印刷
                     </>
                   )}
                 </Button>
