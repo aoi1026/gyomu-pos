@@ -125,13 +125,6 @@ export default function PayrollPreviewPage() {
     };
   }, []);
 
-  function isIOS(): boolean {
-    if (typeof navigator === 'undefined') return false;
-    return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-      (navigator.platform === 'MacIntel' && (navigator as any).maxTouchPoints > 1) ||
-      (/Macintosh/.test(navigator.userAgent) && typeof document !== 'undefined' && 'ontouchend' in document);
-  }
-
   /** DBのstore_address・store_telでペイロードを補完 */
   const enrichPayloadWithStoreInfo = async (payload: ReceiptPayload): Promise<ReceiptPayload> => {
     const [address, phone] = await Promise.all([fetchStoreAddress(), fetchStorePhone()]);
@@ -148,11 +141,6 @@ export default function PayrollPreviewPage() {
     const payloads = await Promise.all(raw.map((p) => enrichPayloadWithStoreInfo(p)));
 
     // iPad / iOS では Web Bluetooth に制限があるため、OS の印刷ダイアログ経由で印刷する
-    if (isIOS()) {
-      printReceiptViaOs(payloads);
-      return;
-    }
-
     const parts = payloads.map((p) => buildEscPosRasterReceipt(p));
     const totalLen = parts.reduce((s, p) => s + p.length, 0);
     const combined = new Uint8Array(totalLen);
@@ -162,7 +150,7 @@ export default function PayrollPreviewPage() {
       offset += part.length;
     }
     // OS印刷フォールバックを渡す（Web Bluetooth非対応ブラウザ用）
-    printer.requestPrint(combined, label || '給与明細印刷', () => printReceiptViaOs(payloads));
+    await printer.requestPrint(combined, label || '給与明細印刷', () => printReceiptViaOs(payloads));
   };
 
   const doPreview = async (getPayload: () => Promise<ReceiptPayload | ReceiptPayload[]>) => {

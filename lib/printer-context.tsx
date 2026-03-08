@@ -9,6 +9,8 @@ import {
 } from '@/lib/printing/bluetooth-escpos';
 import PrintConfirmModal from '@/components/admin/PrintConfirmModal';
 import type { PendingPrintJob } from '@/components/admin/PrintConfirmModal';
+import { useNotificationContext } from '@/lib/notification-context';
+import { isValidIpv4 } from '@/lib/printing/utils';
 
 type PrinterStatus = 'disconnected' | 'connecting' | 'connected';
 
@@ -18,13 +20,18 @@ type PrinterContextValue = {
   deviceId: string | null;
   pairedDevices: Array<{ id: string; name: string }>;
   networkPrinterIp: string | null;
+  isNetworkPrinterReady: boolean;
   refreshPairedDevices: () => Promise<void>;
+  refreshNetworkPrinterIp: () => Promise<void>;
+  saveNetworkPrinterIp: (ip: string) => Promise<void>;
+  clearNetworkPrinterIp: () => Promise<void>;
+  testNetworkPrinter: (ip?: string) => Promise<{ ok: boolean; message: string }>;
   requestAndConnect: () => Promise<void>;
   connectById: (deviceId: string) => Promise<void>;
   disconnect: () => void;
   write: (data: Uint8Array) => Promise<void>;
   networkPrint: (data: Uint8Array) => Promise<void>;
-  requestPrint: (data: Uint8Array, label?: string, osFallback?: () => void) => void;
+  requestPrint: (data: Uint8Array, label?: string, osFallback?: () => void) => Promise<void>;
 };
 
 const PrinterContext = createContext<PrinterContextValue | null>(null);
@@ -38,13 +45,13 @@ export function PrinterProvider({ children }: { children: React.ReactNode }) {
   const [pairedDevices, setPairedDevices] = useState<Array<{ id: string; name: string }>>([]);
   const [characteristic, setCharacteristic] = useState<BluetoothRemoteGATTCharacteristic | null>(null);
   const [device, setDevice] = useState<BluetoothDevice | null>(null);
-
   const [networkPrinterIp, setNetworkPrinterIp] = useState<string | null>(null);
-
+  const [isNetworkPrinterReady, setIsNetworkPrinterReady] = useState(false);
   const [pendingJob, setPendingJob] = useState<PendingPrintJob | null>(null);
   const [showPrintConfirm, setShowPrintConfirm] = useState(false);
+  const { success, error } = useNotificationContext();
 
-  const refreshPairedDevices = async () => {
+  const refreshPairedDevices = useCallback(async () => {
     try {
       const devices = await listPairedBluetoothDevices();
       setPairedDevices(
@@ -56,7 +63,77 @@ export function PrinterProvider({ children }: { children: React.ReactNode }) {
     } catch {
       setPairedDevices([]);
     }
-  };
+  }, []);
+
+  const refreshNetworkPrinterIp = useCallback(async () => {
+    try {
+      const res = await fetch('/api/project-variables?name=printer_ip');
+      const json = await res.json();
+      const value = json.success && json.data?.value ? String(json.data.value).trim() : '';
+      setNetworkPrinterIp(value || null);
+      setIsNetworkPrinterReady(Boolean(value));
+    } catch {
+      setNetworkPrinterIp(null);
+      setIsNetworkPrinterReady(false);
+    }
+  }, []);
+
+  const saveNetworkPrinterIp = useCallback(async (ip: string) => {
+    const normalizedIp = ip.trim();
+    if (normalizedIp && !isValidIpv4(normalizedIp)) {
+      throw new Error('無効なIPアドレス形式です');
+    }
+    const res = await fetch('/api/project-variables', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'printer_ip',
+        value: normalizedIp,
+        other: 'メインレシートプリンターIP',
+      }),
+    });
+    const json = await res.json();
+    if (!json.success) {
+      throw new Error(json.error || 'プリンターIPの保存に失敗しました');
+    }
+    setNetworkPrinterIp(normalizedIp || null);
+    setIsNetworkPrinterReady(Boolean(normalizedIp));
+  }, []);
+
+  const clearNetworkPrinterIp = useCallback(async () => {
+    const res = await fetch('/api/project-variables', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'printer_ip',
+        value: '',
+      }),
+    });
+    const json = await res.json();
+    if (!json.success) {
+      throw new Error(json.error || 'プリンターIP設定の削除に失敗しました');
+    }
+    setNetworkPrinterIp(null);
+    setIsNetworkPrinterReady(false);
+  }, []);
+
+  const testNetworkPrinter = useCallback(async (ip?: string) => {
+    const targetIp = (ip || networkPrinterIp || '').trim();
+    if (!targetIp) {
+      throw new Error('プリンターIPが未設定です');
+    }
+
+    const res = await fetch(`/api/print?ip=${encodeURIComponent(targetIp)}`);
+    const json = await res.json();
+    if (!json.success) {
+      throw new Error(json.error || 'ネットワークプリンター接続テストに失敗しました');
+    }
+
+    return {
+      ok: true,
+      message: `接続成功 (${targetIp}:9100)`,
+    };
+  }, [networkPrinterIp]);
 
   const disconnect = () => {
     try {
@@ -122,37 +199,59 @@ export function PrinterProvider({ children }: { children: React.ReactNode }) {
       binary += String.fromCharCode.apply(null, Array.from(sub));
     }
     const base64 = btoa(binary);
+    // Pass the context IP so printing works even if the DB write is momentarily delayed
     const res = await fetch('/api/print', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ data: base64 }),
+      body: JSON.stringify({ data: base64, ip: networkPrinterIp || undefined }),
     });
     const json = await res.json();
     if (!json.success) {
+      setIsNetworkPrinterReady(false);
       throw new Error(json.error || 'ネットワーク印刷に失敗しました');
     }
-  }, []);
+    setIsNetworkPrinterReady(true);
+  }, [networkPrinterIp]);
 
-  const requestPrint = useCallback((data: Uint8Array, label?: string, osFallback?: () => void) => {
-    setPendingJob({ data, label: label || '印刷', osFallback });
+  const requestPrint = useCallback(async (data: Uint8Array, label?: string, osFallback?: () => void) => {
+    const jobLabel = label || '印刷';
+
+    if (status === 'connected') {
+      try {
+        await write(data);
+        success('印刷完了', `${jobLabel}をBluetoothプリンターへ送信しました`);
+        return;
+      } catch (e: any) {
+        // BT failed – notify user and fall through to next method
+        console.warn('BT print failed, falling through to next method:', e?.message);
+        const nextMethod = networkPrinterIp ? 'ネットワーク印刷に切り替えます' : 'OS印刷ダイアログに切り替えます';
+        error('Bluetooth印刷失敗', `${nextMethod}: ${e?.message || '不明なエラー'}`);
+      }
+    }
+
+    if (networkPrinterIp) {
+      try {
+        await networkPrint(data);
+        success('印刷完了', `${jobLabel}をネットワークプリンターへ送信しました`);
+        return;
+      } catch (e: any) {
+        // Network failed – fall through to OS modal (only toast if no OS fallback available)
+        console.warn('Network print failed, falling through to OS modal:', e?.message);
+        if (!osFallback) {
+          error('ネットワーク印刷失敗', `${e?.message || '不明なエラー'}`);
+        }
+      }
+    }
+
+    setPendingJob({ data, label: jobLabel, osFallback });
     setShowPrintConfirm(true);
-  }, []);
+  }, [status, write, success, error, networkPrinterIp, networkPrint]);
 
-  // Initial load: refresh paired + try auto reconnect + fetch network printer IP
   useEffect(() => {
     (async () => {
-      // Fetch network printer IP
-      try {
-        const res = await fetch('/api/project-variables?name=printer_ip');
-        const json = await res.json();
-        if (json.success && json.data?.value) {
-          setNetworkPrinterIp(json.data.value);
-        }
-      } catch {
-        // no network printer configured
-      }
-
+      await refreshNetworkPrinterIp();
       await refreshPairedDevices();
+
       let lastId: string | null = null;
       try {
         lastId = localStorage.getItem(LS_KEY);
@@ -160,6 +259,7 @@ export function PrinterProvider({ children }: { children: React.ReactNode }) {
         lastId = null;
       }
       if (!lastId) return;
+
       try {
         await connectById(lastId);
       } catch {
@@ -167,7 +267,7 @@ export function PrinterProvider({ children }: { children: React.ReactNode }) {
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [refreshNetworkPrinterIp]);
 
   const value = useMemo<PrinterContextValue>(
     () => ({
@@ -176,7 +276,12 @@ export function PrinterProvider({ children }: { children: React.ReactNode }) {
       deviceId,
       pairedDevices,
       networkPrinterIp,
+      isNetworkPrinterReady,
       refreshPairedDevices,
+      refreshNetworkPrinterIp,
+      saveNetworkPrinterIp,
+      clearNetworkPrinterIp,
+      testNetworkPrinter,
       requestAndConnect,
       connectById,
       disconnect,
@@ -184,8 +289,24 @@ export function PrinterProvider({ children }: { children: React.ReactNode }) {
       networkPrint,
       requestPrint,
     }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [status, deviceName, deviceId, pairedDevices, networkPrinterIp, requestPrint, networkPrint]
+    [
+      status,
+      deviceName,
+      deviceId,
+      pairedDevices,
+      networkPrinterIp,
+      isNetworkPrinterReady,
+      refreshPairedDevices,
+      refreshNetworkPrinterIp,
+      saveNetworkPrinterIp,
+      clearNetworkPrinterIp,
+      testNetworkPrinter,
+      requestAndConnect,
+      connectById,
+      write,
+      networkPrint,
+      requestPrint,
+    ]
   );
 
   return (

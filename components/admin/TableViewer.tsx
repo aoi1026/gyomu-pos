@@ -31,13 +31,6 @@ import { buildFullReceiptEscPos } from '@/lib/printing/escpos-raster';
 import type { FullReceiptPayload } from '@/lib/printing/escpos-raster';
 import { previewFullReceiptInWindow, printFullReceiptViaOs } from '@/lib/printing/os-print';
 
-function isIOS(): boolean {
-  if (typeof navigator === 'undefined') return false;
-  return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-    (navigator.platform === 'MacIntel' && (navigator as any).maxTouchPoints > 1) ||
-    (/Macintosh/.test(navigator.userAgent) && typeof document !== 'undefined' && 'ontouchend' in document);
-}
-
 interface TableViewerProps {
   tableId: number | null;
   onClose: () => void;
@@ -169,12 +162,16 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
   };
 
   const tryAutoPrintReceipts = async () => {
-    if (printer.status !== 'connected') return;
+    if (printer.status !== 'connected' && !printer.isNetworkPrinterReady) return;
     if (!session || !tableId || !tableData) return;
     try {
       const payload = await buildReceiptData();
       if (!payload) return;
-      await printer.write(buildFullReceiptEscPos(payload));
+      await printer.requestPrint(
+        buildFullReceiptEscPos(payload),
+        '領収書自動印刷',
+        () => printFullReceiptViaOs(payload)
+      );
     } catch (e) {
       console.error('自動領収書印刷エラー:', e);
       error('エラー', '領収書の自動印刷に失敗しました（プリンター接続を確認してください）');
@@ -190,13 +187,9 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
       const payload = await buildReceiptData();
       if (!payload) return;
       // iPad / iOS では Web Bluetooth に制限があるため、OS の印刷ダイアログ経由で印刷する
-      if (isIOS()) {
-        printFullReceiptViaOs(payload);
-        return;
-      }
       const escposData = buildFullReceiptEscPos(payload);
       // OS印刷フォールバックを渡す（Web Bluetooth非対応ブラウザ用）
-      printer.requestPrint(escposData, '領収書印刷', () => printFullReceiptViaOs(payload));
+      await printer.requestPrint(escposData, '領収書印刷', () => printFullReceiptViaOs(payload));
     } catch (e) {
       console.error('領収書印刷エラー:', e);
       error('エラー', '領収書データの生成に失敗しました');
