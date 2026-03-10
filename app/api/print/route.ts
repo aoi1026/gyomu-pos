@@ -3,7 +3,8 @@ import { pool } from '@/lib/database';
 import net from 'net';
 
 const PRINTER_PORT = 9100;
-const CONNECT_TIMEOUT = 10_000;
+// ネットワークプリンターは応答まで時間がかかることがあるため、接続タイムアウトを 60 秒に延長
+const CONNECT_TIMEOUT = 60_000;
 
 async function getPrinterIp(): Promise<string | null> {
   const client = await pool.connect();
@@ -26,7 +27,7 @@ function sendToPrinter(ip: string, data: Buffer): Promise<void> {
       if (!settled) {
         settled = true;
         socket.destroy();
-        reject(new Error('接続がタイムアウトしました（10秒）'));
+        reject(new Error('接続がタイムアウトしました（60秒）'));
       }
     }, CONNECT_TIMEOUT);
 
@@ -70,7 +71,7 @@ function testConnection(ip: string): Promise<void> {
       if (!settled) {
         settled = true;
         socket.destroy();
-        reject(new Error('接続がタイムアウトしました（10秒）'));
+        reject(new Error('接続がタイムアウトしました（60秒）'));
       }
     }, CONNECT_TIMEOUT);
 
