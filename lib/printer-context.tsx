@@ -124,7 +124,16 @@ export function PrinterProvider({ children }: { children: React.ReactNode }) {
     }
 
     const res = await fetch(`/api/print?ip=${encodeURIComponent(targetIp)}`);
-    const json = await res.json();
+    const bodyText = await res.text();
+    let json: any;
+    try {
+      json = JSON.parse(bodyText);
+    } catch {
+      // Next.js やプロキシ層からの HTML エラーレスポンスなど、JSON 以外が返ってきた場合
+      throw new Error(
+        `印刷APIから不正な応答が返されました (HTTP ${res.status})`
+      );
+    }
     if (!json.success) {
       throw new Error(json.error || 'ネットワークプリンター接続テストに失敗しました');
     }
@@ -205,7 +214,15 @@ export function PrinterProvider({ children }: { children: React.ReactNode }) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ data: base64, ip: networkPrinterIp || undefined }),
     });
-    const json = await res.json();
+    const bodyText = await res.text();
+    let json: any;
+    try {
+      json = JSON.parse(bodyText);
+    } catch {
+      throw new Error(
+        `印刷APIから不正な応答が返されました (HTTP ${res.status})`
+      );
+    }
     if (!json.success) {
       setIsNetworkPrinterReady(false);
       throw new Error(json.error || 'ネットワーク印刷に失敗しました');
