@@ -6,6 +6,10 @@ const PRINTER_PORT = 9100;
 // ネットワークプリンターは応答まで時間がかかることがあるため、接続タイムアウトを 60 秒に延長
 const CONNECT_TIMEOUT = 60_000;
 
+// プラットフォーム（Vercel等）のタイムアウトより先に応答するため、API実行時間を延長
+export const maxDuration = 60;
+export const dynamic = 'force-dynamic';
+
 async function getPrinterIp(): Promise<string | null> {
   const client = await pool.connect();
   try {

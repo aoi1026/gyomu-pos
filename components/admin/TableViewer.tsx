@@ -167,11 +167,10 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
     try {
       const payload = await buildReceiptData();
       if (!payload) return;
-      await printer.requestPrint(
-        buildFullReceiptEscPos(payload),
-        '領収書自動印刷',
-        () => printFullReceiptViaOs(payload)
-      );
+      await printer.requestPrint(buildFullReceiptEscPos(payload), '領収書自動印刷', {
+        osFallback: () => printFullReceiptViaOs(payload),
+        eposPayload: payload,
+      });
     } catch (e) {
       console.error('自動領収書印刷エラー:', e);
       error('エラー', '領収書の自動印刷に失敗しました（プリンター接続を確認してください）');
@@ -188,8 +187,10 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
       if (!payload) return;
       // iPad / iOS では Web Bluetooth に制限があるため、OS の印刷ダイアログ経由で印刷する
       const escposData = buildFullReceiptEscPos(payload);
-      // OS印刷フォールバックを渡す（Web Bluetooth非対応ブラウザ用）
-      await printer.requestPrint(escposData, '領収書印刷', () => printFullReceiptViaOs(payload));
+      await printer.requestPrint(escposData, '領収書印刷', {
+        osFallback: () => printFullReceiptViaOs(payload),
+        eposPayload: payload,
+      });
     } catch (e) {
       console.error('領収書印刷エラー:', e);
       error('エラー', '領収書データの生成に失敗しました');

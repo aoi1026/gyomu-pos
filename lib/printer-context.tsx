@@ -11,6 +11,8 @@ import PrintConfirmModal from '@/components/admin/PrintConfirmModal';
 import type { PendingPrintJob } from '@/components/admin/PrintConfirmModal';
 import { useNotificationContext } from '@/lib/notification-context';
 import { isValidIpv4 } from '@/lib/printing/utils';
+import { testEposConnection } from '@/lib/printing/epos-print';
+import type { ReceiptPayload, FullReceiptPayload } from '@/lib/printing/escpos-raster';
 
 type PrinterStatus = 'disconnected' | 'connecting' | 'connected';
 
@@ -31,7 +33,11 @@ type PrinterContextValue = {
   disconnect: () => void;
   write: (data: Uint8Array) => Promise<void>;
   networkPrint: (data: Uint8Array) => Promise<void>;
-  requestPrint: (data: Uint8Array, label?: string, osFallback?: () => void) => Promise<void>;
+  requestPrint: (
+    data: Uint8Array,
+    label?: string,
+    options?: { osFallback?: () => void; eposPayload?: ReceiptPayload | FullReceiptPayload | ReceiptPayload[] }
+  ) => Promise<void>;
 };
 
 const PrinterContext = createContext<PrinterContextValue | null>(null);
@@ -123,25 +129,33 @@ export function PrinterProvider({ children }: { children: React.ReactNode }) {
       throw new Error('プリンターIPが未設定です');
     }
 
+    // クライアント（iPad等）からプリンターへ直接 ePOS WebSocket（ポート8008）で接続テスト
+    if (typeof window !== 'undefined') {
+      const result = await testEposConnection(targetIp);
+      if (!result.ok) {
+        throw new Error(result.message);
+      }
+      return { ok: true, message: result.message };
+    }
+
+    // SSR 時はサーバーAPI（ポート9100 ESC/POS）にフォールバック
     const res = await fetch(`/api/print?ip=${encodeURIComponent(targetIp)}`);
     const bodyText = await res.text();
     let json: any;
     try {
       json = JSON.parse(bodyText);
     } catch {
-      // Next.js やプロキシ層からの HTML エラーレスポンスなど、JSON 以外が返ってきた場合
-      throw new Error(
-        `印刷APIから不正な応答が返されました (HTTP ${res.status})`
-      );
+      if (res.status === 504) {
+        throw new Error(
+          '接続がタイムアウトしました（504）。iPadとプリンターは同一Wi-Fiに接続し、プリンターのePOS-Printを有効にしてください。'
+        );
+      }
+      throw new Error(`印刷APIから不正な応答が返されました (HTTP ${res.status})`);
     }
     if (!json.success) {
       throw new Error(json.error || 'ネットワークプリンター接続テストに失敗しました');
     }
-
-    return {
-      ok: true,
-      message: `接続成功 (${targetIp}:9100)`,
-    };
+    return { ok: true, message: `接続成功 (${targetIp}:9100)` };
   }, [networkPrinterIp]);
 
   const disconnect = () => {
@@ -230,39 +244,59 @@ export function PrinterProvider({ children }: { children: React.ReactNode }) {
     setIsNetworkPrinterReady(true);
   }, [networkPrinterIp]);
 
-  const requestPrint = useCallback(async (data: Uint8Array, label?: string, osFallback?: () => void) => {
-    const jobLabel = label || '印刷';
+  const requestPrint = useCallback(
+    async (
+      data: Uint8Array,
+      label?: string,
+      options?: { osFallback?: () => void; eposPayload?: ReceiptPayload | FullReceiptPayload | ReceiptPayload[] }
+    ) => {
+      const jobLabel = label || '印刷';
+      const osFallback = options?.osFallback;
+      const eposPayload = options?.eposPayload;
 
-    if (status === 'connected') {
-      try {
-        await write(data);
-        success('印刷完了', `${jobLabel}をBluetoothプリンターへ送信しました`);
-        return;
-      } catch (e: any) {
-        // BT failed – notify user and fall through to next method
-        console.warn('BT print failed, falling through to next method:', e?.message);
-        const nextMethod = networkPrinterIp ? 'ネットワーク印刷に切り替えます' : 'OS印刷ダイアログに切り替えます';
-        error('Bluetooth印刷失敗', `${nextMethod}: ${e?.message || '不明なエラー'}`);
-      }
-    }
-
-    if (networkPrinterIp) {
-      try {
-        await networkPrint(data);
-        success('印刷完了', `${jobLabel}をネットワークプリンターへ送信しました`);
-        return;
-      } catch (e: any) {
-        // Network failed – fall through to OS modal (only toast if no OS fallback available)
-        console.warn('Network print failed, falling through to OS modal:', e?.message);
-        if (!osFallback) {
-          error('ネットワーク印刷失敗', `${e?.message || '不明なエラー'}`);
+      if (status === 'connected') {
+        try {
+          await write(data);
+          success('印刷完了', `${jobLabel}をBluetoothプリンターへ送信しました`);
+          return;
+        } catch (e: any) {
+          console.warn('BT print failed, falling through to next method:', e?.message);
+          const nextMethod = networkPrinterIp ? 'ネットワーク印刷に切り替えます' : 'OS印刷ダイアログに切り替えます';
+          error('Bluetooth印刷失敗', `${nextMethod}: ${e?.message || '不明なエラー'}`);
         }
       }
-    }
 
-    setPendingJob({ data, label: jobLabel, osFallback });
-    setShowPrintConfirm(true);
-  }, [status, write, success, error, networkPrinterIp, networkPrint]);
+      if (networkPrinterIp) {
+        try {
+          if (eposPayload) {
+            const { printReceiptViaEpos, printFullReceiptViaEpos, printReceiptsViaEpos } =
+              await import('@/lib/printing/epos-print');
+            if (Array.isArray(eposPayload)) {
+              await printReceiptsViaEpos(networkPrinterIp, eposPayload);
+            } else if ('orderLines' in eposPayload) {
+              await printFullReceiptViaEpos(networkPrinterIp, eposPayload);
+            } else {
+              await printReceiptViaEpos(networkPrinterIp, eposPayload);
+            }
+            success('印刷完了', `${jobLabel}をWi-Fiプリンターへ送信しました`);
+            return;
+          }
+          await networkPrint(data);
+          success('印刷完了', `${jobLabel}をネットワークプリンターへ送信しました`);
+          return;
+        } catch (e: any) {
+          console.warn('Network print failed, falling through to OS modal:', e?.message);
+          if (!osFallback) {
+            error('ネットワーク印刷失敗', `${e?.message || '不明なエラー'}`);
+          }
+        }
+      }
+
+      setPendingJob({ data, label: jobLabel, osFallback, eposPayload });
+      setShowPrintConfirm(true);
+    },
+    [status, write, success, error, networkPrinterIp, networkPrint]
+  );
 
   useEffect(() => {
     (async () => {

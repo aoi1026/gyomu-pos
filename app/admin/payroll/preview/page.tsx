@@ -149,8 +149,10 @@ export default function PayrollPreviewPage() {
       combined.set(part, offset);
       offset += part.length;
     }
-    // OS印刷フォールバックを渡す（Web Bluetooth非対応ブラウザ用）
-    await printer.requestPrint(combined, label || '給与明細印刷', () => printReceiptViaOs(payloads));
+    await printer.requestPrint(combined, label || '給与明細印刷', {
+      osFallback: () => printReceiptViaOs(payloads),
+      eposPayload: payloads,
+    });
   };
 
   const doPreview = async (getPayload: () => Promise<ReceiptPayload | ReceiptPayload[]>) => {

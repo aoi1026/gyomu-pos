@@ -107,10 +107,9 @@ export default function BluetoothPrinterButton() {
         totalAmount: 0,
       };
 
-      await printer.requestPrint(
-        buildEscPosRasterReceipt(payload),
-        'メインプリンター印刷テスト'
-      );
+      await printer.requestPrint(buildEscPosRasterReceipt(payload), 'メインプリンター印刷テスト', {
+        eposPayload: payload,
+      });
       // requestPrint fires its own success toast internally; no duplicate needed here
     } catch (e: any) {
       error('印刷テスト失敗', e?.message || 'テスト印刷に失敗しました');

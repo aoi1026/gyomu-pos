@@ -1,6 +1,7 @@
 import './globals.css';
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
+import Script from 'next/script';
 import { Toaster } from '@/components/ui/sonner';
 import { NotificationProvider } from '@/lib/notification-context';
 import { SessionProvider } from '@/lib/session-context';
@@ -32,6 +33,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${inter.className} antialiased`}>
+        <Script src="/epos/epos-2.27.0.js" strategy="lazyOnload" />
         <NotificationProvider>
           <SessionProvider>
             <PrinterProvider>

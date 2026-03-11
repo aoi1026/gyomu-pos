@@ -16,11 +16,20 @@ function detectIsIOS(): boolean {
     (/Macintosh/.test(navigator.userAgent) && typeof document !== 'undefined' && 'ontouchend' in document);
 }
 
+import type { ReceiptPayload, FullReceiptPayload } from '@/lib/printing/escpos-raster';
+import {
+  printReceiptViaEpos,
+  printFullReceiptViaEpos,
+  printReceiptsViaEpos,
+} from '@/lib/printing/epos-print';
+
 export type PendingPrintJob = {
   data: Uint8Array;
   label: string;
   /** OS印刷フォールバック（Web Bluetooth非対応時に使用） */
   osFallback?: () => void;
+  /** ePOS クライアント印刷用（iPad→プリンター直接 Wi-Fi）。設定時は data の代わりに使用 */
+  eposPayload?: ReceiptPayload | FullReceiptPayload | ReceiptPayload[];
 };
 
 interface PrintConfirmModalProps {
@@ -136,12 +145,24 @@ export default function PrintConfirmModal({
   };
 
   const handleNetworkPrint = async () => {
-    if (!pendingJob) return;
+    if (!pendingJob || !networkPrinterIp) return;
     setIsPrinting(true);
     setPrintResult(null);
     try {
-      await onNetworkPrint(pendingJob.data);
-      setPrintResult({ type: 'success', message: 'ネットワーク経由で印刷しました' });
+      if (pendingJob.eposPayload) {
+        const p = pendingJob.eposPayload;
+        if (Array.isArray(p)) {
+          await printReceiptsViaEpos(networkPrinterIp, p);
+        } else if ('orderLines' in p) {
+          await printFullReceiptViaEpos(networkPrinterIp, p);
+        } else {
+          await printReceiptViaEpos(networkPrinterIp, p);
+        }
+        setPrintResult({ type: 'success', message: '正常に印刷されました（Wi-Fi 直接接続）' });
+      } else {
+        await onNetworkPrint(pendingJob.data);
+        setPrintResult({ type: 'success', message: 'ネットワーク経由で印刷しました' });
+      }
     } catch (e: any) {
       setPrintResult({ type: 'error', message: e?.message || 'ネットワーク印刷に失敗しました' });
     } finally {
