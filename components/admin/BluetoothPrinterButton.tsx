@@ -92,6 +92,7 @@ export default function BluetoothPrinterButton() {
   const runTestPrint = async () => {
     try {
       setIsPrintingTest(true);
+      setNetworkTestResult(null);
       const now = new Date();
       const payload = {
         storeName: 'LNXS',
@@ -110,9 +111,9 @@ export default function BluetoothPrinterButton() {
       await printer.requestPrint(buildEscPosRasterReceipt(payload), 'メインプリンター印刷テスト', {
         eposPayload: payload,
       });
-      // requestPrint fires its own success toast internally; no duplicate needed here
+      setNetworkTestResult({ ok: true, message: '正常に印刷されました' });
     } catch (e: any) {
-      error('印刷テスト失敗', e?.message || 'テスト印刷に失敗しました');
+      setNetworkTestResult({ ok: false, message: e?.message || 'テスト印刷に失敗しました' });
     } finally {
       setIsPrintingTest(false);
     }
@@ -216,11 +217,9 @@ export default function BluetoothPrinterButton() {
                     try {
                       const result = await printer.testNetworkPrinter(networkIpInput);
                       setNetworkTestResult(result);
-                      success('接続テスト成功', result.message);
                     } catch (e: any) {
                       const message = e?.message || '接続テストに失敗しました';
                       setNetworkTestResult({ ok: false, message });
-                      error('接続テスト失敗', message);
                     } finally {
                       setIsTestingIp(false);
                     }
@@ -266,17 +265,24 @@ export default function BluetoothPrinterButton() {
               </div>
 
               {networkTestResult && (
-                <div className={`flex items-center gap-2 rounded-md border p-2 text-xs ${
+                <div className={`flex items-start gap-2 border p-3 text-sm ${
                   networkTestResult.ok
-                    ? 'border-green-200 bg-green-50 text-green-700'
-                    : 'border-red-200 bg-red-50 text-red-700'
+                    ? 'border-green-300 bg-green-50 text-green-800'
+                    : 'border-red-300 bg-red-50 text-red-800'
                 }`}>
                   {networkTestResult.ok ? (
-                    <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
+                    <CheckCircle2 className="w-5 h-5 flex-shrink-0 text-green-600 mt-0.5" />
                   ) : (
-                    <XCircle className="w-4 h-4 flex-shrink-0" />
+                    <XCircle className="w-5 h-5 flex-shrink-0 text-red-600 mt-0.5" />
                   )}
-                  <span>{networkTestResult.message}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium">
+                      {networkTestResult.ok ? '接続テスト成功' : '接続テスト失敗'}
+                    </div>
+                    <div className="text-xs mt-1 whitespace-pre-wrap break-all">
+                      {networkTestResult.message}
+                    </div>
+                  </div>
                 </div>
               )}
             </div>

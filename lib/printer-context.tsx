@@ -129,33 +129,11 @@ export function PrinterProvider({ children }: { children: React.ReactNode }) {
       throw new Error('プリンターIPが未設定です');
     }
 
-    // クライアント（iPad等）からプリンターへ直接 ePOS WebSocket（ポート8008）で接続テスト
-    if (typeof window !== 'undefined') {
-      const result = await testEposConnection(targetIp);
-      if (!result.ok) {
-        throw new Error(result.message);
-      }
-      return { ok: true, message: result.message };
+    const result = await testEposConnection(targetIp);
+    if (!result.ok) {
+      throw new Error(result.message);
     }
-
-    // SSR 時はサーバーAPI（ポート9100 ESC/POS）にフォールバック
-    const res = await fetch(`/api/print?ip=${encodeURIComponent(targetIp)}`);
-    const bodyText = await res.text();
-    let json: any;
-    try {
-      json = JSON.parse(bodyText);
-    } catch {
-      if (res.status === 504) {
-        throw new Error(
-          '接続がタイムアウトしました（504）。iPadとプリンターは同一Wi-Fiに接続し、プリンターのePOS-Printを有効にしてください。'
-        );
-      }
-      throw new Error(`印刷APIから不正な応答が返されました (HTTP ${res.status})`);
-    }
-    if (!json.success) {
-      throw new Error(json.error || 'ネットワークプリンター接続テストに失敗しました');
-    }
-    return { ok: true, message: `接続成功 (${targetIp}:9100)` };
+    return { ok: true, message: result.message };
   }, [networkPrinterIp]);
 
   const disconnect = () => {

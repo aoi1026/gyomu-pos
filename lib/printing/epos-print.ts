@@ -2,8 +2,7 @@
 
 import type { ReceiptPayload, FullReceiptPayload } from '@/lib/printing/escpos-raster';
 
-const EPOS_PORT = 8008;
-const EPOS_SDK_URL = '/epos/epos-2.27.0.js';
+const EPOS_PRINT_CGI = '/cgi-bin/epos/service.cgi?devid=local_printer&timeout=60000';
 
 function formatYen(amount: number): string {
   const n = Number.isFinite(amount) ? Math.round(amount) : 0;
@@ -19,222 +18,293 @@ function formatIssuedAt(d: Date): string {
   return `${yyyy}/${mm}/${dd} ${hh}:${mi}`;
 }
 
-/** Epson ePOS SDK を読み込み、利用可能にする */
-export function loadEpsonSdk(): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if (typeof window === 'undefined') {
-      reject(new Error('ブラウザ環境で実行してください'));
-      return;
-    }
-    const epson = (window as any).epson;
-    if (epson?.ePOSDevice) {
-      resolve();
-      return;
-    }
-    const existing = document.querySelector(`script[src="${EPOS_SDK_URL}"]`);
-    if (existing) {
-      const check = () => {
-        if ((window as any).epson?.ePOSDevice) resolve();
-        else setTimeout(check, 100);
-      };
-      check();
-      return;
-    }
-    const script = document.createElement('script');
-    script.src = EPOS_SDK_URL;
-    script.async = false;
-    script.onload = () => {
-      if ((window as any).epson?.ePOSDevice) resolve();
-      else reject(new Error('Epson ePOS SDK の読み込みに失敗しました'));
-    };
-    script.onerror = () =>
-      reject(
-        new Error(
-          'Epson ePOS SDK を読み込めません。public/epos/epos-2.27.0.js を配置してください。'
-        )
-      );
-    document.head.appendChild(script);
-  });
+function escapeXml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
 }
 
-type EpsonBuilder = {
-  FONT_A: string;
-  ALIGN_CENTER: string;
-  ALIGN_LEFT: string;
-  ALIGN_RIGHT: string;
-  CUT_FEED: string;
-  addText(text: string): void;
-  addTextAlign(align: string): void;
-  addFeed(): void;
-  addCut(type: string): void;
-  send(id?: string): void;
-};
+function buildSoapEnvelope(printXml: string): string {
+  return `<?xml version="1.0" encoding="utf-8"?>
+<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
+<s:Body>
+<epos-print xmlns="http://www.epson-pos.com/schemas/2011/03/epos-print">
+${printXml}
+</epos-print>
+</s:Body>
+</s:Envelope>`;
+}
 
-/** ReceiptPayload を ePOS ビルダーで印刷 */
-function buildReceiptOnBuilder(builder: EpsonBuilder, payload: ReceiptPayload): void {
-  builder.addTextAlign(builder.ALIGN_CENTER);
-  builder.addText(`${payload.storeName || 'STORE'}\n`);
-  builder.addText(`${payload.tableName}\n`);
-  builder.addText(`【${payload.title}】\n`);
-  builder.addText('-'.repeat(24) + '\n');
+function receiptPayloadToXml(payload: ReceiptPayload): string {
+  const lines: string[] = [];
+  lines.push('<text align="center"/>');
+  lines.push(`<text>${escapeXml(payload.storeName || 'STORE')}&#10;</text>`);
+  lines.push(`<text>${escapeXml(payload.tableName)}&#10;</text>`);
+  lines.push(`<text>【${escapeXml(payload.title)}】&#10;</text>`);
+  lines.push(`<text>------------------------&#10;</text>`);
 
-  builder.addTextAlign(builder.ALIGN_LEFT);
+  lines.push('<text align="left"/>');
   for (const line of payload.lines) {
     const left = line.left ?? '';
     const right = line.right ?? '';
     if (right) {
-      const pad = 24 - (left.length + right.length);
-      builder.addText(left + (pad > 0 ? ' '.repeat(pad) : ' ') + right + '\n');
+      const pad = Math.max(1, 24 - left.length - right.length);
+      lines.push(`<text>${escapeXml(left)}${' '.repeat(pad)}${escapeXml(right)}&#10;</text>`);
     } else {
-      builder.addText(left + '\n');
+      lines.push(`<text>${escapeXml(left)}&#10;</text>`);
     }
   }
 
-  builder.addText('-'.repeat(24) + '\n');
-  builder.addText(
-    `${payload.totalLabel}${' '.repeat(Math.max(0, 16 - payload.totalLabel.length))}${formatYen(payload.totalAmount)}\n`
-  );
-  builder.addTextAlign(builder.ALIGN_CENTER);
-  builder.addText(`発行: ${formatIssuedAt(payload.issuedAt)}\n`);
+  lines.push(`<text>------------------------&#10;</text>`);
+  const totalPad = Math.max(1, 16 - payload.totalLabel.length);
+  lines.push(`<text>${escapeXml(payload.totalLabel)}${' '.repeat(totalPad)}${escapeXml(formatYen(payload.totalAmount))}&#10;</text>`);
+
+  lines.push('<text align="center"/>');
+  lines.push(`<text>発行: ${escapeXml(formatIssuedAt(payload.issuedAt))}&#10;</text>`);
   if (payload.footerAddress?.trim()) {
-    builder.addText(`住所: ${payload.footerAddress.trim()}\n`);
+    lines.push(`<text>住所: ${escapeXml(payload.footerAddress.trim())}&#10;</text>`);
   }
   if (payload.footerPhone?.trim()) {
-    builder.addText(`電話番号: ${payload.footerPhone.trim()}\n`);
+    lines.push(`<text>電話番号: ${escapeXml(payload.footerPhone.trim())}&#10;</text>`);
   }
-  builder.addFeed();
-  builder.addFeed();
-  builder.addCut(builder.CUT_FEED);
+  lines.push('<feed line="3"/>');
+  lines.push('<cut type="feed"/>');
+  return lines.join('\n');
 }
 
-/** FullReceiptPayload を ePOS ビルダーで印刷 */
-function buildFullReceiptOnBuilder(builder: EpsonBuilder, payload: FullReceiptPayload): void {
-  builder.addTextAlign(builder.ALIGN_CENTER);
-  builder.addText(`${payload.storeName || 'STORE'}\n`);
-  builder.addText(`【${payload.tableNumber}】\n`);
+function fullReceiptPayloadToXml(payload: FullReceiptPayload): string {
+  const lines: string[] = [];
+  lines.push('<text align="center"/>');
+  lines.push(`<text>${escapeXml(payload.storeName || 'STORE')}&#10;</text>`);
+  lines.push(`<text>【${escapeXml(payload.tableNumber)}】&#10;</text>`);
   if (payload.greeting?.trim()) {
-    builder.addText(payload.greeting.trim().replace(/\n/g, '\n') + '\n');
+    for (const gl of payload.greeting.trim().split(/\r?\n/)) {
+      lines.push(`<text>${escapeXml(gl)}&#10;</text>`);
+    }
   }
+
   if (payload.storeAddress?.trim() || payload.storePhone?.trim()) {
-    builder.addTextAlign(builder.ALIGN_LEFT);
-    if (payload.storeAddress?.trim()) builder.addText(`${payload.storeAddress.trim()}\n`);
-    if (payload.storePhone?.trim()) builder.addText(`TEL:${payload.storePhone.trim()}\n`);
-    if (payload.paymentId) builder.addText(`登録番号:${payload.paymentId}\n`);
-    builder.addTextAlign(builder.ALIGN_CENTER);
+    lines.push('<text align="left"/>');
+    if (payload.storeAddress?.trim()) lines.push(`<text>${escapeXml(payload.storeAddress.trim())}&#10;</text>`);
+    if (payload.storePhone?.trim()) lines.push(`<text>TEL:${escapeXml(payload.storePhone.trim())}&#10;</text>`);
+    if (payload.paymentId) lines.push(`<text>登録番号:${escapeXml(payload.paymentId)}&#10;</text>`);
   }
 
-  builder.addText('--- 注文明細 ---\n');
-  builder.addTextAlign(builder.ALIGN_LEFT);
-  builder.addText('項目'.padEnd(20) + '数量'.padStart(6) + '金額'.padStart(10) + '\n');
+  lines.push('<text align="center"/>');
+  lines.push(`<text>--- 注文明細 ---&#10;</text>`);
+  lines.push('<text align="left"/>');
+
   for (const row of payload.orderLines) {
-    const item = row.item.slice(0, 18).padEnd(20);
-    const qty = String(row.qty).padStart(6);
-    const amt = formatYen(row.amount).padStart(10);
-    builder.addText(`${item}${qty}${amt}\n`);
-  }
-  builder.addText('-'.repeat(24) + '\n');
-  builder.addText(`小計${' '.repeat(18)}${formatYen(payload.subtotal)}\n`);
-  builder.addText(`SC TAX${' '.repeat(16)}${formatYen(payload.tax)}\n`);
-  builder.addText('-'.repeat(24) + '\n');
-  builder.addText(`合計${' '.repeat(18)}${formatYen(payload.total)}-\n`);
-  if (payload.taxDetailText) builder.addText(`${payload.taxDetailText}\n`);
-  if (payload.storeId) builder.addText(`ID:${payload.storeId}\n`);
-  if (payload.paymentMethod) builder.addText(`支払方法:${payload.paymentMethod}\n`);
-  if (payload.startTime) builder.addText(`開台時間:${payload.startTime}\n`);
-  if (payload.guestCount) builder.addText(`開台人数:${payload.guestCount}\n`);
-  builder.addFeed();
-  builder.addFeed();
-  builder.addCut(builder.CUT_FEED);
-}
-
-/** ePOS で印刷（Epson SDK を直接使用、Promise でラップ） */
-async function printViaEpos(
-  ip: string,
-  execute: (builder: EpsonBuilder) => void
-): Promise<void> {
-  await loadEpsonSdk();
-  const epson = (window as any).epson;
-  if (!epson?.ePOSDevice) {
-    throw new Error('Epson ePOS SDK が利用できません');
+    const item = row.item.slice(0, 20);
+    lines.push(`<text>${escapeXml(item)} x${row.qty}  ${escapeXml(formatYen(row.amount))}&#10;</text>`);
   }
 
-  return new Promise((resolve, reject) => {
-    const ePosDev = new epson.ePOSDevice();
-    const port = EPOS_PORT;
-
-    ePosDev.connect(ip, port, (result: string) => {
-      if (result === 'OK' || result === 'SSL_CONNECT_OK') {
-        ePosDev.createDevice(
-          'local_printer',
-          ePosDev.DEVICE_TYPE_PRINTER,
-          { crypto: false, buffer: false },
-          (devobj: EpsonBuilder, retcode: string) => {
-            if (retcode === 'OK') {
-              try {
-                execute(devobj);
-                devobj.send();
-                resolve();
-              } catch (e) {
-                reject(e);
-              }
-            } else {
-              reject(new Error(`プリンター接続エラー: ${retcode}`));
-            }
-          }
-        );
-      } else {
-        reject(new Error(`プリンター接続失敗: ${result}`));
-      }
-    });
-  });
+  lines.push(`<text>------------------------&#10;</text>`);
+  lines.push(`<text>小計  ${escapeXml(formatYen(payload.subtotal))}&#10;</text>`);
+  lines.push(`<text>SC TAX  ${escapeXml(formatYen(payload.tax))}&#10;</text>`);
+  lines.push(`<text>------------------------&#10;</text>`);
+  lines.push(`<text>合計  ${escapeXml(formatYen(payload.total))}-&#10;</text>`);
+  if (payload.taxDetailText) lines.push(`<text>${escapeXml(payload.taxDetailText)}&#10;</text>`);
+  if (payload.storeId) lines.push(`<text>ID:${escapeXml(payload.storeId)}&#10;</text>`);
+  if (payload.paymentMethod) lines.push(`<text>支払方法:${escapeXml(payload.paymentMethod)}&#10;</text>`);
+  if (payload.startTime) lines.push(`<text>開台時間:${escapeXml(payload.startTime)}&#10;</text>`);
+  if (payload.guestCount) lines.push(`<text>開台人数:${escapeXml(payload.guestCount)}&#10;</text>`);
+  lines.push('<feed line="3"/>');
+  lines.push('<cut type="feed"/>');
+  return lines.join('\n');
 }
 
-/** ReceiptPayload を ePOS で印刷（iPad からプリンターへ直接 Wi-Fi） */
-export async function printReceiptViaEpos(ip: string, payload: ReceiptPayload): Promise<void> {
-  await printViaEpos(ip, (builder) => buildReceiptOnBuilder(builder, payload));
-}
+function parseEposPrintResponse(responseText: string): { success: boolean; detail: string } {
+  const successMatch = responseText.match(/success="([^"]*)"/);
+  const codeMatch = responseText.match(/code="([^"]*)"/);
+  const statusMatch = responseText.match(/status="([^"]*)"/);
 
-/** FullReceiptPayload を ePOS で印刷 */
-export async function printFullReceiptViaEpos(ip: string, payload: FullReceiptPayload): Promise<void> {
-  await printViaEpos(ip, (builder) => buildFullReceiptOnBuilder(builder, payload));
-}
-
-/** 複数 ReceiptPayload を ePOS で印刷 */
-export async function printReceiptsViaEpos(
-  ip: string,
-  payloads: ReceiptPayload[]
-): Promise<void> {
-  for (const p of payloads) {
-    await printViaEpos(ip, (builder) => buildReceiptOnBuilder(builder, p));
+  const isSuccess = successMatch?.[1] === 'true';
+  if (isSuccess) {
+    return { success: true, detail: '正常に印刷されました' };
   }
+
+  const code = codeMatch?.[1] || 'unknown';
+  const status = statusMatch?.[1] || 'unknown';
+
+  const codeDescriptions: Record<string, string> = {
+    'EPOS_OC_NOCONNECT': 'プリンターに接続できません',
+    'EPOS_OC_PARAM_ERROR': 'パラメータエラー',
+    'EPOS_OC_TIMEOUT': '通信タイムアウト',
+    'DeviceNotFound': 'プリンターデバイスが見つかりません（Device ID: local_printer を確認）',
+    'EX_BADPORT': 'ポート設定エラー',
+    'EX_TIMEOUT': 'タイムアウト',
+    'SchemaError': 'XML形式エラー',
+  };
+
+  const desc = codeDescriptions[code] || `エラーコード: ${code}`;
+  return {
+    success: false,
+    detail: `${desc} (status: ${status})`,
+  };
 }
 
-/** ePOS 接続テスト（プリンターのポート 8008 に接続試行） */
-export async function testEposConnection(ip: string): Promise<{ ok: boolean; message: string }> {
+/** client → printer 直接 HTTP (ePOS-Print XML) */
+async function sendDirectToPrinter(ip: string, soapBody: string): Promise<{ success: boolean; detail: string }> {
+  const url = `http://${ip}${EPOS_PRINT_CGI}`;
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 60000);
+
   try {
-    await loadEpsonSdk();
-    const epson = (window as any).epson;
-    if (!epson?.ePOSDevice) {
-      return { ok: false, message: 'Epson ePOS SDK が利用できません' };
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'text/xml; charset=utf-8',
+        'SOAPAction': '""',
+      },
+      body: soapBody,
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+
+    const responseText = await res.text();
+
+    if (!res.ok) {
+      return {
+        success: false,
+        detail: `プリンター応答エラー (HTTP ${res.status})`,
+      };
     }
 
-    return new Promise((resolve) => {
-      const ePosDev = new epson.ePOSDevice();
-      const timeout = setTimeout(() => {
-        resolve({ ok: false, message: '接続がタイムアウトしました（60秒）' });
-      }, 60000);
-
-      ePosDev.connect(ip, EPOS_PORT, (result: string) => {
-        clearTimeout(timeout);
-        if (result === 'OK' || result === 'SSL_CONNECT_OK') {
-          ePosDev.disconnect();
-          resolve({ ok: true, message: `接続成功 (${ip}:${EPOS_PORT})` });
-        } else {
-          resolve({ ok: false, message: `接続失敗: ${result}` });
-        }
-      });
-    });
+    return parseEposPrintResponse(responseText);
   } catch (e: any) {
-    return { ok: false, message: e?.message || '接続テストに失敗しました' };
+    clearTimeout(timeout);
+    if (e?.name === 'AbortError') {
+      return { success: false, detail: '接続がタイムアウトしました（60秒）' };
+    }
+    throw e;
   }
+}
+
+/** サーバー経由 proxy (CORS / mixed-content 回避用) */
+async function sendViaServerProxy(ip: string, soapBody: string): Promise<{ success: boolean; detail: string }> {
+  const res = await fetch('/api/print/epos', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ip, soap: soapBody }),
+  });
+
+  const contentType = res.headers.get('content-type') || '';
+
+  if (contentType.includes('text/xml')) {
+    const responseText = await res.text();
+    return parseEposPrintResponse(responseText);
+  }
+
+  const bodyText = await res.text();
+  let json: any;
+  try {
+    json = JSON.parse(bodyText);
+  } catch {
+    return { success: false, detail: `サーバープロキシ応答エラー (HTTP ${res.status})` };
+  }
+
+  if (!json.success) {
+    return { success: false, detail: json.error || 'サーバープロキシ経由の印刷に失敗しました' };
+  }
+  return { success: true, detail: '正常に印刷されました（サーバー経由）' };
+}
+
+async function sendEposPrintXml(ip: string, printXml: string): Promise<{ success: boolean; detail: string }> {
+  const soapBody = buildSoapEnvelope(printXml);
+
+  try {
+    return await sendDirectToPrinter(ip, soapBody);
+  } catch (directError: any) {
+    console.warn('[ePOS] Direct failed, trying server proxy:', directError?.message);
+    try {
+      return await sendViaServerProxy(ip, soapBody);
+    } catch (proxyError: any) {
+      return {
+        success: false,
+        detail: `直接接続: ${directError?.message || '通信エラー'} / サーバー経由: ${proxyError?.message || '通信エラー'}`,
+      };
+    }
+  }
+}
+
+/** ReceiptPayload を ePOS-Print XML で印刷 */
+export async function printReceiptViaEpos(ip: string, payload: ReceiptPayload): Promise<void> {
+  const xml = receiptPayloadToXml(payload);
+  const result = await sendEposPrintXml(ip, xml);
+  if (!result.success) {
+    throw new Error(result.detail);
+  }
+}
+
+/** FullReceiptPayload を ePOS-Print XML で印刷 */
+export async function printFullReceiptViaEpos(ip: string, payload: FullReceiptPayload): Promise<void> {
+  const xml = fullReceiptPayloadToXml(payload);
+  const result = await sendEposPrintXml(ip, xml);
+  if (!result.success) {
+    throw new Error(result.detail);
+  }
+}
+
+/** 複数 ReceiptPayload を ePOS-Print XML で印刷 */
+export async function printReceiptsViaEpos(ip: string, payloads: ReceiptPayload[]): Promise<void> {
+  for (const p of payloads) {
+    await printReceiptViaEpos(ip, p);
+  }
+}
+
+/** ePOS 接続テスト */
+export async function testEposConnection(ip: string): Promise<{ ok: boolean; message: string }> {
+  const testXml = '';
+  const soapBody = buildSoapEnvelope(testXml);
+
+  try {
+    const directResult = await sendDirectToPrinter(ip, soapBody);
+    if (directResult.success) {
+      return { ok: true, message: `正常に接続されました (${ip}) [直接接続]` };
+    }
+
+    if (directResult.detail.includes('DeviceNotFound')) {
+      return { ok: false, message: `プリンターの Device ID 設定を確認してください: ${directResult.detail}` };
+    }
+
+    return { ok: true, message: `正常に接続されました (${ip}) - プリンター応答あり` };
+  } catch (directError: any) {
+    console.warn('[ePOS] Direct test failed, trying server proxy:', directError?.message);
+
+    try {
+      const res = await fetch(`/api/print/epos?ip=${encodeURIComponent(ip)}`);
+      const bodyText = await res.text();
+      let json: any;
+      try {
+        json = JSON.parse(bodyText);
+      } catch {
+        return {
+          ok: false,
+          message: `サーバープロキシ応答エラー (HTTP ${res.status})。サーバーとプリンターが同じネットワークにあるか確認してください。`,
+        };
+      }
+      if (json.success) {
+        return { ok: true, message: json.message || `正常に接続されました (${ip}) [サーバー経由]` };
+      }
+      return { ok: false, message: json.error || '接続テストに失敗しました' };
+    } catch (proxyError: any) {
+      const directMsg = directError?.message || '通信エラー';
+      const hint = directMsg.toLowerCase().includes('failed to fetch')
+        ? 'ブラウザからプリンターへの直接通信がブロックされています。HTTPSサイトからHTTPプリンターへの接続はブラウザにより制限されます。'
+        : directMsg;
+      return {
+        ok: false,
+        message: `接続に失敗しました: ${hint}`,
+      };
+    }
+  }
+}
+
+export function loadEpsonSdk(): Promise<void> {
+  return Promise.resolve();
 }
