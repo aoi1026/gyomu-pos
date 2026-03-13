@@ -4,11 +4,13 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   Bluetooth,
   CheckCircle2,
+  ExternalLink,
   Loader2,
   PlugZap,
   Printer,
   RefreshCw,
   Save,
+  ShieldAlert,
   Unplug,
   Wifi,
   XCircle,
@@ -157,19 +159,49 @@ export default function BluetoothPrinterButton() {
               </p>
             </div>
 
-            <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
+            <div className="border border-blue-200 bg-blue-50 p-4">
               <div className="flex items-center gap-2 mb-3">
                 <Wifi className="w-4 h-4 text-blue-600" />
                 <span className="text-sm font-semibold text-blue-900">Wi-Fi / LAN 接続手順</span>
               </div>
               <ol className="text-sm text-blue-900 space-y-2 list-decimal pl-5">
                 <li>プリンター底面の LAN ポートにケーブルを挿し、ルーターへ接続します。</li>
-                <li>プリンターの電源投入後、印字されたレシートに表示される `IP Address` を確認します。</li>
+                <li>プリンターの電源投入後、印字されたレシートに表示される IP Address を確認します。</li>
                 <li>その IP を下の「メインレシートプリンターIP」に入力して保存します。</li>
-                <li>iPad は必ず同じルーターの Wi-Fi に接続してください。別ルーターだと印刷できません。</li>
-                <li>保存後に「接続テスト」、最後に「メインプリンター印刷テスト」を1回実行してください。</li>
+                <li>iPad は必ず同じルーターの Wi-Fi に接続してください。</li>
+                <li>保存後に「接続テスト」、最後に「メインプリンター印刷テスト」を実行してください。</li>
               </ol>
             </div>
+
+            {typeof window !== 'undefined' && window.location.protocol === 'https:' && isValidIpv4(networkIpInput) && (
+              <div className="border border-amber-200 bg-amber-50 p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <ShieldAlert className="w-4 h-4 text-amber-600" />
+                  <span className="text-sm font-semibold text-amber-900">HTTPS環境: SSL証明書の承認が必要</span>
+                </div>
+                <p className="text-xs text-amber-800 mb-3">
+                  このサイトはHTTPSで動作しています。プリンターとの安全な通信（WSS）を行うため、
+                  プリンターのSSL証明書を一度iPadで承認する必要があります。
+                </p>
+                <ol className="text-xs text-amber-800 space-y-1 list-decimal pl-5 mb-3">
+                  <li>下の「証明書を承認」ボタンをタップして新しいタブを開きます</li>
+                  <li>「この接続ではプライバシーが保護されません」と表示されます</li>
+                  <li>「詳細を表示」→「このWebサイトを閲覧」をタップしてください</li>
+                  <li>このページに戻り「接続テスト」をクリックしてください</li>
+                </ol>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="border-amber-300 text-amber-800 hover:bg-amber-100"
+                  onClick={() => {
+                    window.open(`https://${networkIpInput.trim()}:8043/`, '_blank');
+                  }}
+                >
+                  <ExternalLink className="w-4 h-4 mr-1" />
+                  証明書を承認（新しいタブで開く）
+                </Button>
+              </div>
+            )}
 
             <div className="space-y-3 border rounded-lg p-4">
               <div className="flex items-center gap-2">
