@@ -27,3 +27,4 @@ export function verifyPassword(password: string, hashedPassword: string): boolea
 export function hashPassword(password: string): string {
   return md5Hash(password);
 }
+ 
