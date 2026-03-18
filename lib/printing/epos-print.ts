@@ -1,29 +1,10 @@
 'use client';
 
 import type { ReceiptPayload, FullReceiptPayload } from '@/lib/printing/escpos-raster';
+import { makeReceiptCanvas, makeFullReceiptCanvas } from '@/lib/printing/escpos-raster';
 
 const EPOS_SDK_URL = '/epos/epos-2.27.0.js';
-
-function getEposPort(): number {
-  if (typeof window !== 'undefined' && window.location.protocol === 'https:') {
-    return 8043;
-  }
-  return 8008;
-}
-
-function formatYen(amount: number): string {
-  const n = Number.isFinite(amount) ? Math.round(amount) : 0;
-  return `¥${n.toLocaleString('ja-JP')}`;
-}
-
-function formatIssuedAt(d: Date): string {
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  const dd = String(d.getDate()).padStart(2, '0');
-  const hh = String(d.getHours()).padStart(2, '0');
-  const mi = String(d.getMinutes()).padStart(2, '0');
-  return `${yyyy}/${mm}/${dd} ${hh}:${mi}`;
-}
+const RECEIPT_WIDTH_PX = 576;
 
 export function loadEpsonSdk(): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -72,106 +53,102 @@ type EposPrinterDevice = {
   ALIGN_CENTER: string;
   ALIGN_LEFT: string;
   ALIGN_RIGHT: string;
+  COLOR_1: string;
+  MODE_MONO: string;
+  MODE_GRAY16: string;
   CUT_FEED: string;
+  HALFTONE_DITHER: string;
+  HALFTONE_ERROR_DIFFUSION: string;
+  HALFTONE_THRESHOLD: string;
   timeout: number;
+  halftone: number;
+  brightness: number;
   onreceive: ((res: { success: boolean; code: string; status: number }) => void) | null;
   onerror: ((err: any) => void) | null;
-  addText(text: string): void;
-  addTextAlign(align: string): void;
-  addFeed(): void;
+  addImage(
+    context: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    color?: string,
+    mode?: string
+  ): void;
   addFeedLine(lines: number): void;
   addCut(type: string): void;
   send(): void;
 };
 
-function buildReceiptOnPrinter(printer: EposPrinterDevice, payload: ReceiptPayload): void {
-  printer.addTextAlign(printer.ALIGN_CENTER);
-  printer.addText(`${payload.storeName || 'STORE'}\n`);
-  printer.addText(`${payload.tableName}\n`);
-  printer.addText(`【${payload.title}】\n`);
-  printer.addText('-'.repeat(24) + '\n');
+/** Try connecting to ePOS device on a specific port. Returns the connected device or an error. */
+function tryConnect(
+  epson: any,
+  ip: string,
+  port: number,
+  timeoutMs: number
+): Promise<{ ok: true; ePosDev: any } | { ok: false; error: string }> {
+  return new Promise((resolve) => {
+    const ePosDev = new epson.ePOSDevice();
+    let done = false;
 
-  printer.addTextAlign(printer.ALIGN_LEFT);
-  for (const line of payload.lines) {
-    const left = line.left ?? '';
-    const right = line.right ?? '';
-    if (right) {
-      const pad = 24 - (left.length + right.length);
-      printer.addText(left + (pad > 0 ? ' '.repeat(pad) : ' ') + right + '\n');
-    } else {
-      printer.addText(left + '\n');
-    }
-  }
+    const timer = setTimeout(() => {
+      if (done) return;
+      done = true;
+      try { ePosDev.disconnect(); } catch {}
+      resolve({ ok: false, error: `TIMEOUT on port ${port}` });
+    }, timeoutMs);
 
-  printer.addText('-'.repeat(24) + '\n');
-  printer.addText(
-    `${payload.totalLabel}${' '.repeat(Math.max(0, 16 - payload.totalLabel.length))}${formatYen(payload.totalAmount)}\n`
-  );
-  printer.addTextAlign(printer.ALIGN_CENTER);
-  printer.addText(`発行: ${formatIssuedAt(payload.issuedAt)}\n`);
-  if (payload.footerAddress?.trim()) {
-    printer.addText(`住所: ${payload.footerAddress.trim()}\n`);
-  }
-  if (payload.footerPhone?.trim()) {
-    printer.addText(`電話番号: ${payload.footerPhone.trim()}\n`);
-  }
-  printer.addFeedLine(3);
-  printer.addCut(printer.CUT_FEED);
+    ePosDev.connect(ip, port, (result: string) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+
+      if (result === 'OK' || result === 'SSL_CONNECT_OK') {
+        resolve({ ok: true, ePosDev });
+      } else {
+        try { ePosDev.disconnect(); } catch {}
+        resolve({ ok: false, error: `${result} on port ${port}` });
+      }
+    });
+  });
 }
 
-function buildFullReceiptOnPrinter(printer: EposPrinterDevice, payload: FullReceiptPayload): void {
-  printer.addTextAlign(printer.ALIGN_CENTER);
-  printer.addText(`${payload.storeName || 'STORE'}\n`);
-  printer.addText(`【${payload.tableNumber}】\n`);
-  if (payload.greeting?.trim()) {
-    const greetLines = payload.greeting.trim().split(/\r?\n/);
-    for (const gl of greetLines) {
-      printer.addText(gl + '\n');
-    }
-  }
-  if (payload.storeAddress?.trim() || payload.storePhone?.trim()) {
-    printer.addTextAlign(printer.ALIGN_LEFT);
-    if (payload.storeAddress?.trim()) printer.addText(`${payload.storeAddress.trim()}\n`);
-    if (payload.storePhone?.trim()) printer.addText(`TEL:${payload.storePhone.trim()}\n`);
-    if (payload.paymentId) printer.addText(`登録番号:${payload.paymentId}\n`);
-    printer.addTextAlign(printer.ALIGN_CENTER);
-  }
+/** Connect to the printer trying port 8008 first, then 8043 */
+async function connectToPrinter(
+  epson: any,
+  ip: string
+): Promise<{ ok: true; ePosDev: any; port: number } | { ok: false; errors: string[] }> {
+  const errors: string[] = [];
 
-  printer.addText('--- 注文明細 ---\n');
-  printer.addTextAlign(printer.ALIGN_LEFT);
-  for (const row of payload.orderLines) {
-    const item = row.item.slice(0, 20);
-    printer.addText(`${item} x${row.qty}  ${formatYen(row.amount)}\n`);
-  }
-  printer.addText('-'.repeat(24) + '\n');
-  printer.addText(`小計  ${formatYen(payload.subtotal)}\n`);
-  printer.addText(`SC TAX  ${formatYen(payload.tax)}\n`);
-  printer.addText('-'.repeat(24) + '\n');
-  printer.addText(`合計  ${formatYen(payload.total)}\n`);
-  if (payload.taxDetailText) printer.addText(`${payload.taxDetailText}\n`);
-  if (payload.storeId) printer.addText(`ID:${payload.storeId}\n`);
-  if (payload.paymentMethod) printer.addText(`支払方法:${payload.paymentMethod}\n`);
-  if (payload.startTime) printer.addText(`開台時間:${payload.startTime}\n`);
-  if (payload.guestCount) printer.addText(`開台人数:${payload.guestCount}\n`);
-  printer.addFeedLine(3);
-  printer.addCut(printer.CUT_FEED);
+  // Port 8008 (ws://) — works on most browsers including iPad Safari for local IPs
+  const r1 = await tryConnect(epson, ip, 8008, 15000);
+  if (r1.ok) return { ok: true, ePosDev: r1.ePosDev, port: 8008 };
+  errors.push(r1.error);
+
+  // Port 8043 (wss://) — requires SSL/TLS on the printer
+  const r2 = await tryConnect(epson, ip, 8043, 15000);
+  if (r2.ok) return { ok: true, ePosDev: r2.ePosDev, port: 8043 };
+  errors.push(r2.error);
+
+  return { ok: false, errors };
 }
 
-function buildSslCertInstructions(ip: string, port: number): string {
-  return [
-    `\n\n【SSL証明書の信頼が必要です】`,
-    `このサイトはHTTPSで動作しているため、プリンターとの安全な通信（WSS）が必要です。`,
-    `\n以下の手順を実行してください：`,
-    `1. iPadのSafariで https://${ip}:${port}/ を開く`,
-    `2.「この接続ではプライバシーが保護されません」と表示される`,
-    `3.「詳細を表示」→「このWebサイトを閲覧」をタップ`,
-    `4. このページに戻って再度接続テストを実行`,
-  ].join('\n');
+function buildConnectionErrorMessage(ip: string, errors: string[]): string {
+  const lines = [
+    `プリンター接続に失敗しました (${ip})`,
+    `\n試行結果:`,
+    ...errors.map((e, i) => `  ${i + 1}. ${e}`),
+    `\n確認事項:`,
+    `• プリンターの電源が入っているか`,
+    `• iPadとプリンターが同じWi-Fiネットワークに接続されているか`,
+    `• プリンター設定画面で ePOS-Print が「Enable」になっているか`,
+    `• プリンターIPアドレス (${ip}) が正しいか`,
+  ];
+  return lines.join('\n');
 }
 
 async function connectAndPrint(
   ip: string,
-  execute: (printer: EposPrinterDevice) => void
+  canvas: HTMLCanvasElement
 ): Promise<{ success: boolean; detail: string }> {
   await loadEpsonSdk();
   const epson = (window as any).epson;
@@ -179,124 +156,122 @@ async function connectAndPrint(
     return { success: false, detail: 'Epson ePOS SDK が利用できません' };
   }
 
-  const port = getEposPort();
-  const isSecure = port === 8043;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) {
+    return { success: false, detail: 'Canvas コンテキストを取得できません' };
+  }
+
+  const conn = await connectToPrinter(epson, ip);
+  if (!conn.ok) {
+    return { success: false, detail: buildConnectionErrorMessage(ip, conn.errors) };
+  }
+
+  const { ePosDev } = conn;
 
   return new Promise((resolve) => {
-    const ePosDev = new epson.ePOSDevice();
     let resolved = false;
 
     const timer = setTimeout(() => {
       if (resolved) return;
       resolved = true;
       try { ePosDev.disconnect(); } catch {}
-      let msg = `接続がタイムアウトしました（30秒） [${isSecure ? 'wss' : 'ws'}://${ip}:${port}]`;
-      if (isSecure) {
-        msg += buildSslCertInstructions(ip, port);
-      }
-      resolve({ success: false, detail: msg });
+      resolve({ success: false, detail: 'プリンターデバイス作成がタイムアウトしました（30秒）' });
     }, 30000);
 
-    ePosDev.connect(ip, port, (connectResult: string) => {
-      if (resolved) return;
+    ePosDev.createDevice(
+      'local_printer',
+      ePosDev.DEVICE_TYPE_PRINTER,
+      { crypto: false, buffer: false },
+      (devobj: EposPrinterDevice | null, retcode: string) => {
+        if (resolved) return;
 
-      if (connectResult === 'OK' || connectResult === 'SSL_CONNECT_OK') {
-        ePosDev.createDevice(
-          'local_printer',
-          ePosDev.DEVICE_TYPE_PRINTER,
-          { crypto: false, buffer: false },
-          (devobj: EposPrinterDevice | null, retcode: string) => {
+        if (retcode === 'OK' && devobj) {
+          devobj.timeout = 60000;
+
+          devobj.onreceive = (res) => {
             if (resolved) return;
+            resolved = true;
+            clearTimeout(timer);
+            try { ePosDev.deleteDevice(devobj, () => {}); } catch {}
+            try { ePosDev.disconnect(); } catch {}
 
-            if (retcode === 'OK' && devobj) {
-              devobj.timeout = 60000;
-
-              devobj.onreceive = (res) => {
-                if (resolved) return;
-                resolved = true;
-                clearTimeout(timer);
-                try { ePosDev.deleteDevice(devobj, () => {}); } catch {}
-                try { ePosDev.disconnect(); } catch {}
-
-                if (res.success) {
-                  resolve({ success: true, detail: '正常に印刷されました' });
-                } else {
-                  resolve({
-                    success: false,
-                    detail: `印刷エラー (code: ${res.code}, status: ${res.status})`,
-                  });
-                }
-              };
-
-              devobj.onerror = (err: any) => {
-                if (resolved) return;
-                resolved = true;
-                clearTimeout(timer);
-                try { ePosDev.deleteDevice(devobj, () => {}); } catch {}
-                try { ePosDev.disconnect(); } catch {}
-                resolve({
-                  success: false,
-                  detail: `印刷送信エラー: ${err?.message || err || '不明'}`,
-                });
-              };
-
-              try {
-                execute(devobj);
-                devobj.send();
-              } catch (e: any) {
-                if (resolved) return;
-                resolved = true;
-                clearTimeout(timer);
-                try { ePosDev.disconnect(); } catch {}
-                resolve({
-                  success: false,
-                  detail: `印刷データ構築エラー: ${e?.message || '不明'}`,
-                });
-              }
+            if (res.success) {
+              resolve({ success: true, detail: '正常に印刷されました' });
             } else {
-              resolved = true;
-              clearTimeout(timer);
-              try { ePosDev.disconnect(); } catch {}
               resolve({
                 success: false,
-                detail: `プリンターデバイス作成失敗 (${retcode})。プリンター設定の Device ID が "local_printer" であるか確認してください。`,
+                detail: `印刷エラー (code: ${res.code}, status: ${res.status})`,
               });
             }
+          };
+
+          devobj.onerror = (err: any) => {
+            if (resolved) return;
+            resolved = true;
+            clearTimeout(timer);
+            try { ePosDev.deleteDevice(devobj, () => {}); } catch {}
+            try { ePosDev.disconnect(); } catch {}
+            resolve({
+              success: false,
+              detail: `印刷送信エラー: ${err?.message || err || '不明'}`,
+            });
+          };
+
+          try {
+            devobj.addImage(ctx, 0, 0, canvas.width, canvas.height, devobj.COLOR_1, devobj.MODE_MONO);
+            devobj.addFeedLine(3);
+            devobj.addCut(devobj.CUT_FEED);
+            devobj.send();
+          } catch (e: any) {
+            if (resolved) return;
+            resolved = true;
+            clearTimeout(timer);
+            try { ePosDev.disconnect(); } catch {}
+            resolve({
+              success: false,
+              detail: `印刷データ構築エラー: ${e?.message || '不明'}`,
+            });
           }
-        );
-      } else {
-        resolved = true;
-        clearTimeout(timer);
-        let msg = `プリンター接続失敗 (${connectResult}) [${isSecure ? 'wss' : 'ws'}://${ip}:${port}]`;
-        if (isSecure && (connectResult === 'ERROR' || connectResult === 'TIMEOUT')) {
-          msg += buildSslCertInstructions(ip, port);
+        } else {
+          resolved = true;
+          clearTimeout(timer);
+          try { ePosDev.disconnect(); } catch {}
+          resolve({
+            success: false,
+            detail: `プリンターデバイス作成失敗 (${retcode})。プリンター設定の Device ID が "local_printer" であるか確認してください。`,
+          });
         }
-        resolve({ success: false, detail: msg });
       }
-    });
+    );
   });
 }
 
+/** ReceiptPayload をキャンバス画像として ePOS で印刷 */
 export async function printReceiptViaEpos(ip: string, payload: ReceiptPayload): Promise<void> {
-  const result = await connectAndPrint(ip, (printer) => buildReceiptOnPrinter(printer, payload));
+  const canvas = makeReceiptCanvas(payload, RECEIPT_WIDTH_PX);
+  const result = await connectAndPrint(ip, canvas);
   if (!result.success) {
     throw new Error(result.detail);
   }
 }
 
+/** FullReceiptPayload をキャンバス画像として ePOS で印刷 */
 export async function printFullReceiptViaEpos(ip: string, payload: FullReceiptPayload): Promise<void> {
-  const result = await connectAndPrint(ip, (printer) => buildFullReceiptOnPrinter(printer, payload));
+  const canvas = makeFullReceiptCanvas(payload, RECEIPT_WIDTH_PX);
+  const result = await connectAndPrint(ip, canvas);
   if (!result.success) {
     throw new Error(result.detail);
   }
 }
 
+/** 複数 ReceiptPayload をキャンバス画像として ePOS で印刷 */
 export async function printReceiptsViaEpos(ip: string, payloads: ReceiptPayload[]): Promise<void> {
   for (const p of payloads) {
     await printReceiptViaEpos(ip, p);
   }
 }
 
+/** ePOS 接続テスト — ポート 8008 → 8043 の順で試行 */
 export async function testEposConnection(ip: string): Promise<{ ok: boolean; message: string }> {
   try {
     await loadEpsonSdk();
@@ -309,44 +284,15 @@ export async function testEposConnection(ip: string): Promise<{ ok: boolean; mes
     return { ok: false, message: 'Epson ePOS SDK が利用できません' };
   }
 
-  const port = getEposPort();
-  const isSecure = port === 8043;
+  const conn = await connectToPrinter(epson, ip);
+  if (!conn.ok) {
+    return { ok: false, message: buildConnectionErrorMessage(ip, conn.errors) };
+  }
 
-  return new Promise((resolve) => {
-    const ePosDev = new epson.ePOSDevice();
-    let resolved = false;
-
-    const timer = setTimeout(() => {
-      if (resolved) return;
-      resolved = true;
-      try { ePosDev.disconnect(); } catch {}
-      let msg = `接続がタイムアウトしました（30秒） [${isSecure ? 'wss' : 'ws'}://${ip}:${port}]`;
-      if (isSecure) {
-        msg += buildSslCertInstructions(ip, port);
-      }
-      resolve({ ok: false, message: msg });
-    }, 30000);
-
-    ePosDev.connect(ip, port, (result: string) => {
-      if (resolved) return;
-      resolved = true;
-      clearTimeout(timer);
-
-      if (result === 'OK' || result === 'SSL_CONNECT_OK') {
-        try { ePosDev.disconnect(); } catch {}
-        resolve({
-          ok: true,
-          message: `正常に接続されました (${isSecure ? 'wss' : 'ws'}://${ip}:${port})`,
-        });
-      } else {
-        let msg = `接続失敗: ${result} [${isSecure ? 'wss' : 'ws'}://${ip}:${port}]`;
-        if (isSecure && (result === 'ERROR' || result === 'TIMEOUT')) {
-          msg += buildSslCertInstructions(ip, port);
-        } else if (result === 'ERROR') {
-          msg += '\n\nプリンターの ePOS-Print が有効であるか、IP アドレスが正しいか確認してください。';
-        }
-        resolve({ ok: false, message: msg });
-      }
-    });
-  });
+  const { ePosDev, port } = conn;
+  try { ePosDev.disconnect(); } catch {}
+  return {
+    ok: true,
+    message: `正常に接続されました (${ip}:${port})`,
+  };
 }

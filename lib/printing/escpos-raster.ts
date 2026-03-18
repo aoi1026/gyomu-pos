@@ -103,7 +103,7 @@ function canvasToRasterBytes(canvas: HTMLCanvasElement): Uint8Array {
   return out;
 }
 
-function makeReceiptCanvas(payload: ReceiptPayload, widthPx: number): HTMLCanvasElement {
+export function makeReceiptCanvas(payload: ReceiptPayload, widthPx: number = 576): HTMLCanvasElement {
   const canvas = document.createElement('canvas');
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('Canvasが利用できません');
@@ -219,7 +219,7 @@ export function buildEscPosRasterReceipt(payload: ReceiptPayload, opts?: { width
   return new Uint8Array(bytes);
 }
 
-function makeFullReceiptCanvas(payload: FullReceiptPayload, widthPx: number): HTMLCanvasElement {
+export function makeFullReceiptCanvas(payload: FullReceiptPayload, widthPx: number = 576): HTMLCanvasElement {
   const canvas = document.createElement('canvas');
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('Canvasが利用できません');
