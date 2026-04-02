@@ -25,15 +25,15 @@ function payloadToHtml(payload: ReceiptPayload): string {
     )
     .join('');
   const footerParts: string[] = [];
-  if (payload.footerAddress?.trim()) footerParts.push(`<div>住所: ${escapeHtml(payload.footerAddress.trim())}</div>`);
-  if (payload.footerPhone?.trim()) footerParts.push(`<div>電話番号: ${escapeHtml(payload.footerPhone.trim())}</div>`);
+  if (payload.footerAddress?.trim()) footerParts.push(`<div>${escapeHtml(payload.footerAddress.trim())}</div>`);
+  if (payload.footerPhone?.trim()) footerParts.push(`<div>TEL:${escapeHtml(payload.footerPhone.trim())}</div>`);
   const footerHtml = footerParts.length ? `<div class="footer">${footerParts.join('')}</div>` : '';
 
   return `
     <div class="receipt">
       <div class="center store">${escapeHtml(payload.storeName || 'STORE')}</div>
       <div class="center table">${escapeHtml(payload.tableName)}</div>
-      <div class="center title">【${escapeHtml(payload.title)}】</div>
+      <div class="center title">【 ${escapeHtml(payload.title)} 】</div>
       <div class="separator"></div>
       <div class="lines">${linesHtml}</div>
       <div class="separator"></div>
@@ -63,68 +63,90 @@ const PRINT_STYLES = `
   .paper { width: 72mm; padding: 4mm; }
   .receipt { padding: 4px 0; }
   .center { text-align: center; }
-  .store { font-weight: bold; font-size: 14px; margin-bottom: 2px; }
-  .table { font-size: 10px; color: #333; margin-bottom: 2px; }
-  .title { font-weight: bold; font-size: 11px; margin-bottom: 6px; }
+  .store { font-weight: bold; font-size: 18px; margin-bottom: 4px; }
+  .table { font-weight: bold; font-size: 14px; color: #000; margin-bottom: 4px; }
+  .title { font-weight: bold; font-size: 12px; margin-bottom: 6px; }
   .separator { border-top: 1px dashed #999; margin: 6px 0; }
-  .lines { font-size: 10px; }
+  .lines { font-size: 11px; }
   .line-row { display: flex; justify-content: space-between; margin: 2px 0; }
   .line-row .left { flex: 1; }
   .line-row .right { text-align: right; margin-left: 8px; }
-  .total-row { display: flex; justify-content: space-between; font-weight: bold; font-size: 12px; margin: 8px 0 4px; }
+  .total-row { display: flex; justify-content: space-between; font-weight: bold; font-size: 16px; margin: 8px 0 4px; }
   .total-row .right { margin-left: 8px; }
   .issued { font-size: 10px; color: #555; margin-top: 4px; }
   .footer { text-align: center; font-size: 10px; color: #333; margin-top: 8px; padding-top: 6px; border-top: 1px dashed #ccc; }
   .page-break { page-break-after: always; }
   .page-break:last-child { page-break-after: auto; }
-  .full-receipt .store-name { font-weight: bold; font-size: 16px; margin-bottom: 4px; }
-  .full-receipt .table-num { font-size: 11px; margin-bottom: 4px; }
-  .full-receipt .greeting { font-size: 10px; color: #333; margin-bottom: 8px; white-space: pre-line; }
-  .full-receipt .store-info { font-size: 10px; color: #444; margin-bottom: 8px; }
-  .full-receipt .order-table { width: 100%; font-size: 10px; border-collapse: collapse; margin: 8px 0; }
-  .full-receipt .order-table th { text-align: left; padding: 2px 4px 2px 0; }
+  .full-receipt .store-name { font-weight: bold; font-size: 22px; margin-bottom: 6px; }
+  .full-receipt .table-num { font-weight: bold; font-size: 14px; margin-bottom: 6px; }
+  .full-receipt .greeting { font-size: 11px; color: #000; margin-bottom: 8px; white-space: pre-line; }
+  .full-receipt .store-info { text-align: center; font-size: 10px; color: #000; margin-bottom: 4px; }
+  .full-receipt .payment-id { font-size: 10px; color: #000; margin-bottom: 8px; }
+  .full-receipt .order-table { width: 100%; font-size: 11px; border-collapse: collapse; margin: 4px 0; }
+  .full-receipt .order-table th { font-weight: bold; text-align: left; padding: 2px 4px 2px 0; }
   .full-receipt .order-table th.qty, .full-receipt .order-table th.amt { text-align: right; }
   .full-receipt .order-table td { padding: 2px 4px 2px 0; }
   .full-receipt .order-table td.qty, .full-receipt .order-table td.amt { text-align: right; }
-  .full-receipt .total-block { font-weight: bold; font-size: 13px; margin: 8px 0 2px; }
-  .full-receipt .tax-detail { font-size: 9px; color: #555; margin-bottom: 8px; }
-  .full-receipt .footer-info { font-size: 9px; color: #444; margin-top: 8px; padding-top: 6px; border-top: 1px dashed #ccc; }
+  .full-receipt .subtotal-block { font-size: 11px; margin: 4px 0; }
+  .full-receipt .total-block { display: flex; justify-content: space-between; font-weight: bold; font-size: 16px; margin: 8px 0 4px; }
+  .full-receipt .tax-detail { font-size: 9px; color: #333; text-align: center; margin-bottom: 8px; }
+  .full-receipt .footer-info { text-align: center; font-size: 9px; color: #000; margin-top: 8px; padding-top: 6px; border-top: 1px dashed #ccc; }
 `;
+
+function formatAmountEn(amount: number): string {
+  const n = Number.isFinite(amount) ? Math.round(amount) : 0;
+  return `${n.toLocaleString('ja-JP')}円`;
+}
+
+function formatAmountPlain(amount: number): string {
+  const n = Number.isFinite(amount) ? Math.round(amount) : 0;
+  return n.toLocaleString('ja-JP');
+}
 
 function fullReceiptToHtml(p: FullReceiptPayload): string {
   const greetingHtml = escapeHtml((p.greeting || '').trim()).replace(/\n/g, '<br/>');
   const orderRows = p.orderLines
     .map(
       (r) =>
-        `<tr><td>${escapeHtml(r.item)}</td><td class="qty">${r.qty}</td><td class="amt">${formatYen(r.amount)}</td></tr>`
+        `<tr><td>${escapeHtml(r.item)}</td><td class="qty">${r.qty}</td><td class="amt">${formatAmountPlain(r.amount)}</td></tr>`
     )
     .join('');
+
+  const bottomParts: string[] = [];
+  const idPayment: string[] = [];
+  if (p.storeId) idPayment.push(`ID:${escapeHtml(p.storeId)}`);
+  if (p.paymentMethod) idPayment.push(`支払方法:${escapeHtml(p.paymentMethod)}`);
+  if (idPayment.length) bottomParts.push(`<div>${idPayment.join('&nbsp;&nbsp;')}</div>`);
+  const timeGuest: string[] = [];
+  if (p.startTime) timeGuest.push(`開台時間:${escapeHtml(p.startTime)}`);
+  if (p.guestCount) timeGuest.push(`開台人数: ${escapeHtml(p.guestCount)}`);
+  if (timeGuest.length) bottomParts.push(`<div>${timeGuest.join('&nbsp;&nbsp;')}</div>`);
+  if (p.nomineeNames?.trim()) bottomParts.push(`<div>指名:${escapeHtml(p.nomineeNames.trim())}</div>`);
+
   return `
     <div class="receipt full-receipt">
       <div class="center store-name">${escapeHtml(p.storeName || 'STORE')}</div>
-      <div class="center table-num">【${escapeHtml(p.tableNumber)}】</div>
+      <div class="center table-num">【 ${escapeHtml(p.tableNumber)} 】</div>
       <div class="center greeting">${greetingHtml}</div>
       <div class="store-info">
         ${p.storeAddress?.trim() ? `<div>${escapeHtml(p.storeAddress.trim())}</div>` : ''}
         ${p.storePhone?.trim() ? `<div>TEL:${escapeHtml(p.storePhone.trim())}</div>` : ''}
-        ${p.paymentId ? `<div>登録番号:${escapeHtml(p.paymentId)}</div>` : ''}
       </div>
+      ${p.paymentId ? `<div class="payment-id">登録番号:${escapeHtml(p.paymentId)}</div>` : ''}
+      <div class="separator"></div>
       <table class="order-table">
         <thead><tr><th>項目</th><th class="qty">数量</th><th class="amt">金額</th></tr></thead>
         <tbody>${orderRows}</tbody>
       </table>
       <div class="separator"></div>
-      <div class="line-row"><span class="left">小計</span><span class="right">${formatYen(p.subtotal)}</span></div>
-      <div class="line-row"><span class="left">SC TAX</span><span class="right">${formatYen(p.tax)}</span></div>
-      <div class="separator"></div>
-      <div class="total-row"><span class="left">合計</span><span class="right">${formatYen(p.total)}-</span></div>
-      <div class="tax-detail">${escapeHtml(p.taxDetailText || '')}</div>
-      <div class="footer-info">
-        ${p.storeId ? `<div>ID:${escapeHtml(p.storeId)}</div>` : ''}
-        ${p.paymentMethod ? `<div>支払方法:${escapeHtml(p.paymentMethod)}</div>` : ''}
-        ${p.startTime ? `<div>開台時間:${escapeHtml(p.startTime)}</div>` : ''}
-        ${p.guestCount ? `<div>開台人数:${escapeHtml(p.guestCount)}</div>` : ''}
+      <div class="subtotal-block">
+        <div class="line-row"><span class="left">小　計</span><span class="right">${formatAmountEn(p.subtotal)}</span></div>
+        <div class="line-row"><span class="left">SC TAX</span><span class="right">${formatAmountEn(p.tax)}</span></div>
       </div>
+      <div class="separator"></div>
+      <div class="total-block"><span>合　計</span><span>${formatAmountEn(p.total)}</span></div>
+      <div class="tax-detail">${escapeHtml(p.taxDetailText || '')}</div>
+      <div class="footer-info">${bottomParts.join('')}</div>
     </div>
   `;
 }

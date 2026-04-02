@@ -204,7 +204,7 @@ export type BuildFullReceiptArgs = {
   orderRequestStatus: Record<string | number, string>;
   addCharges: Record<string, number>;
   setExtensions: Array<{ count: number; timestamp?: number; price?: number }>;
-  nominations: Array<{ cost?: number }>;
+  nominations: Array<{ cost?: number; cast_name?: string }>;
   additionalServices: Array<{ charge: number }>;
 };
 
@@ -279,6 +279,12 @@ export function buildFullReceipt(args: BuildFullReceiptArgs): FullReceiptPayload
 
   const guestLabel = guestCount ? `${guestCount}名` : '0名';
 
+  const nomineeNames = nominations
+    .map((n: any) => n.cast_name)
+    .filter((name: any): name is string => !!name && typeof name === 'string')
+    .filter((name, i, arr) => arr.indexOf(name) === i)
+    .join(' / ');
+
   return {
     storeName,
     tableNumber,
@@ -295,6 +301,7 @@ export function buildFullReceipt(args: BuildFullReceiptArgs): FullReceiptPayload
     paymentMethod: paymentMethod || '－',
     startTime: startTimeStr,
     guestCount: guestLabel,
+    nomineeNames: nomineeNames || undefined,
   };
 }
 

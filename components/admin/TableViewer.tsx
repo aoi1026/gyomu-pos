@@ -3471,47 +3471,59 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
             <DialogDescription>印刷される領収書の内容です</DialogDescription>
           </DialogHeader>
           {receiptPreviewData && (
-            <div className="rounded border border-gray-200 p-4 bg-white font-mono text-sm">
-              <div className="text-center font-bold text-base mb-1">{receiptPreviewData.storeName}</div>
-              <div className="text-center text-xs text-gray-600 mb-2">【{receiptPreviewData.tableNumber}】</div>
-              <div className="text-center text-xs text-gray-700 whitespace-pre-line mb-3">{receiptPreviewData.greeting}</div>
-              <div className="text-xs text-gray-600 space-y-0.5 mb-3">
+            <div className="border border-gray-200 p-5 bg-white font-sans text-sm">
+              <div className="text-center font-bold text-2xl mb-1">{receiptPreviewData.storeName}</div>
+              <div className="text-center font-bold text-base mb-2">【 {receiptPreviewData.tableNumber} 】</div>
+              <div className="text-center text-sm text-gray-700 whitespace-pre-line mb-3">{receiptPreviewData.greeting}</div>
+              <div className="text-center text-xs text-gray-600 space-y-0.5 mb-3">
                 {receiptPreviewData.storeAddress && <div>{receiptPreviewData.storeAddress}</div>}
                 {receiptPreviewData.storePhone && <div>TEL:{receiptPreviewData.storePhone}</div>}
-                {receiptPreviewData.paymentId && <div>登録番号:{receiptPreviewData.paymentId}</div>}
               </div>
-              <table className="w-full text-xs border-collapse mb-3">
+              {receiptPreviewData.paymentId && (
+                <div className="text-xs text-gray-600 mb-3">登録番号:{receiptPreviewData.paymentId}</div>
+              )}
+              <div className="border-t border-dashed border-gray-400 mb-2" />
+              <table className="w-full text-xs border-collapse mb-2">
                 <thead>
-                  <tr className="border-b">
-                    <th className="text-left py-1 pr-2">項目</th>
-                    <th className="text-right py-1 w-12">数量</th>
-                    <th className="text-right py-1">金額</th>
+                  <tr>
+                    <th className="text-left py-1 pr-2 font-bold">項目</th>
+                    <th className="text-right py-1 w-12 font-bold">数量</th>
+                    <th className="text-right py-1 font-bold">金額</th>
                   </tr>
                 </thead>
                 <tbody>
                   {receiptPreviewData.orderLines.map((row, i) => (
-                    <tr key={i} className="border-b border-gray-100">
-                      <td className="py-1 pr-2">{row.item}</td>
+                    <tr key={i}>
+                      <td className="py-0.5 pr-2">{row.item}</td>
                       <td className="text-right w-12">{row.qty}</td>
-                      <td className="text-right">¥{row.amount.toLocaleString('ja-JP')}</td>
+                      <td className="text-right">{row.amount.toLocaleString('ja-JP')}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
-              <div className="border-t pt-2 space-y-1 text-xs">
-                <div className="flex justify-between"><span>小計</span><span>¥{receiptPreviewData.subtotal.toLocaleString('ja-JP')}</span></div>
-                <div className="flex justify-between"><span>SC TAX</span><span>¥{receiptPreviewData.tax.toLocaleString('ja-JP')}</span></div>
+              <div className="border-t border-dashed border-gray-400 pt-2 space-y-1 text-xs">
+                <div className="flex justify-between"><span>小　計</span><span>{receiptPreviewData.subtotal.toLocaleString('ja-JP')}円</span></div>
+                <div className="flex justify-between"><span>SC TAX</span><span>{receiptPreviewData.tax.toLocaleString('ja-JP')}円</span></div>
               </div>
-              <div className="border-t pt-2 flex justify-between font-bold text-sm mt-2">
-                <span>合計</span>
-                <span>¥{receiptPreviewData.total.toLocaleString('ja-JP')}-</span>
+              <div className="border-t pt-3 flex justify-between font-bold text-lg mt-2">
+                <span>合　計</span>
+                <span>{receiptPreviewData.total.toLocaleString('ja-JP')}円</span>
               </div>
-              <div className="text-xs text-gray-500 mt-1">{receiptPreviewData.taxDetailText}</div>
-              <div className="text-xs text-gray-600 mt-3 pt-2 border-t space-y-0.5">
-                {receiptPreviewData.storeId && <div>ID:{receiptPreviewData.storeId}</div>}
-                <div>支払方法:{receiptPreviewData.paymentMethod}</div>
-                {receiptPreviewData.startTime && <div>開台時間:{receiptPreviewData.startTime}</div>}
-                {receiptPreviewData.guestCount && <div>開台人数:{receiptPreviewData.guestCount}</div>}
+              <div className="text-xs text-gray-500 mt-1 text-center">{receiptPreviewData.taxDetailText}</div>
+              <div className="text-xs text-gray-600 mt-3 pt-2 border-t text-center space-y-0.5">
+                <div>
+                  {receiptPreviewData.storeId && <span>ID:{receiptPreviewData.storeId}</span>}
+                  {receiptPreviewData.storeId && receiptPreviewData.paymentMethod && <span>{'  '}</span>}
+                  <span>支払方法:{receiptPreviewData.paymentMethod}</span>
+                </div>
+                <div>
+                  {receiptPreviewData.startTime && <span>開台時間:{receiptPreviewData.startTime}</span>}
+                  {receiptPreviewData.startTime && receiptPreviewData.guestCount && <span>{'  '}</span>}
+                  {receiptPreviewData.guestCount && <span>開台人数: {receiptPreviewData.guestCount}</span>}
+                </div>
+                {receiptPreviewData.nomineeNames && (
+                  <div>指名:{receiptPreviewData.nomineeNames}</div>
+                )}
               </div>
             </div>
           )}
