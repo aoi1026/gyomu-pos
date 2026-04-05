@@ -23,7 +23,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { usePrinter } from '@/lib/printer-context';
 import { useNotificationContext } from '@/lib/notification-context';
-import { buildEscPosRasterReceipt } from '@/lib/printing/escpos-raster';
+import { buildReceiptTextEscPos } from '@/lib/printing/escpos-text';
 import { isValidIpv4 } from '@/lib/printing/utils';
 
 function detectIsIOS(): boolean {
@@ -110,7 +110,7 @@ export default function BluetoothPrinterButton() {
         totalAmount: 0,
       };
 
-      await printer.requestPrint(buildEscPosRasterReceipt(payload), 'メインプリンター印刷テスト', {
+      await printer.requestPrint(buildReceiptTextEscPos(payload), 'メインプリンター印刷テスト', {
         eposPayload: payload,
       });
       setNetworkTestResult({ ok: true, message: '正常に印刷されました' });

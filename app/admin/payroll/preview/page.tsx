@@ -18,7 +18,7 @@ import {
 } from '@/lib/mock-data';
 import { useNotificationContext } from '@/lib/notification-context';
 import { usePrinter } from '@/lib/printer-context';
-import { buildEscPosRasterReceipt } from '@/lib/printing/escpos-raster';
+import { buildReceiptTextEscPos } from '@/lib/printing/escpos-text';
 import { printReceiptViaOs } from '@/lib/printing/os-print';
 import type { ReceiptPayload } from '@/lib/printing/escpos-raster';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -141,7 +141,7 @@ export default function PayrollPreviewPage() {
     const payloads = await Promise.all(raw.map((p) => enrichPayloadWithStoreInfo(p)));
 
     // iPad / iOS では Web Bluetooth に制限があるため、OS の印刷ダイアログ経由で印刷する
-    const parts = payloads.map((p) => buildEscPosRasterReceipt(p));
+    const parts = payloads.map((p) => buildReceiptTextEscPos(p));
     const totalLen = parts.reduce((s, p) => s + p.length, 0);
     const combined = new Uint8Array(totalLen);
     let offset = 0;

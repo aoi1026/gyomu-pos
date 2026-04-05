@@ -225,7 +225,7 @@ export function makeFullReceiptCanvas(payload: FullReceiptPayload, widthPx: numb
 
   const padX = 24;
   const yGap = 6;
-  const fontStore = 42;
+  const fontStore = 56;
   const fontTableNum = 28;
   const fontGreeting = 20;
   const fontInfo = 18;
@@ -317,7 +317,6 @@ export function makeFullReceiptCanvas(payload: FullReceiptPayload, widthPx: numb
   }
   y += 6;
 
-  drawDashedLine(ctx, padX, canvas.width - padX, y);
   y += 12;
 
   ctx.font = `bold ${fontItemHeader}px sans-serif`;
@@ -353,14 +352,7 @@ export function makeFullReceiptCanvas(payload: FullReceiptPayload, widthPx: numb
   ctx.fillText('SC TAX', padX, y);
   ctx.textAlign = 'right';
   ctx.fillText(formatAmountEn(payload.tax), amtRight, y);
-  y += fontSubtotal + 10;
-
-  ctx.beginPath();
-  ctx.lineWidth = 1;
-  ctx.moveTo(padX, y);
-  ctx.lineTo(canvas.width - padX, y);
-  ctx.stroke();
-  y += 16;
+  y += fontSubtotal + 16;
 
   ctx.font = `bold ${fontTotal}px sans-serif`;
   ctx.textAlign = 'left';

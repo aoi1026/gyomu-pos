@@ -27,7 +27,7 @@ import {
   fetchStoreId,
   buildFullReceipt,
 } from '@/lib/printing/receipt-builders';
-import { buildFullReceiptEscPos } from '@/lib/printing/escpos-raster';
+import { buildFullReceiptTextEscPos } from '@/lib/printing/escpos-text';
 import type { FullReceiptPayload } from '@/lib/printing/escpos-raster';
 import { previewFullReceiptInWindow, printFullReceiptViaOs } from '@/lib/printing/os-print';
 
@@ -167,7 +167,7 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
     try {
       const payload = await buildReceiptData();
       if (!payload) return;
-      await printer.requestPrint(buildFullReceiptEscPos(payload), '領収書自動印刷', {
+      await printer.requestPrint(buildFullReceiptTextEscPos(payload), '領収書自動印刷', {
         osFallback: () => printFullReceiptViaOs(payload),
         eposPayload: payload,
       });
@@ -186,7 +186,7 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
       const payload = await buildReceiptData();
       if (!payload) return;
       // iPad / iOS では Web Bluetooth に制限があるため、OS の印刷ダイアログ経由で印刷する
-      const escposData = buildFullReceiptEscPos(payload);
+      const escposData = buildFullReceiptTextEscPos(payload);
       await printer.requestPrint(escposData, '領収書印刷', {
         osFallback: () => printFullReceiptViaOs(payload),
         eposPayload: payload,

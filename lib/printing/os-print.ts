@@ -133,7 +133,6 @@ function fullReceiptToHtml(p: FullReceiptPayload): string {
         ${p.storePhone?.trim() ? `<div>TEL:${escapeHtml(p.storePhone.trim())}</div>` : ''}
       </div>
       ${p.paymentId ? `<div class="payment-id">登録番号:${escapeHtml(p.paymentId)}</div>` : ''}
-      <div class="separator"></div>
       <table class="order-table">
         <thead><tr><th>項目</th><th class="qty">数量</th><th class="amt">金額</th></tr></thead>
         <tbody>${orderRows}</tbody>
@@ -143,7 +142,6 @@ function fullReceiptToHtml(p: FullReceiptPayload): string {
         <div class="line-row"><span class="left">小　計</span><span class="right">${formatAmountEn(p.subtotal)}</span></div>
         <div class="line-row"><span class="left">SC TAX</span><span class="right">${formatAmountEn(p.tax)}</span></div>
       </div>
-      <div class="separator"></div>
       <div class="total-block"><span>合　計</span><span>${formatAmountEn(p.total)}</span></div>
       <div class="tax-detail">${escapeHtml(p.taxDetailText || '')}</div>
       <div class="footer-info">${bottomParts.join('')}</div>

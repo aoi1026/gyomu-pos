@@ -270,11 +270,15 @@ export function buildFullReceipt(args: BuildFullReceiptArgs): FullReceiptPayload
   const taxDetailText = `(内消費税額10%) ${tax.toLocaleString('ja-JP')}円`;
 
   let startTimeStr: string;
-  if (typeof sessionStartTime === 'string') {
-    startTimeStr = sessionStartTime;
-  } else {
-    const d = new Date(sessionStartTime);
-    startTimeStr = `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  {
+    const d = typeof sessionStartTime === 'string'
+      ? new Date(sessionStartTime)
+      : new Date(sessionStartTime);
+    if (!isNaN(d.getTime())) {
+      startTimeStr = `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+    } else {
+      startTimeStr = String(sessionStartTime);
+    }
   }
 
   const guestLabel = guestCount ? `${guestCount}名` : '0名';
