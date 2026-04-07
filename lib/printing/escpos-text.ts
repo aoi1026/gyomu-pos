@@ -48,8 +48,11 @@ function encodeShiftJIS(text: string): Uint8Array {
       } else {
         bytes.push(sjis);
       }
+    } else if (cp > 0x7F) {
+      // Unmapped multibyte char → full-width space (safe 2-byte placeholder)
+      bytes.push(0x81, 0x40);
     } else {
-      bytes.push(0x3F);
+      bytes.push(cp & 0x7F);
     }
   }
   return new Uint8Array(bytes);
@@ -65,6 +68,7 @@ const FS  = 0x1C;
 const LF  = 0x0A;
 
 const INIT       = [ESC, 0x40];
+const JAPAN_CS   = [ESC, 0x52, 0x08];       // ESC R 8 – Japan character set
 const KANJI_ON   = [FS, 0x26];
 const KANJI_SJIS = [FS, 0x43, 0x02];
 
@@ -74,9 +78,11 @@ const ALIGN_CENTER = [ESC, 0x61, 0x01];
 const BOLD_ON  = [ESC, 0x45, 0x01];
 const BOLD_OFF = [ESC, 0x45, 0x00];
 
-const SIZE_NORMAL  = [GS, 0x21, 0x00];       // 1×1
-const SIZE_XLARGE  = [GS, 0x21, 0x22];       // 3×3 (store name)
-const SIZE_WIDE    = [GS, 0x21, 0x10];       // 2× width, 1× height
+// Size commands include Kanji-mode re-enable (FS & + FS C 2) because some
+// printers reset Kanji mode when GS ! changes character magnification.
+const SIZE_NORMAL  = [GS, 0x21, 0x00, FS, 0x26, FS, 0x43, 0x02];  // 1×1
+const SIZE_XLARGE  = [GS, 0x21, 0x22, FS, 0x26, FS, 0x43, 0x02];  // 3×3
+const SIZE_WIDE    = [GS, 0x21, 0x10, FS, 0x26, FS, 0x43, 0x02];  // 2×w
 
 const CUT = [GS, 0x56, 0x00];
 
@@ -197,7 +203,7 @@ export function buildFullReceiptTextEscPos(
 ): Uint8Array {
   const b = new EscPosBuilder();
 
-  b.push(INIT, KANJI_ON, KANJI_SJIS);
+  b.push(INIT, JAPAN_CS, KANJI_ON, KANJI_SJIS);
 
   // Store name (3×3 – matches original receipt)
   b.push(ALIGN_CENTER, SIZE_XLARGE, BOLD_ON);
@@ -299,7 +305,7 @@ export function buildReceiptTextEscPos(
 ): Uint8Array {
   const b = new EscPosBuilder();
 
-  b.push(INIT, KANJI_ON, KANJI_SJIS);
+  b.push(INIT, JAPAN_CS, KANJI_ON, KANJI_SJIS);
 
   // Store name (3×3)
   b.push(ALIGN_CENTER, SIZE_XLARGE, BOLD_ON);

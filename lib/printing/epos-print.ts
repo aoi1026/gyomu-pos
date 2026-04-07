@@ -141,8 +141,8 @@ function fmtEn(amount: number): string {
 // ---------------------------------------------------------------------------
 
 function buildFullReceiptText(p: EposPrinterDevice, payload: FullReceiptPayload): void {
-  if (typeof p.addTextLang === 'function' && p.LANG_JA) p.addTextLang(p.LANG_JA);
-  if (typeof p.addTextFont === 'function' && p.FONT_A) p.addTextFont(p.FONT_A);
+  if (typeof p.addTextLang === 'function') p.addTextLang(p.LANG_JA || 'ja');
+  if (typeof p.addTextFont === 'function') p.addTextFont(p.FONT_A || 'font_a');
 
   // Store name (3×3 – matches original receipt)
   p.addTextAlign(p.ALIGN_CENTER);
@@ -228,8 +228,8 @@ function buildFullReceiptText(p: EposPrinterDevice, payload: FullReceiptPayload)
 }
 
 function buildSimpleReceiptText(p: EposPrinterDevice, payload: ReceiptPayload): void {
-  if (typeof p.addTextLang === 'function' && p.LANG_JA) p.addTextLang(p.LANG_JA);
-  if (typeof p.addTextFont === 'function' && p.FONT_A) p.addTextFont(p.FONT_A);
+  if (typeof p.addTextLang === 'function') p.addTextLang(p.LANG_JA || 'ja');
+  if (typeof p.addTextFont === 'function') p.addTextFont(p.FONT_A || 'font_a');
 
   p.addTextAlign(p.ALIGN_CENTER);
   p.addTextSize(3, 3);
