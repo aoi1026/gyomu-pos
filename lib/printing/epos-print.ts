@@ -212,13 +212,13 @@ function buildFullReceiptText(p: EposPrinterDevice, payload: FullReceiptPayload)
   // Footer
   p.addTextAlign(p.ALIGN_CENTER);
   const idPayment: string[] = [];
-  if (payload.storeId) idPayment.push(`ID:${payload.storeId}`);
+  // if (payload.storeId) idPayment.push(`ID:${payload.storeId}`);
   if (payload.paymentMethod) idPayment.push(`支払方法:${payload.paymentMethod}`);
   if (idPayment.length) p.addText(idPayment.join('  ') + '\n');
 
   const timeGuest: string[] = [];
-  if (payload.startTime) timeGuest.push(`開台時間:${payload.startTime}`);
-  if (payload.guestCount) timeGuest.push(`開台人数:${payload.guestCount}`);
+  if (payload.startTime) timeGuest.push(`開始時間:${payload.startTime}`);
+  if (payload.guestCount) timeGuest.push(`人数:${payload.guestCount}`);
   if (timeGuest.length) p.addText(timeGuest.join('  ') + '\n');
 
   if (payload.nomineeNames?.trim()) p.addText(`指名:${payload.nomineeNames.trim()}\n`);

@@ -118,8 +118,8 @@ function fullReceiptToHtml(p: FullReceiptPayload): string {
   if (p.paymentMethod) idPayment.push(`支払方法:${escapeHtml(p.paymentMethod)}`);
   if (idPayment.length) bottomParts.push(`<div>${idPayment.join('&nbsp;&nbsp;')}</div>`);
   const timeGuest: string[] = [];
-  if (p.startTime) timeGuest.push(`開台時間:${escapeHtml(p.startTime)}`);
-  if (p.guestCount) timeGuest.push(`開台人数: ${escapeHtml(p.guestCount)}`);
+  if (p.startTime) timeGuest.push(`開始時間:${escapeHtml(p.startTime)}`);
+  if (p.guestCount) timeGuest.push(`人数: ${escapeHtml(p.guestCount)}`);
   if (timeGuest.length) bottomParts.push(`<div>${timeGuest.join('&nbsp;&nbsp;')}</div>`);
   if (p.nomineeNames?.trim()) bottomParts.push(`<div>指名:${escapeHtml(p.nomineeNames.trim())}</div>`);
 

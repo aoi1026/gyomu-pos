@@ -3517,9 +3517,9 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
                   <span>支払方法:{receiptPreviewData.paymentMethod}</span>
                 </div>
                 <div>
-                  {receiptPreviewData.startTime && <span>開台時間:{receiptPreviewData.startTime}</span>}
+                  {receiptPreviewData.startTime && <span>開始時間:{receiptPreviewData.startTime}</span>}
                   {receiptPreviewData.startTime && receiptPreviewData.guestCount && <span>{'  '}</span>}
-                  {receiptPreviewData.guestCount && <span>開台人数: {receiptPreviewData.guestCount}</span>}
+                  {receiptPreviewData.guestCount && <span>人数: {receiptPreviewData.guestCount}</span>}
                 </div>
                 {receiptPreviewData.nomineeNames && (
                   <div>指名:{receiptPreviewData.nomineeNames}</div>

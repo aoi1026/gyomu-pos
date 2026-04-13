@@ -278,13 +278,13 @@ export function buildFullReceiptTextEscPos(
   // Footer: ID, payment method, time, guests, cast names
   b.push(ALIGN_CENTER);
   const idPayment: string[] = [];
-  if (payload.storeId) idPayment.push(`ID:${payload.storeId}`);
+  // if (payload.storeId) idPayment.push(`ID:${payload.storeId}`);
   if (payload.paymentMethod) idPayment.push(`支払方法:${payload.paymentMethod}`);
   if (idPayment.length) b.line(idPayment.join('  '));
 
   const timeGuest: string[] = [];
-  if (payload.startTime) timeGuest.push(`開台時間:${payload.startTime}`);
-  if (payload.guestCount) timeGuest.push(`開台人数:${payload.guestCount}`);
+  if (payload.startTime) timeGuest.push(`開始時間:${payload.startTime}`);
+  if (payload.guestCount) timeGuest.push(`人数:${payload.guestCount}`);
   if (timeGuest.length) b.line(timeGuest.join('  '));
 
   if (payload.nomineeNames?.trim()) {

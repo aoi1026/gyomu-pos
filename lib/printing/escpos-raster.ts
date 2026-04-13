@@ -243,12 +243,12 @@ export function makeFullReceiptCanvas(payload: FullReceiptPayload, widthPx: numb
 
   const bottomLines: string[] = [];
   const idPayment: string[] = [];
-  if (payload.storeId) idPayment.push(`ID:${payload.storeId}`);
+  // if (payload.storeId) idPayment.push(`ID:${payload.storeId}`);
   if (payload.paymentMethod) idPayment.push(`支払方法:${payload.paymentMethod}`);
   if (idPayment.length) bottomLines.push(idPayment.join('  '));
   const timeGuest: string[] = [];
-  if (payload.startTime) timeGuest.push(`開台時間:${payload.startTime}`);
-  if (payload.guestCount) timeGuest.push(`開台人数: ${payload.guestCount}`);
+  if (payload.startTime) timeGuest.push(`開始時間:${payload.startTime}`);
+  if (payload.guestCount) timeGuest.push(`人数: ${payload.guestCount}`);
   if (timeGuest.length) bottomLines.push(timeGuest.join('  '));
   if (payload.nomineeNames?.trim()) bottomLines.push(`指名:${payload.nomineeNames.trim()}`);
 
