@@ -7,11 +7,11 @@ import {
   listPairedBluetoothDevices,
   writeEscPos,
 } from '@/lib/printing/bluetooth-escpos';
+import { loadEpsonSdk, testEposConnection } from '@/lib/printing/epos-print';
 import PrintConfirmModal from '@/components/admin/PrintConfirmModal';
 import type { PendingPrintJob } from '@/components/admin/PrintConfirmModal';
 import { useNotificationContext } from '@/lib/notification-context';
 import { isValidIpv4 } from '@/lib/printing/utils';
-import { testEposConnection } from '@/lib/printing/epos-print';
 import type { ReceiptPayload, FullReceiptPayload } from '@/lib/printing/escpos-raster';
 
 type PrinterStatus = 'disconnected' | 'connecting' | 'connected';
@@ -43,6 +43,30 @@ type PrinterContextValue = {
 const PrinterContext = createContext<PrinterContextValue | null>(null);
 
 const LS_KEY = 'bt_printer_device_id';
+const LS_NETWORK_PRINTER_IP = 'network_printer_ip';
+
+function getCachedNetworkPrinterIp(): string | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const value = localStorage.getItem(LS_NETWORK_PRINTER_IP);
+    return value?.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+function setCachedNetworkPrinterIp(ip: string | null): void {
+  if (typeof window === 'undefined') return;
+  try {
+    if (ip && ip.trim()) {
+      localStorage.setItem(LS_NETWORK_PRINTER_IP, ip.trim());
+    } else {
+      localStorage.removeItem(LS_NETWORK_PRINTER_IP);
+    }
+  } catch {
+    // ignore
+  }
+}
 
 export function PrinterProvider({ children }: { children: React.ReactNode }) {
   const [status, setStatus] = useState<PrinterStatus>('disconnected');
@@ -51,8 +75,8 @@ export function PrinterProvider({ children }: { children: React.ReactNode }) {
   const [pairedDevices, setPairedDevices] = useState<Array<{ id: string; name: string }>>([]);
   const [characteristic, setCharacteristic] = useState<BluetoothRemoteGATTCharacteristic | null>(null);
   const [device, setDevice] = useState<BluetoothDevice | null>(null);
-  const [networkPrinterIp, setNetworkPrinterIp] = useState<string | null>(null);
-  const [isNetworkPrinterReady, setIsNetworkPrinterReady] = useState(false);
+  const [networkPrinterIp, setNetworkPrinterIp] = useState<string | null>(() => getCachedNetworkPrinterIp());
+  const [isNetworkPrinterReady, setIsNetworkPrinterReady] = useState(() => Boolean(getCachedNetworkPrinterIp()));
   const [pendingJob, setPendingJob] = useState<PendingPrintJob | null>(null);
   const [showPrintConfirm, setShowPrintConfirm] = useState(false);
   const { success, error } = useNotificationContext();
@@ -72,15 +96,40 @@ export function PrinterProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const refreshNetworkPrinterIp = useCallback(async () => {
+    const cached = getCachedNetworkPrinterIp();
+    if (cached) {
+      setNetworkPrinterIp(cached);
+      setIsNetworkPrinterReady(true);
+    }
+
     try {
       const res = await fetch('/api/project-variables?name=printer_ip');
       const json = await res.json();
       const value = json.success && json.data?.value ? String(json.data.value).trim() : '';
-      setNetworkPrinterIp(value || null);
-      setIsNetworkPrinterReady(Boolean(value));
+
+      if (value) {
+        setNetworkPrinterIp(value);
+        setIsNetworkPrinterReady(true);
+        setCachedNetworkPrinterIp(value);
+        return;
+      }
+
+      if (cached) {
+        setNetworkPrinterIp(cached);
+        setIsNetworkPrinterReady(true);
+      } else {
+        setNetworkPrinterIp(null);
+        setIsNetworkPrinterReady(false);
+        setCachedNetworkPrinterIp(null);
+      }
     } catch {
-      setNetworkPrinterIp(null);
-      setIsNetworkPrinterReady(false);
+      if (cached) {
+        setNetworkPrinterIp(cached);
+        setIsNetworkPrinterReady(true);
+      } else {
+        setNetworkPrinterIp(null);
+        setIsNetworkPrinterReady(false);
+      }
     }
   }, []);
 
@@ -104,6 +153,7 @@ export function PrinterProvider({ children }: { children: React.ReactNode }) {
     }
     setNetworkPrinterIp(normalizedIp || null);
     setIsNetworkPrinterReady(Boolean(normalizedIp));
+    setCachedNetworkPrinterIp(normalizedIp || null);
   }, []);
 
   const clearNetworkPrinterIp = useCallback(async () => {
@@ -121,6 +171,7 @@ export function PrinterProvider({ children }: { children: React.ReactNode }) {
     }
     setNetworkPrinterIp(null);
     setIsNetworkPrinterReady(false);
+    setCachedNetworkPrinterIp(null);
   }, []);
 
   const testNetworkPrinter = useCallback(async (ip?: string) => {
@@ -277,7 +328,17 @@ export function PrinterProvider({ children }: { children: React.ReactNode }) {
   );
 
   useEffect(() => {
+    let cancelled = false;
+
     (async () => {
+      try {
+        await loadEpsonSdk();
+      } catch {
+        // SDK preload failures are non-fatal; print-time loading still exists.
+      }
+
+      if (cancelled) return;
+
       await refreshNetworkPrinterIp();
       await refreshPairedDevices();
 
@@ -287,7 +348,7 @@ export function PrinterProvider({ children }: { children: React.ReactNode }) {
       } catch {
         lastId = null;
       }
-      if (!lastId) return;
+      if (!lastId || cancelled) return;
 
       try {
         await connectById(lastId);
@@ -295,8 +356,12 @@ export function PrinterProvider({ children }: { children: React.ReactNode }) {
         // stay disconnected if cannot reconnect
       }
     })();
+
+    return () => {
+      cancelled = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [refreshNetworkPrinterIp]);
+  }, [refreshNetworkPrinterIp, refreshPairedDevices]);
 
   const value = useMemo<PrinterContextValue>(
     () => ({
