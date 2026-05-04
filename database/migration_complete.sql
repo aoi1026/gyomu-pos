@@ -44,7 +44,7 @@ $$ LANGUAGE plpgsql;
 CREATE TABLE IF NOT EXISTS public."table" (
     id SERIAL PRIMARY KEY,
     name VARCHAR(100) NOT NULL,
-    capacity INTEGER NOT NULL CHECK (capacity > 0),
+    capacity INTEGER CHECK (capacity > 0),
     other TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP

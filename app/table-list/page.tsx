@@ -15,7 +15,7 @@ import { useNotificationContext } from '@/lib/notification-context';
 interface TableData {
   id: number;
   name: string;
-  capacity: number;
+  capacity: number | null;
 }
 
 interface SessionData {
@@ -250,12 +250,7 @@ export default function TableListPage() {
       error('エラー', '有効な人数を入力してください');
       return;
     }
-    
-    if (selectedTableForSession.capacity && numGuestCount > selectedTableForSession.capacity) {
-      error('エラー', `人数はテーブルの定員（${selectedTableForSession.capacity}名）以下で入力してください`);
-      return;
-    }
-    
+
     setIsStartingSession(true);
     
     try {
@@ -423,7 +418,9 @@ export default function TableListPage() {
             <div className="flex items-center justify-between mb-2">
               <div>
                 <h3 className="font-semibold text-lg">{table.name}</h3>
-                <p className="text-sm text-gray-600">収容人数: {table.capacity}名</p>
+                <p className="text-sm text-gray-600">
+                  収容人数: {table.capacity != null ? `${table.capacity}名` : '未設定'}
+                </p>
               </div>
               <div className="flex items-center space-x-2">
                 {isTimeExpired ? (
@@ -489,7 +486,9 @@ export default function TableListPage() {
             <div className="flex items-center justify-between mb-2">
               <div>
                 <h3 className="font-semibold text-lg">{table.name}</h3>
-                <p className="text-sm text-gray-600">収容人数: {table.capacity}名</p>
+                <p className="text-sm text-gray-600">
+                  収容人数: {table.capacity != null ? `${table.capacity}名` : '未設定'}
+                </p>
               </div>
               <Badge variant="outline" className="bg-gray-100 text-gray-800">利用可能</Badge>
             </div>
@@ -587,15 +586,14 @@ export default function TableListPage() {
                 id="guest-count"
                 type="number"
                 min="1"
-                max={selectedTableForSession?.capacity || 999}
                 value={guestCount}
                 onChange={(e) => setGuestCount(e.target.value)}
                 placeholder="人数を入力"
                 disabled={isStartingSession}
               />
-              {selectedTableForSession?.capacity && (
+              {selectedTableForSession?.capacity != null && (
                 <p className="text-sm text-gray-500">
-                  定員: {selectedTableForSession.capacity}名
+                  参考定員: {selectedTableForSession.capacity}名
                 </p>
               )}
             </div>

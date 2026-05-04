@@ -1,23 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/database';
+import { resolveCapacityInput } from '@/lib/resolve-table-capacity';
 
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { name, capacity, other } = await request.json();
     const { id: tableId } = await params;
 
-    if (!name || !capacity) {
+    if (!name) {
       return NextResponse.json(
-        { error: 'テーブル名と収容人数を入力してください。' },
+        { error: 'テーブル名を入力してください。' },
         { status: 400 }
       );
     }
 
-    if (capacity <= 0) {
-      return NextResponse.json(
-        { error: '収容人数は1以上である必要があります。' },
-        { status: 400 }
-      );
+    const cap = resolveCapacityInput(capacity);
+    if (!cap.ok) {
+      return NextResponse.json({ error: cap.error }, { status: 400 });
     }
 
     const client = await pool.connect();
@@ -25,7 +24,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     try {
       const result = await client.query(
         'UPDATE "table" SET name = $1, capacity = $2, other = $3, updated_at = CURRENT_TIMESTAMP WHERE id = $4 RETURNING id, name, capacity, other, created_at',
-        [name, capacity, other || '', tableId]
+        [name, cap.value, other || '', tableId]
       );
 
       if (result.rows.length === 0) {

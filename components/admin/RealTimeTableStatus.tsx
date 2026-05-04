@@ -15,7 +15,7 @@ import { useNotificationContext } from '@/lib/notification-context';
 interface TableData {
   id: number;
   name: string;
-  capacity: number;
+  capacity: number | null;
 }
 
 interface SessionData {
@@ -242,12 +242,7 @@ export default function RealTimeTableStatus({ open, onClose }: RealTimeTableStat
       error('エラー', '有効な人数を入力してください');
       return;
     }
-    
-    if (selectedTableForSession.capacity && numGuestCount > selectedTableForSession.capacity) {
-      error('エラー', `人数はテーブルの定員（${selectedTableForSession.capacity}名）以下で入力してください`);
-      return;
-    }
-    
+
     setIsStartingSession(true);
     
     try {
@@ -557,15 +552,14 @@ export default function RealTimeTableStatus({ open, onClose }: RealTimeTableStat
                 id="guest-count"
                 type="number"
                 min="1"
-                max={selectedTableForSession?.capacity || 999}
                 value={guestCount}
                 onChange={(e) => setGuestCount(e.target.value)}
                 placeholder="人数を入力"
                 disabled={isStartingSession}
               />
-              {selectedTableForSession?.capacity && (
+              {selectedTableForSession?.capacity != null && (
                 <p className="text-sm text-gray-500">
-                  定員: {selectedTableForSession.capacity}名
+                  参考定員: {selectedTableForSession.capacity}名
                 </p>
               )}
             </div>

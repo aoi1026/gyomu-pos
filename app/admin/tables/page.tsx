@@ -19,7 +19,7 @@ import { useNotificationContext } from '@/lib/notification-context';
 interface TableData {
   id: number;
   name: string;
-  capacity: number;
+  capacity: number | null;
   other: string | null;
   created_at: string;
 }
@@ -94,7 +94,7 @@ export default function TablesPage() {
     setEditingTable(table);
     setEditForm({
       name: table.name,
-      capacity: table.capacity.toString(),
+      capacity: table.capacity != null ? String(table.capacity) : '',
       other: table.other || ''
     });
     setIsEditDialogOpen(true);
@@ -106,15 +106,18 @@ export default function TablesPage() {
   };
 
   const handleSaveAdd = async () => {
-    if (!addForm.name || !addForm.capacity) {
-      error('エラー', 'テーブル名と収容人数を入力してください');
+    if (!addForm.name.trim()) {
+      error('エラー', 'テーブル名を入力してください');
       return;
     }
 
-    const capacity = parseInt(addForm.capacity);
-    if (isNaN(capacity) || capacity <= 0) {
-      error('エラー', '収容人数は1以上の数値を入力してください');
-      return;
+    const capTrim = addForm.capacity.trim();
+    if (capTrim) {
+      const capacity = parseInt(capTrim, 10);
+      if (isNaN(capacity) || capacity <= 0) {
+        error('エラー', '収容人数は1以上の数値を入力するか、未入力にしてください');
+        return;
+      }
     }
 
     setIsSubmitting(true);
@@ -123,8 +126,8 @@ export default function TablesPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          name: addForm.name,
-          capacity: capacity,
+          name: addForm.name.trim(),
+          capacity: capTrim ? parseInt(capTrim, 10) : null,
           other: addForm.other
         })
       });
@@ -147,15 +150,18 @@ export default function TablesPage() {
   };
 
   const handleSaveEdit = async () => {
-    if (!editForm.name || !editForm.capacity) {
-      error('エラー', 'テーブル名と収容人数を入力してください');
+    if (!editForm.name.trim()) {
+      error('エラー', 'テーブル名を入力してください');
       return;
     }
 
-    const capacity = parseInt(editForm.capacity);
-    if (isNaN(capacity) || capacity <= 0) {
-      error('エラー', '収容人数は1以上の数値を入力してください');
-      return;
+    const capTrim = editForm.capacity.trim();
+    if (capTrim) {
+      const capacity = parseInt(capTrim, 10);
+      if (isNaN(capacity) || capacity <= 0) {
+        error('エラー', '収容人数は1以上の数値を入力するか、未入力にしてください');
+        return;
+      }
     }
 
     if (!editingTable) return;
@@ -166,8 +172,8 @@ export default function TablesPage() {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          name: editForm.name,
-          capacity: capacity,
+          name: editForm.name.trim(),
+          capacity: capTrim ? parseInt(capTrim, 10) : null,
           other: editForm.other
         })
       });
@@ -276,7 +282,7 @@ export default function TablesPage() {
               テーブル管理
             </CardTitle>
             <CardDescription>
-              テーブルの追加、編集、削除を行います。テーブル名、収容人数、備考を管理できます。
+              テーブルの追加、編集、削除を行います。テーブル名（必須）、収容人数（任意）、備考を管理できます。
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -350,7 +356,9 @@ export default function TablesPage() {
                         <TableCell>
                           <div className="flex items-center space-x-2">
                             <Users className="w-4 h-4 text-gray-400" />
-                            <span className="text-sm">{table.capacity}名</span>
+                            <span className="text-sm">
+                              {table.capacity != null ? `${table.capacity}名` : '—'}
+                            </span>
                     </div>
                         </TableCell>
                         <TableCell>
@@ -420,14 +428,13 @@ export default function TablesPage() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="add-capacity">収容人数 *</Label>
+              <Label htmlFor="add-capacity">収容人数（任意）</Label>
               <Input
                 id="add-capacity"
                 type="number"
-                min="1"
                 value={addForm.capacity}
                 onChange={(e) => setAddForm(prev => ({ ...prev, capacity: e.target.value }))}
-                placeholder="収容人数を入力"
+                placeholder="未入力のままでも登録できます"
               />
             </div>
             <div className="space-y-2">
@@ -473,14 +480,13 @@ export default function TablesPage() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="edit-capacity">収容人数 *</Label>
+              <Label htmlFor="edit-capacity">収容人数（任意）</Label>
               <Input
                 id="edit-capacity"
                 type="number"
-                min="1"
                 value={editForm.capacity}
                 onChange={(e) => setEditForm(prev => ({ ...prev, capacity: e.target.value }))}
-                placeholder="収容人数を入力"
+                placeholder="未入力にすると未設定になります"
               />
             </div>
             <div className="space-y-2">

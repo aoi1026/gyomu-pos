@@ -3,7 +3,7 @@ export interface TableAuth {
   table_id: string;
   table_label: string;
   area: string;
-  capacity: number;
+  capacity: number | null;
   status: 'available' | 'occupied';
   login_time: string;
   session_id?: string;

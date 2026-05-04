@@ -22,7 +22,7 @@ interface LoginModalProps {
 interface Table {
   id: number;
   name: string;
-  capacity: number;
+  capacity: number | null;
   other: string;
   created_at: string;
   updated_at: string;
@@ -501,7 +501,7 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
                           <div className="flex items-center justify-between w-full">
                             <span className="font-medium">{table.name}</span>
                             <Badge variant="outline" className="text-xs ml-2 bg-blue-50 text-blue-700">
-                              {table.capacity}名
+                              {table.capacity != null ? `${table.capacity}名` : '定員未設定'}
                             </Badge>
                           </div>
                         </SelectItem>
@@ -529,7 +529,9 @@ export default function LoginModal({ isOpen, onClose }: LoginModalProps) {
                           <div>
                             <h4 className="font-medium text-gray-900">{selectedTable.name}</h4>
                             <p className="text-sm text-gray-500">
-                              定員: {selectedTable.capacity}名
+                              {selectedTable.capacity != null
+                                ? `定員: ${selectedTable.capacity}名`
+                                : '定員: 未設定'}
                             </p>
                           </div>
                         </div>

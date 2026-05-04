@@ -1527,11 +1527,6 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
       return;
     }
 
-    if (tableAuth.capacity && numGuestCount > tableAuth.capacity) {
-      error('エラー', `人数はテーブルの定員（${tableAuth.capacity}名）以下で入力してください`);
-      return;
-    }
-
     try {
       // セット料金（DB: add_charges の set_price.value）が未設定なら開始できない
       let charges = addCharges;
@@ -3231,9 +3226,9 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
                           }}
                           className="w-full"
                         />
-                        {tableAuth?.capacity && (
+                        {tableAuth?.capacity != null && (
                           <p className="text-sm text-gray-500">
-                            定員: {tableAuth.capacity}名まで
+                            参考定員: {tableAuth.capacity}名
                           </p>
                         )}
                       </div>
