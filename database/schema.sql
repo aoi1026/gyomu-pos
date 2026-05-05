@@ -342,6 +342,43 @@ CREATE TRIGGER update_sessions_updated_at
     BEFORE UPDATE ON sessions 
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+-- VIPルーム・カラオケ（ソング）ルーム
+CREATE TABLE IF NOT EXISTS vip_room (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(200) NOT NULL,
+    status SMALLINT NOT NULL DEFAULT 0 CHECK (status IN (0, 1)),
+    other TEXT,
+    session_id INTEGER REFERENCES sessions(id) ON DELETE SET NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_vip_room_session_id ON vip_room(session_id);
+CREATE INDEX IF NOT EXISTS idx_vip_room_status ON vip_room(status);
+
+DROP TRIGGER IF EXISTS update_vip_room_updated_at ON vip_room;
+CREATE TRIGGER update_vip_room_updated_at
+    BEFORE UPDATE ON vip_room
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TABLE IF NOT EXISTS song_room (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(200) NOT NULL,
+    status SMALLINT NOT NULL DEFAULT 0 CHECK (status IN (0, 1)),
+    other TEXT,
+    session_id INTEGER REFERENCES sessions(id) ON DELETE SET NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_song_room_session_id ON song_room(session_id);
+CREATE INDEX IF NOT EXISTS idx_song_room_status ON song_room(status);
+
+DROP TRIGGER IF EXISTS update_song_room_updated_at ON song_room;
+CREATE TRIGGER update_song_room_updated_at
+    BEFORE UPDATE ON song_room
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
 -- セッション決済履歴テーブル
 CREATE TABLE IF NOT EXISTS session_payments (
     id SERIAL PRIMARY KEY,

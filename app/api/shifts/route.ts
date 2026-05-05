@@ -10,7 +10,8 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const year = searchParams.get('year');
     const month = searchParams.get('month');
-    
+    const dateParam = searchParams.get('date'); // YYYY-MM-DD（単日フィルタ、出勤予定一覧用）
+
     let query = `
       SELECT s.id, s.cast_id, s.date, u.name as cast_name
       FROM shift s
@@ -21,7 +22,11 @@ export async function GET(request: NextRequest) {
     const values: any[] = [];
     let paramIndex = 1;
     
-    if (year && month) {
+    if (dateParam) {
+      query += ` AND s.date = $${paramIndex}::date`;
+      values.push(dateParam);
+      paramIndex += 1;
+    } else if (year && month) {
       query += ` AND EXTRACT(YEAR FROM s.date) = $${paramIndex} AND EXTRACT(MONTH FROM s.date) = $${paramIndex + 1}`;
       values.push(parseInt(year), parseInt(month));
       paramIndex += 2;

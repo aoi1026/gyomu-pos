@@ -120,14 +120,18 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
     other: ''
   });
   const [showVipRoomDialog, setShowVipRoomDialog] = useState(false);
-  const [vipRoomCount, setVipRoomCount] = useState<string>('');
+  const [vipRooms, setVipRooms] = useState<Array<{ id: number; name: string; status: number; other: string | null }>>([]);
+  const [selectedVipRoomId, setSelectedVipRoomId] = useState<string>('');
   const [showKaraokeDialog, setShowKaraokeDialog] = useState(false);
-  const [karaokeSongCount, setKaraokeSongCount] = useState<string>('');
+  const [songRooms, setSongRooms] = useState<Array<{ id: number; name: string; status: number; other: string | null }>>([]);
+  const [selectedSongRoomId, setSelectedSongRoomId] = useState<string>('');
   const [additionalServices, setAdditionalServices] = useState<Array<{
+    id?: number;
     type: 'bottle_keep' | 'vip_room' | 'karaoke';
     count: number;
     charge: number;
     timestamp: number;
+    note?: string;
   }>>([]);
 
   // 支払い完了後に商品の追加をロックするフラグ
@@ -141,6 +145,42 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
 
   const router = useRouter();
   const { success, error, confirm } = useNotificationContext();
+
+  useEffect(() => {
+    if (!showVipRoomDialog) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await fetch('/api/vip-room');
+        const j = await r.json();
+        if (!cancelled && j.success) setVipRooms(j.rooms || []);
+      } catch {
+        if (!cancelled) setVipRooms([]);
+      }
+    })();
+    setSelectedVipRoomId('');
+    return () => {
+      cancelled = true;
+    };
+  }, [showVipRoomDialog]);
+
+  useEffect(() => {
+    if (!showKaraokeDialog) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await fetch('/api/song-room');
+        const j = await r.json();
+        if (!cancelled && j.success) setSongRooms(j.rooms || []);
+      } catch {
+        if (!cancelled) setSongRooms([]);
+      }
+    })();
+    setSelectedSongRoomId('');
+    return () => {
+      cancelled = true;
+    };
+  }, [showKaraokeDialog]);
 
   const getNominationTypeLabel = (type: 'main' | 'inside' | 'together') => {
     switch (type) {
@@ -929,8 +969,8 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
         const newServices = result.data || [];
         // データが変更された場合のみ状態を更新（ちらつき防止）
         setAdditionalServices(prev => {
-          const prevStr = JSON.stringify(prev.map((s: any) => ({ id: s.id, type: s.type, count: s.count, charge: s.charge, timestamp: s.timestamp })));
-          const newStr = JSON.stringify(newServices.map((s: any) => ({ id: s.id, type: s.type, count: s.count, charge: s.charge, timestamp: s.timestamp })));
+          const prevStr = JSON.stringify(prev.map((s: any) => ({ id: s.id, type: s.type, count: s.count, charge: s.charge, timestamp: s.timestamp, note: s.note })));
+          const newStr = JSON.stringify(newServices.map((s: any) => ({ id: s.id, type: s.type, count: s.count, charge: s.charge, timestamp: s.timestamp, note: s.note })));
           if (prevStr !== newStr) {
             // ローカルストレージにも保存
             localStorage.setItem('additional_services', JSON.stringify(newServices));
@@ -1714,6 +1754,91 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
     );
   };
 
+  const cancelSession = async () => {
+    if (!tableAuth) return;
+
+    confirm(
+      'セッション取消',
+      'このセッションを取り消しますか？注文・指名・追加サービス・決済履歴など、このセッションに関連するデータは保存されず削除されます。',
+      async () => {
+        isEndingSessionRef.current = true;
+        setIsRedirectingAfterEnd(true);
+
+        try {
+          const sessionId = localStorage.getItem('current_session_id') || session?.id?.toString();
+
+          if (!sessionId) {
+            throw new Error('セッション情報が見つかりません');
+          }
+
+          const response = await fetch(`/api/sessions/${sessionId}`, {
+            method: 'DELETE',
+          });
+          const result = await response.json();
+
+          if (!result.success) {
+            throw new Error(result.error || 'セッションの取消に失敗しました');
+          }
+
+          localStorage.removeItem(`cart_orders_${sessionId}`);
+          localStorage.removeItem(`service_orders_${sessionId}`);
+          localStorage.removeItem('current_session_id');
+          localStorage.removeItem('guest_count');
+          localStorage.removeItem('set_count');
+          localStorage.removeItem('set_extensions');
+          localStorage.removeItem('set_extension_start_time');
+          localStorage.removeItem('set_extension_total_seconds');
+          localStorage.removeItem('nomination_charges');
+          localStorage.removeItem('additional_services');
+          localStorage.removeItem('payment_completed');
+          localStorage.removeItem('paid_amount');
+          localStorage.removeItem('cost');
+          localStorage.removeItem('fullcost');
+          localStorage.removeItem('nomination_type');
+          localStorage.removeItem('service_orders');
+          localStorage.removeItem('cart_orders');
+
+          Object.keys(localStorage).forEach(key => {
+            if (key.startsWith('cart_orders_') || key.startsWith('service_orders_')) {
+              localStorage.removeItem(key);
+            }
+          });
+
+          setIsSessionActive(false);
+          setSession(null);
+          setGuestCount('');
+          setCartOrders([]);
+          setCountdownTimers({});
+          setOrderRequestStatus({});
+          setServiceOrders([]);
+          setServiceRequestStatus({});
+          setIsPaymentCompleted(false);
+          setCurrentNominationType(null);
+          setNominations([]);
+          setSetExtensions([]);
+          setSetExtensionCountdown(0);
+          setNominationCharges([]);
+          setAdditionalServices([]);
+          setShowPaymentDialog(false);
+          setShowPaymentMethodDialog(false);
+          setShowCashPaymentDialog(false);
+          setShowStoreCreditCardPaymentDialog(false);
+
+          const updatedTable = await endTableSession(tableAuth.table_id);
+          setTableAuth(updatedTable);
+
+          success('セッション取消', 'セッションを取り消しました');
+          router.push('/table-list');
+        } catch (err) {
+          console.error('セッション取消エラー:', err);
+          error('エラー', `セッション取消に失敗しました: ${err instanceof Error ? err.message : '不明なエラー'}`);
+          isEndingSessionRef.current = false;
+          setIsRedirectingAfterEnd(false);
+        }
+      }
+    );
+  };
+
   const calculateTotal = () => {
     let subtotal = 0;
     const setPrice = addCharges['set_price'] || 0;
@@ -1788,12 +1913,66 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
     }, 0);
   };
 
+  const appendExtensionRoomSurcharges = async (
+    sessionIdStr: string,
+    chargesMap: { [key: string]: number },
+    servicesSnapshot: typeof additionalServices
+  ) => {
+    const hasVip = servicesSnapshot.some(s => s.type === 'vip_room');
+    const hasKaraoke = servicesSnapshot.some(s => s.type === 'karaoke');
+    const vipUnit = chargesMap['vip_room'] || 0;
+    const songUnit = chargesMap['song_room'] || 0;
+    const newRows: typeof additionalServices = [];
+    try {
+      if (hasVip && vipUnit > 0) {
+        const res = await fetch('/api/additional-services', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sessionId: parseInt(sessionIdStr, 10),
+            type: 'vip_room',
+            count: 1,
+            charge: vipUnit,
+            note: 'セット延長',
+          }),
+        });
+        const j = await res.json();
+        if (j.success && j.data) newRows.push(j.data);
+      }
+      if (hasKaraoke && songUnit > 0) {
+        const res = await fetch('/api/additional-services', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sessionId: parseInt(sessionIdStr, 10),
+            type: 'karaoke',
+            count: 1,
+            charge: songUnit,
+            note: 'セット延長',
+          }),
+        });
+        const j = await res.json();
+        if (j.success && j.data) newRows.push(j.data);
+      }
+      if (newRows.length > 0) {
+        setAdditionalServices(prev => {
+          const updated = [...prev, ...newRows];
+          localStorage.setItem('additional_services', JSON.stringify(updated));
+          return updated;
+        });
+      }
+    } catch (e) {
+      console.error('セット延長時のルーム料金追加エラー:', e);
+    }
+  };
+
   // セット延長処理
   const handleSetExtension = () => {
     setShowSetExtensionDialog(true);
   };
 
   const confirmSetExtension = async () => {
+    const additionalSnap = [...additionalServices];
     if (!extensionGuestCount || extensionGuestCount.trim() === '') {
       error('エラー', '人数を入力してください');
       return;
@@ -1802,12 +1981,6 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
     const count = parseInt(extensionGuestCount);
     if (isNaN(count) || count <= 0) {
       error('エラー', '有効な人数を入力してください');
-      return;
-    }
-
-    // 人数がテーブルの定員を超えていないかチェック
-    if (tableAuth && tableAuth.capacity && count > tableAuth.capacity) {
-      error('エラー', `人数はテーブルの定員（${tableAuth.capacity}名）以下で入力してください`);
       return;
     }
 
@@ -1879,6 +2052,10 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
 
     // セッション情報を再取得してカウントダウンを更新（DB更新後に反映される）
     await loadSession();
+
+    if (sessionId) {
+      await appendExtensionRoomSurcharges(sessionId, charges, additionalSnap);
+    }
 
     // 成功メッセージを表示
     success('セット延長', `${count}名でセットを延長しました（60分追加）`);
@@ -2305,18 +2482,22 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
       error('エラー', isPaymentCompleted ? '決済が完了しているため、追加サービスを利用できません' : 'セット時間が終了したため、追加サービスを利用できません');
       return;
     }
-    if (!vipRoomCount || vipRoomCount.trim() === '') {
-      error('エラー', '部屋数を入力してください');
+    if (!selectedVipRoomId) {
+      error('エラー', 'ルームを選択してください');
       return;
     }
 
-    const count = parseInt(vipRoomCount);
-    if (isNaN(count) || count <= 0) {
-      error('エラー', '有効な部屋数を入力してください');
+    const roomId = parseInt(selectedVipRoomId, 10);
+    const room = vipRooms.find(r => r.id === roomId);
+    if (!room) {
+      error('エラー', 'ルーム情報が見つかりません');
+      return;
+    }
+    if (room.status === 1) {
+      error('通知', 'その部屋は現在利用中です');
       return;
     }
 
-    // addChargesが空の場合は再取得
     let charges = addCharges;
     if (Object.keys(charges).length === 0) {
       try {
@@ -2335,30 +2516,38 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
       }
     }
 
-    const vipRoomCharge = (charges['vip_room'] || 0) * count;
-    console.log('VIPルーム料金追加:', { count, vipRoomCharge, charges });
-
-    // セッションIDを取得
+    const vipUnit = charges['vip_room'] || 0;
     const sessionId = localStorage.getItem('current_session_id');
     if (!sessionId) {
       error('エラー', 'セッション情報が見つかりません');
       return;
     }
 
-    // APIに追加サービスを保存
+    const reserveRes = await fetch(`/api/vip-room/${roomId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ session_id: parseInt(sessionId, 10) }),
+    });
+    const reserveJson = await reserveRes.json();
+    if (!reserveRes.ok || !reserveJson.success) {
+      error('通知', reserveJson.error === 'この部屋は現在利用中です' || reserveJson.occupied ? 'その部屋は現在利用中です' : (reserveJson.error || 'ルームの予約に失敗しました'));
+      const r2 = await fetch('/api/vip-room');
+      const j2 = await r2.json();
+      if (j2.success) setVipRooms(j2.rooms || []);
+      return;
+    }
+
     const additionalServiceResponse = await fetch('/api/additional-services', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        sessionId: parseInt(sessionId),
+        sessionId: parseInt(sessionId, 10),
         type: 'vip_room',
-        count: count,
-        charge: vipRoomCharge
-      })
+        count: 1,
+        charge: vipUnit,
+        note: room.name,
+      }),
     });
-
     const additionalServiceResult = await additionalServiceResponse.json();
     if (!additionalServiceResult.success) {
       error('エラー', additionalServiceResult.error || '追加サービスの登録に失敗しました');
@@ -2366,17 +2555,18 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
     }
 
     const newService = additionalServiceResult.data;
-
     setAdditionalServices(prev => {
       const updated = [...prev, newService];
-      console.log('追加サービス更新:', updated);
       localStorage.setItem('additional_services', JSON.stringify(updated));
       return updated;
     });
 
     setShowVipRoomDialog(false);
-    setVipRoomCount('');
-    success('VIPルーム利用', `${count}部屋のVIPルーム利用を追加しました`);
+    setSelectedVipRoomId('');
+    const rList = await fetch('/api/vip-room');
+    const jList = await rList.json();
+    if (jList.success) setVipRooms(jList.rooms || []);
+    success('VIPルーム利用', `${room.name} を利用として登録しました`);
   };
 
   // カラオケ利用処理
@@ -2385,18 +2575,22 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
       error('エラー', isPaymentCompleted ? '決済が完了しているため、追加サービスを利用できません' : 'セット時間が終了したため、追加サービスを利用できません');
       return;
     }
-    if (!karaokeSongCount || karaokeSongCount.trim() === '') {
-      error('エラー', '曲数を入力してください');
+    if (!selectedSongRoomId) {
+      error('エラー', 'ルームを選択してください');
       return;
     }
 
-    const count = parseInt(karaokeSongCount);
-    if (isNaN(count) || count <= 0) {
-      error('エラー', '有効な曲数を入力してください');
+    const roomId = parseInt(selectedSongRoomId, 10);
+    const room = songRooms.find(r => r.id === roomId);
+    if (!room) {
+      error('エラー', 'ルーム情報が見つかりません');
+      return;
+    }
+    if (room.status === 1) {
+      error('通知', 'その部屋は現在利用中です');
       return;
     }
 
-    // addChargesが空の場合は再取得
     let charges = addCharges;
     if (Object.keys(charges).length === 0) {
       try {
@@ -2415,30 +2609,38 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
       }
     }
 
-    const karaokeCharge = (charges['song_room'] || 0) * count;
-    console.log('カラオケ料金追加:', { count, karaokeCharge, charges });
-
-    // セッションIDを取得
+    const songUnit = charges['song_room'] || 0;
     const sessionId = localStorage.getItem('current_session_id');
     if (!sessionId) {
       error('エラー', 'セッション情報が見つかりません');
       return;
     }
 
-    // APIに追加サービスを保存
+    const reserveRes = await fetch(`/api/song-room/${roomId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ session_id: parseInt(sessionId, 10) }),
+    });
+    const reserveJson = await reserveRes.json();
+    if (!reserveRes.ok || !reserveJson.success) {
+      error('通知', reserveJson.error === 'この部屋は現在利用中です' || reserveJson.occupied ? 'その部屋は現在利用中です' : (reserveJson.error || 'ルームの予約に失敗しました'));
+      const r2 = await fetch('/api/song-room');
+      const j2 = await r2.json();
+      if (j2.success) setSongRooms(j2.rooms || []);
+      return;
+    }
+
     const additionalServiceResponse = await fetch('/api/additional-services', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        sessionId: parseInt(sessionId),
+        sessionId: parseInt(sessionId, 10),
         type: 'karaoke',
-        count: count,
-        charge: karaokeCharge
-      })
+        count: 1,
+        charge: songUnit,
+        note: room.name,
+      }),
     });
-
     const additionalServiceResult = await additionalServiceResponse.json();
     if (!additionalServiceResult.success) {
       error('エラー', additionalServiceResult.error || '追加サービスの登録に失敗しました');
@@ -2446,17 +2648,18 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
     }
 
     const newService = additionalServiceResult.data;
-
     setAdditionalServices(prev => {
       const updated = [...prev, newService];
-      console.log('追加サービス更新:', updated);
       localStorage.setItem('additional_services', JSON.stringify(updated));
       return updated;
     });
 
     setShowKaraokeDialog(false);
-    setKaraokeSongCount('');
-    success('カラオケ利用', `${count}曲のカラオケ利用を追加しました`);
+    setSelectedSongRoomId('');
+    const rList = await fetch('/api/song-room');
+    const jList = await rList.json();
+    if (jList.success) setSongRooms(jList.rooms || []);
+    success('カラオケ利用', `${room.name} を利用として登録しました`);
   };
 
   // 支払い処理
@@ -4206,6 +4409,16 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
                         </div>
                       ) : null}
 
+                      {isSessionActive && (
+                        <Button
+                          onClick={cancelSession}
+                          variant="outline"
+                          className="w-full border-red-300 text-red-600 hover:bg-red-50 hover:text-red-700"
+                        >
+                          <XCircle className="w-4 h-4 mr-2" />
+                          セッション取消
+                        </Button>
+                      )}
 
                     </div>
                   </CardContent>
@@ -5421,34 +5634,47 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
 
         {/* VIPルームダイアログ */}
         <Dialog open={showVipRoomDialog} onOpenChange={setShowVipRoomDialog}>
-          <DialogContent>
+          <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="flex items-center">
                 <Users className="w-5 h-5 mr-2" />
                 個室利用（VIPルーム）
               </DialogTitle>
               <DialogDescription>
-                利用する部屋数を入力してください
+                ルームを選択してください（空き: 選択後に利用開始、利用中の部屋を選んで確認すると通知されます）
               </DialogDescription>
             </DialogHeader>
 
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="vip-room-count">部屋数</Label>
-                <Input
-                  id="vip-room-count"
-                  type="number"
-                  min="1"
-                  placeholder="部屋数を入力してください"
-                  value={vipRoomCount}
-                  onChange={(e) => setVipRoomCount(e.target.value)}
-                  className="w-full"
-                />
-                <p className="text-sm text-gray-500">
-                  料金: {vipRoomCount && !isNaN(parseInt(vipRoomCount)) && parseInt(vipRoomCount) > 0
-                    ? formatCurrency((addCharges['vip_room'] || 0) * parseInt(vipRoomCount))
-                    : formatCurrency(0)}
-                </p>
+            <div className="space-y-3">
+              <p className="text-sm text-gray-600">
+                追加料金（1回）: {formatCurrency(addCharges['vip_room'] || 0)}
+              </p>
+              <div className="space-y-2 max-h-[45vh] overflow-y-auto pr-1">
+                {vipRooms.length === 0 ? (
+                  <p className="text-sm text-gray-500">登録されたVIPルームがありません。管理画面の部屋管理から追加してください。</p>
+                ) : (
+                  vipRooms.map((room) => (
+                    <button
+                      key={room.id}
+                      type="button"
+                      onClick={() => setSelectedVipRoomId(String(room.id))}
+                      className={`w-full flex items-center justify-between gap-2 rounded-lg border p-3 text-left transition-colors ${
+                        selectedVipRoomId === String(room.id) ? 'border-purple-600 bg-purple-50' : 'border-gray-200 hover:bg-gray-50'
+                      }`}
+                    >
+                      <span className="font-medium text-gray-900">{room.name}</span>
+                      <span className="flex items-center gap-2 shrink-0">
+                        {room.status === 1 ? (
+                          <span className="inline-flex items-center justify-center rounded-full border-2 border-amber-500 px-2 py-0.5 text-[10px] font-semibold text-amber-800 whitespace-nowrap">
+                            利用中
+                          </span>
+                        ) : (
+                          <span className="text-xs text-gray-500">空き</span>
+                        )}
+                      </span>
+                    </button>
+                  ))
+                )}
               </div>
             </div>
 
@@ -5457,14 +5683,14 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
                 variant="outline"
                 onClick={() => {
                   setShowVipRoomDialog(false);
-                  setVipRoomCount('');
+                  setSelectedVipRoomId('');
                 }}
               >
                 キャンセル
               </Button>
               <Button
                 onClick={handleVipRoomConfirm}
-                disabled={isOrderingDisabled || !vipRoomCount || parseInt(vipRoomCount) <= 0}
+                disabled={isOrderingDisabled || !selectedVipRoomId}
                 className="bg-purple-600 hover:bg-purple-700"
               >
                 <CheckCircle className="w-4 h-4 mr-2" />
@@ -5476,34 +5702,47 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
 
         {/* カラオケダイアログ */}
         <Dialog open={showKaraokeDialog} onOpenChange={setShowKaraokeDialog}>
-          <DialogContent>
+          <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="flex items-center">
                 <Users className="w-5 h-5 mr-2" />
-                カラオケ利用
+                カラオケルーム利用
               </DialogTitle>
               <DialogDescription>
-                歌う曲数を入力してください
+                ルームを選択してください
               </DialogDescription>
             </DialogHeader>
 
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="karaoke-count">曲数</Label>
-                <Input
-                  id="karaoke-count"
-                  type="number"
-                  min="1"
-                  placeholder="曲数を入力してください"
-                  value={karaokeSongCount}
-                  onChange={(e) => setKaraokeSongCount(e.target.value)}
-                  className="w-full"
-                />
-                <p className="text-sm text-gray-500">
-                  料金: {karaokeSongCount && !isNaN(parseInt(karaokeSongCount)) && parseInt(karaokeSongCount) > 0
-                    ? formatCurrency((addCharges['song_room'] || 0) * parseInt(karaokeSongCount))
-                    : formatCurrency(0)}
-                </p>
+            <div className="space-y-3">
+              <p className="text-sm text-gray-600">
+                追加料金（1回）: {formatCurrency(addCharges['song_room'] || 0)}
+              </p>
+              <div className="space-y-2 max-h-[45vh] overflow-y-auto pr-1">
+                {songRooms.length === 0 ? (
+                  <p className="text-sm text-gray-500">登録されたカラオケルームがありません。管理画面の部屋管理から追加してください。</p>
+                ) : (
+                  songRooms.map((room) => (
+                    <button
+                      key={room.id}
+                      type="button"
+                      onClick={() => setSelectedSongRoomId(String(room.id))}
+                      className={`w-full flex items-center justify-between gap-2 rounded-lg border p-3 text-left transition-colors ${
+                        selectedSongRoomId === String(room.id) ? 'border-pink-600 bg-pink-50' : 'border-gray-200 hover:bg-gray-50'
+                      }`}
+                    >
+                      <span className="font-medium text-gray-900">{room.name}</span>
+                      <span className="flex items-center gap-2 shrink-0">
+                        {room.status === 1 ? (
+                          <span className="inline-flex items-center justify-center rounded-full border-2 border-amber-500 px-2 py-0.5 text-[10px] font-semibold text-amber-800 whitespace-nowrap">
+                            利用中
+                          </span>
+                        ) : (
+                          <span className="text-xs text-gray-500">空き</span>
+                        )}
+                      </span>
+                    </button>
+                  ))
+                )}
               </div>
             </div>
 
@@ -5512,14 +5751,14 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
                 variant="outline"
                 onClick={() => {
                   setShowKaraokeDialog(false);
-                  setKaraokeSongCount('');
+                  setSelectedSongRoomId('');
                 }}
               >
                 キャンセル
               </Button>
               <Button
                 onClick={handleKaraokeConfirm}
-                disabled={isOrderingDisabled || !karaokeSongCount || parseInt(karaokeSongCount) <= 0}
+                disabled={isOrderingDisabled || !selectedSongRoomId}
                 className="bg-pink-600 hover:bg-pink-700"
               >
                 <CheckCircle className="w-4 h-4 mr-2" />

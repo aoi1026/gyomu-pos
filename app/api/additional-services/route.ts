@@ -16,6 +16,10 @@ async function ensureAdditionalServicesTable(client: any) {
   `);
 
   await client.query(`
+    ALTER TABLE additional_services ADD COLUMN IF NOT EXISTS note TEXT
+  `);
+
+  await client.query(`
     CREATE INDEX IF NOT EXISTS idx_additional_services_session_id 
     ON additional_services(session_id)
   `);
@@ -65,7 +69,7 @@ export async function GET(request: NextRequest) {
     }
 
     const result = await client.query(
-      `SELECT id, session_id, service_type, count, charge, created_at, updated_at
+      `SELECT id, session_id, service_type, count, charge, note, created_at, updated_at
        FROM additional_services
        WHERE session_id = $1
        ORDER BY created_at ASC`,
@@ -78,6 +82,7 @@ export async function GET(request: NextRequest) {
       type: row.service_type,
       count: row.count,
       charge: parseFloat(row.charge),
+      note: row.note ?? undefined,
       timestamp: new Date(row.created_at).getTime()
     }));
 
@@ -103,7 +108,7 @@ export async function POST(request: NextRequest) {
     await ensureAdditionalServicesTable(client);
 
     const body = await request.json();
-    const { sessionId, type, count, charge } = body;
+    const { sessionId, type, count, charge, note } = body;
 
     if (!sessionId || !type || !count || charge === undefined) {
       return NextResponse.json(
@@ -119,11 +124,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const noteVal = note !== undefined && note !== null && String(note).trim() !== '' ? String(note) : null;
+
     const result = await client.query(
-      `INSERT INTO additional_services (session_id, service_type, count, charge)
-       VALUES ($1, $2, $3, $4)
-       RETURNING id, session_id, service_type, count, charge, created_at, updated_at`,
-      [parseInt(sessionId, 10), type, parseInt(count, 10), parseFloat(charge)]
+      `INSERT INTO additional_services (session_id, service_type, count, charge, note)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING id, session_id, service_type, count, charge, note, created_at, updated_at`,
+      [parseInt(sessionId, 10), type, parseInt(count, 10), parseFloat(charge), noteVal]
     );
 
     const row = result.rows[0];
@@ -132,6 +139,7 @@ export async function POST(request: NextRequest) {
       type: row.service_type,
       count: row.count,
       charge: parseFloat(row.charge),
+      note: row.note ?? undefined,
       timestamp: new Date(row.created_at).getTime()
     };
 

@@ -27,7 +27,7 @@ import { Label } from '@/components/ui/label';
 import {
   Wine, Users, BarChart3, Clock, CreditCard, Settings,
   Shield, TrendingUp, Calendar, DollarSign,
-  FileText, AlertCircle, Star, Bell, Crown, Table, Database, Download, Upload, CheckCircle
+  FileText, AlertCircle, Star, Bell, Crown, Table, Database, Download, Upload, CheckCircle, DoorOpen
 } from 'lucide-react';
 import { formatCurrency, formatDateTime, mockAttendance, mockBottles } from '@/lib/mock-data';
 import { getCurrentBackRate, formatBackRate } from '@/lib/cast-back-system';
@@ -1026,6 +1026,15 @@ export default function Dashboard() {
                   {/* <Table className="w-6 h-6 text-cyan-600" /> */}
                   <span className="w-6 h-5 text-cyan-600 text-2xl"><MdOutlineTableRestaurant /></span>
                   <span className="text-sm font-medium">テーブル管理</span>
+                </Button>
+
+                <Button
+                  variant="outline"
+                  className="h-24 flex-col space-y-2 hover:bg-indigo-50 hover:border-indigo-300"
+                  onClick={() => router.push('/admin/rooms')}
+                >
+                  <DoorOpen className="w-6 h-6 text-indigo-600" />
+                  <span className="text-sm font-medium">部屋管理</span>
                 </Button>
 
                 <Button

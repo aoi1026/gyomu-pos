@@ -95,10 +95,12 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
   const [editingRemainingSeconds, setEditingRemainingSeconds] = useState<string>('');
   const [addCharges, setAddCharges] = useState<{[key: string]: number}>({});
   const [additionalServices, setAdditionalServices] = useState<Array<{
+    id?: number;
     type: 'bottle_keep' | 'vip_room' | 'karaoke';
     count: number;
     charge: number;
     timestamp: number;
+    note?: string;
   }>>([]);
   const [loading, setLoading] = useState(true);
   const [orderRequestStatus, setOrderRequestStatus] = useState<{[key: string]: 'pending' | 'sent' | 'accepted' | 'rejected'}>({});
@@ -275,6 +277,10 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
   const [showBottleKeepDialog, setShowBottleKeepDialog] = useState(false);
   const [showVipRoomDialog, setShowVipRoomDialog] = useState(false);
   const [showKaraokeDialog, setShowKaraokeDialog] = useState(false);
+  const [vipRooms, setVipRooms] = useState<Array<{ id: number; name: string; status: number; other: string | null }>>([]);
+  const [selectedVipRoomId, setSelectedVipRoomId] = useState<string>('');
+  const [songRooms, setSongRooms] = useState<Array<{ id: number; name: string; status: number; other: string | null }>>([]);
+  const [selectedSongRoomId, setSelectedSongRoomId] = useState<string>('');
 
   const getNominationTypeLabel = (type: 'main' | 'inside' | 'together') => {
     switch (type) {
@@ -304,6 +310,42 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
       // パースエラー時は何もしない（権限なし扱い）
     }
   }, []);
+
+  useEffect(() => {
+    if (!showVipRoomDialog) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await fetch('/api/vip-room');
+        const j = await r.json();
+        if (!cancelled && j.success) setVipRooms(j.rooms || []);
+      } catch {
+        if (!cancelled) setVipRooms([]);
+      }
+    })();
+    setSelectedVipRoomId('');
+    return () => {
+      cancelled = true;
+    };
+  }, [showVipRoomDialog]);
+
+  useEffect(() => {
+    if (!showKaraokeDialog) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await fetch('/api/song-room');
+        const j = await r.json();
+        if (!cancelled && j.success) setSongRooms(j.rooms || []);
+      } catch {
+        if (!cancelled) setSongRooms([]);
+      }
+    })();
+    setSelectedSongRoomId('');
+    return () => {
+      cancelled = true;
+    };
+  }, [showKaraokeDialog]);
 
   // テーブル情報を取得
   const loadTableData = async () => {
@@ -527,8 +569,8 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
         const newServices = result.data || [];
         // データが変更された場合のみ状態を更新（ちらつき防止）
         setAdditionalServices(prev => {
-          const prevStr = JSON.stringify(prev.map((s: any) => ({ id: s.id, type: s.type, count: s.count, charge: s.charge, timestamp: s.timestamp })));
-          const newStr = JSON.stringify(newServices.map((s: any) => ({ id: s.id, type: s.type, count: s.count, charge: s.charge, timestamp: s.timestamp })));
+          const prevStr = JSON.stringify(prev.map((s: any) => ({ id: s.id, type: s.type, count: s.count, charge: s.charge, timestamp: s.timestamp, note: s.note })));
+          const newStr = JSON.stringify(newServices.map((s: any) => ({ id: s.id, type: s.type, count: s.count, charge: s.charge, timestamp: s.timestamp, note: s.note })));
           if (prevStr !== newStr) {
             return newServices;
           }
@@ -807,6 +849,55 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
     );
   };
 
+  const cancelSession = async () => {
+    if (!session || !tableId) return;
+
+    confirm(
+      'セッション取消',
+      'このセッションを取り消しますか？注文・指名・追加サービス・決済履歴など、このセッションに関連するデータは保存されず削除されます。',
+      async () => {
+        try {
+          const response = await fetch(`/api/sessions/${session.id}`, {
+            method: 'DELETE',
+          });
+          const result = await response.json();
+
+          if (!result.success) {
+            throw new Error(result.error || 'セッションの取消に失敗しました');
+          }
+
+          setSession(null);
+          setCartOrders([]);
+          setServiceOrders([]);
+          setNominations([]);
+          setSetExtensions([]);
+          setGuestCount('');
+          setSetExtensionCountdown(0);
+          setAdditionalServices([]);
+          setOrderRequestStatus({});
+          setServiceRequestStatus({});
+          setIsPaymentCompleted(false);
+          setPaidAmount(0);
+          setLastPaymentMethod('');
+          setManualTotal(null);
+          setShowPaymentDialog(false);
+          setShowPaymentMethodDialog(false);
+          setShowCashPaymentDialog(false);
+          setShowStoreCreditCardPaymentDialog(false);
+
+          success('セッション取消', 'セッションを取り消しました');
+
+          setTimeout(() => {
+            onClose();
+          }, 500);
+        } catch (err) {
+          console.error('セッション取消エラー:', err);
+          error('エラー', `セッション取消に失敗しました: ${err instanceof Error ? err.message : '不明なエラー'}`);
+        }
+      }
+    );
+  };
+
   // セット延長カウントダウンタイマー（リアルタイム更新）
   useEffect(() => {
     if (!session) return;
@@ -1015,9 +1106,213 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
     setShowServiceOrderDialog(true);
   };
 
+  const handleVipRoomConfirm = async () => {
+    if (!session) {
+      error('エラー', 'セッション情報が見つかりません');
+      return;
+    }
+    if (isOrderingDisabled) {
+      error('エラー', isPaymentCompleted ? '決済が完了しているため、追加サービスを利用できません' : 'セット時間が終了したため、追加サービスを利用できません');
+      return;
+    }
+    if (!selectedVipRoomId) {
+      error('エラー', 'ルームを選択してください');
+      return;
+    }
+    const roomId = parseInt(selectedVipRoomId, 10);
+    const room = vipRooms.find(r => r.id === roomId);
+    if (!room) {
+      error('エラー', 'ルーム情報が見つかりません');
+      return;
+    }
+    if (room.status === 1) {
+      error('通知', 'その部屋は現在利用中です');
+      return;
+    }
+    let charges = addCharges;
+    if (Object.keys(charges).length === 0) {
+      try {
+        const chargesResponse = await fetch('/api/add-charges');
+        const chargesResult = await chargesResponse.json();
+        if (chargesResult.success && chargesResult.charges) {
+          const chargesMap: { [key: string]: number } = {};
+          chargesResult.charges.forEach((charge: any) => {
+            chargesMap[charge.charge_name] = parseFloat(charge.value) || 0;
+          });
+          charges = chargesMap;
+          setAddCharges(chargesMap);
+        }
+      } catch (err) {
+        console.error('追加料金取得エラー:', err);
+      }
+    }
+    const vipUnit = charges['vip_room'] || 0;
+    const reserveRes = await fetch(`/api/vip-room/${roomId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ session_id: session.id }),
+    });
+    const reserveJson = await reserveRes.json();
+    if (!reserveRes.ok || !reserveJson.success) {
+      error('通知', reserveJson.error === 'この部屋は現在利用中です' || reserveJson.occupied ? 'その部屋は現在利用中です' : (reserveJson.error || 'ルームの予約に失敗しました'));
+      const r2 = await fetch('/api/vip-room');
+      const j2 = await r2.json();
+      if (j2.success) setVipRooms(j2.rooms || []);
+      return;
+    }
+    const additionalServiceResponse = await fetch('/api/additional-services', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sessionId: session.id,
+        type: 'vip_room',
+        count: 1,
+        charge: vipUnit,
+        note: room.name,
+      }),
+    });
+    const additionalServiceResult = await additionalServiceResponse.json();
+    if (!additionalServiceResult.success) {
+      error('エラー', additionalServiceResult.error || '追加サービスの登録に失敗しました');
+      return;
+    }
+    const newService = additionalServiceResult.data;
+    setAdditionalServices(prev => [...prev, newService]);
+    setShowVipRoomDialog(false);
+    setSelectedVipRoomId('');
+    const rList = await fetch('/api/vip-room');
+    const jList = await rList.json();
+    if (jList.success) setVipRooms(jList.rooms || []);
+    await loadAdditionalServices(session.id);
+    success('VIPルーム利用', `${room.name} を利用として登録しました`);
+  };
+
+  const handleKaraokeConfirm = async () => {
+    if (!session) {
+      error('エラー', 'セッション情報が見つかりません');
+      return;
+    }
+    if (isOrderingDisabled) {
+      error('エラー', isPaymentCompleted ? '決済が完了しているため、追加サービスを利用できません' : 'セット時間が終了したため、追加サービスを利用できません');
+      return;
+    }
+    if (!selectedSongRoomId) {
+      error('エラー', 'ルームを選択してください');
+      return;
+    }
+    const roomId = parseInt(selectedSongRoomId, 10);
+    const room = songRooms.find(r => r.id === roomId);
+    if (!room) {
+      error('エラー', 'ルーム情報が見つかりません');
+      return;
+    }
+    if (room.status === 1) {
+      error('通知', 'その部屋は現在利用中です');
+      return;
+    }
+    let charges = addCharges;
+    if (Object.keys(charges).length === 0) {
+      try {
+        const chargesResponse = await fetch('/api/add-charges');
+        const chargesResult = await chargesResponse.json();
+        if (chargesResult.success && chargesResult.charges) {
+          const chargesMap: { [key: string]: number } = {};
+          chargesResult.charges.forEach((charge: any) => {
+            chargesMap[charge.charge_name] = parseFloat(charge.value) || 0;
+          });
+          charges = chargesMap;
+          setAddCharges(chargesMap);
+        }
+      } catch (err) {
+        console.error('追加料金取得エラー:', err);
+      }
+    }
+    const songUnit = charges['song_room'] || 0;
+    const reserveRes = await fetch(`/api/song-room/${roomId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ session_id: session.id }),
+    });
+    const reserveJson = await reserveRes.json();
+    if (!reserveRes.ok || !reserveJson.success) {
+      error('通知', reserveJson.error === 'この部屋は現在利用中です' || reserveJson.occupied ? 'その部屋は現在利用中です' : (reserveJson.error || 'ルームの予約に失敗しました'));
+      const r2 = await fetch('/api/song-room');
+      const j2 = await r2.json();
+      if (j2.success) setSongRooms(j2.rooms || []);
+      return;
+    }
+    const additionalServiceResponse = await fetch('/api/additional-services', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sessionId: session.id,
+        type: 'karaoke',
+        count: 1,
+        charge: songUnit,
+        note: room.name,
+      }),
+    });
+    const additionalServiceResult = await additionalServiceResponse.json();
+    if (!additionalServiceResult.success) {
+      error('エラー', additionalServiceResult.error || '追加サービスの登録に失敗しました');
+      return;
+    }
+    const newService = additionalServiceResult.data;
+    setAdditionalServices(prev => [...prev, newService]);
+    setShowKaraokeDialog(false);
+    setSelectedSongRoomId('');
+    const rList = await fetch('/api/song-room');
+    const jList = await rList.json();
+    if (jList.success) setSongRooms(jList.rooms || []);
+    await loadAdditionalServices(session.id);
+    success('カラオケ利用', `${room.name} を利用として登録しました`);
+  };
+
   // セット延長処理
   const handleSetExtension = () => {
     setShowSetExtensionDialog(true);
+  };
+
+  const appendExtensionRoomSurcharges = async (
+    sessionId: number,
+    chargesMap: { [key: string]: number },
+    servicesSnapshot: typeof additionalServices
+  ) => {
+    const hasVip = servicesSnapshot.some(s => s.type === 'vip_room');
+    const hasKaraoke = servicesSnapshot.some(s => s.type === 'karaoke');
+    const vipUnit = chargesMap['vip_room'] || 0;
+    const songUnit = chargesMap['song_room'] || 0;
+    try {
+      if (hasVip && vipUnit > 0) {
+        await fetch('/api/additional-services', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sessionId,
+            type: 'vip_room',
+            count: 1,
+            charge: vipUnit,
+            note: 'セット延長',
+          }),
+        });
+      }
+      if (hasKaraoke && songUnit > 0) {
+        await fetch('/api/additional-services', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sessionId,
+            type: 'karaoke',
+            count: 1,
+            charge: songUnit,
+            note: 'セット延長',
+          }),
+        });
+      }
+      await loadAdditionalServices(sessionId);
+    } catch (e) {
+      console.error('セット延長時のルーム料金追加エラー:', e);
+    }
   };
 
   const confirmSetExtension = async () => {
@@ -1026,15 +1321,12 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
       return;
     }
 
+    const additionalSnap = [...additionalServices];
+    const sessionIdForExtension = session.id;
+
     const count = parseInt(extensionGuestCount);
     if (isNaN(count) || count <= 0) {
       error('エラー', '有効な人数を入力してください');
-      return;
-    }
-
-    // 人数がテーブルの定員を超えていないかチェック
-    if (tableData && tableData.capacity && count > tableData.capacity) {
-      error('エラー', `人数はテーブルの定員（${tableData.capacity}名）以下で入力してください`);
       return;
     }
 
@@ -1119,6 +1411,7 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
       setShowSetExtensionDialog(false);
       setExtensionGuestCount('');
       await loadSession();
+      await appendExtensionRoomSurcharges(sessionIdForExtension, charges, additionalSnap);
       if (session?.id) await loadNominations(session.id);
       success('セット延長', `${count}名でセットを延長しました（60分追加）`);
     } catch (err) {
@@ -2637,13 +2930,15 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
                               serviceLabel = 'ボトルキープ';
                             } else if (service.type === 'vip_room') {
                               serviceLabel = 'VIPルーム利用';
-                              if (service.count > 1) {
+                              if (service.note) breakdownText = service.note;
+                              else if (service.count > 1) {
                                 const unitCharge = service.charge / service.count;
                                 breakdownText = `¥${unitCharge.toLocaleString()} × ${service.count}部屋`;
                               }
                             } else if (service.type === 'karaoke') {
                               serviceLabel = 'カラオケ利用';
-                              if (service.count > 1) {
+                              if (service.note) breakdownText = service.note;
+                              else if (service.count > 1) {
                                 const unitCharge = service.charge / service.count;
                                 breakdownText = `¥${unitCharge.toLocaleString()} × ${service.count}曲`;
                               }
@@ -2827,6 +3122,14 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
                           決済
                         </Button>
                       )}
+                      <Button
+                        onClick={cancelSession}
+                        variant="outline"
+                        className="w-full mt-3 border-red-300 text-red-600 hover:bg-red-50 hover:text-red-700"
+                      >
+                        <XCircle className="w-4 h-4 mr-2" />
+                        セッション取消
+                      </Button>
                     </div>
                   </CardContent>
                 </Card>
@@ -3348,6 +3651,136 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
               }}
             >
               キャンセル
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* VIPルーム */}
+      <Dialog open={showVipRoomDialog} onOpenChange={setShowVipRoomDialog}>
+        <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center">
+              <Users className="w-5 h-5 mr-2" />
+              個室利用（VIPルーム）
+            </DialogTitle>
+            <DialogDescription>
+              ルームを選択してください
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="text-sm text-gray-600">
+              追加料金（1回）: {formatCurrency(addCharges['vip_room'] || 0)}
+            </p>
+            <div className="space-y-2 max-h-[45vh] overflow-y-auto pr-1">
+              {vipRooms.length === 0 ? (
+                <p className="text-sm text-gray-500">登録されたVIPルームがありません。</p>
+              ) : (
+                vipRooms.map((room) => (
+                  <button
+                    key={room.id}
+                    type="button"
+                    onClick={() => setSelectedVipRoomId(String(room.id))}
+                    className={`w-full flex items-center justify-between gap-2 rounded-lg border p-3 text-left transition-colors ${
+                      selectedVipRoomId === String(room.id) ? 'border-purple-600 bg-purple-50' : 'border-gray-200 hover:bg-gray-50'
+                    }`}
+                  >
+                    <span className="font-medium text-gray-900">{room.name}</span>
+                    <span className="flex items-center gap-2 shrink-0">
+                      {room.status === 1 ? (
+                        <span className="inline-flex items-center justify-center rounded-full border-2 border-amber-500 px-2 py-0.5 text-[10px] font-semibold text-amber-800 whitespace-nowrap">
+                          利用中
+                        </span>
+                      ) : (
+                        <span className="text-xs text-gray-500">空き</span>
+                      )}
+                    </span>
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
+          <div className="flex justify-end space-x-3 pt-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowVipRoomDialog(false);
+                setSelectedVipRoomId('');
+              }}
+            >
+              キャンセル
+            </Button>
+            <Button
+              onClick={handleVipRoomConfirm}
+              disabled={isOrderingDisabled || !selectedVipRoomId}
+              className="bg-purple-600 hover:bg-purple-700"
+            >
+              <CheckCircle className="w-4 h-4 mr-2" />
+              確認
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* カラオケルーム */}
+      <Dialog open={showKaraokeDialog} onOpenChange={setShowKaraokeDialog}>
+        <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center">
+              <Users className="w-5 h-5 mr-2" />
+              カラオケルーム利用
+            </DialogTitle>
+            <DialogDescription>ルームを選択してください</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="text-sm text-gray-600">
+              追加料金（1回）: {formatCurrency(addCharges['song_room'] || 0)}
+            </p>
+            <div className="space-y-2 max-h-[45vh] overflow-y-auto pr-1">
+              {songRooms.length === 0 ? (
+                <p className="text-sm text-gray-500">登録されたカラオケルームがありません。</p>
+              ) : (
+                songRooms.map((room) => (
+                  <button
+                    key={room.id}
+                    type="button"
+                    onClick={() => setSelectedSongRoomId(String(room.id))}
+                    className={`w-full flex items-center justify-between gap-2 rounded-lg border p-3 text-left transition-colors ${
+                      selectedSongRoomId === String(room.id) ? 'border-pink-600 bg-pink-50' : 'border-gray-200 hover:bg-gray-50'
+                    }`}
+                  >
+                    <span className="font-medium text-gray-900">{room.name}</span>
+                    <span className="flex items-center gap-2 shrink-0">
+                      {room.status === 1 ? (
+                        <span className="inline-flex items-center justify-center rounded-full border-2 border-amber-500 px-2 py-0.5 text-[10px] font-semibold text-amber-800 whitespace-nowrap">
+                          利用中
+                        </span>
+                      ) : (
+                        <span className="text-xs text-gray-500">空き</span>
+                      )}
+                    </span>
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
+          <div className="flex justify-end space-x-3 pt-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowKaraokeDialog(false);
+                setSelectedSongRoomId('');
+              }}
+            >
+              キャンセル
+            </Button>
+            <Button
+              onClick={handleKaraokeConfirm}
+              disabled={isOrderingDisabled || !selectedSongRoomId}
+              className="bg-pink-600 hover:bg-pink-700"
+            >
+              <CheckCircle className="w-4 h-4 mr-2" />
+              確認
             </Button>
           </div>
         </DialogContent>
