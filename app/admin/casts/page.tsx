@@ -591,7 +591,7 @@ export default function CastsPage() {
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* 説明カード */}
-        <Card className="mb-8">
+        {/* <Card className="mb-8">
           <CardHeader>
             <CardTitle className="flex items-center text-purple-800">
               <Users className="w-5 h-5 mr-2" />
@@ -617,7 +617,7 @@ export default function CastsPage() {
               </div>
             </div>
           </CardContent>
-        </Card>
+        </Card> */}
 
         <Tabs
           value={isSuperAdmin ? activeTab : 'staff'}

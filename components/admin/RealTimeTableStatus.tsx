@@ -297,17 +297,9 @@ export default function RealTimeTableStatus({ open, onClose }: RealTimeTableStat
 
   // 終了時間を計算する関数
   const calculateEndTime = (session: SessionData): Date => {
-    const setCount = session.set_count || 1;
-    const setDuration = 3600; // 1セット = 3600秒
-    const totalSeconds = setCount * setDuration;
-    
     const sessionStart = new Date(session.created_at).getTime();
-    const pausedElapsed = session.paused_elapsed || 0;
-    
-    // 終了時間 = 開始時間 + 総時間 + 累積停止時間
-    const endTime = new Date(sessionStart + (totalSeconds + pausedElapsed) * 1000);
-    
-    return endTime;
+    // 「終了予定」は開始 + 60分で固定表示（延長や停止時間は反映しない）
+    return new Date(sessionStart + 60 * 60 * 1000);
   };
 
   const filteredTables = tables.filter(table => {

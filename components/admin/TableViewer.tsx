@@ -109,6 +109,8 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
   // セット延長関連
   const [showSetExtensionDialog, setShowSetExtensionDialog] = useState(false);
   const [extensionGuestCount, setExtensionGuestCount] = useState<string>('');
+  const [showSetJoinDialog, setShowSetJoinDialog] = useState(false);
+  const [joinGuestCount, setJoinGuestCount] = useState<string>('1');
   
   // 同伴指名関連
   const [showCastSelectionDialog, setShowCastSelectionDialog] = useState(false);
@@ -281,6 +283,7 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
   const [selectedVipRoomId, setSelectedVipRoomId] = useState<string>('');
   const [songRooms, setSongRooms] = useState<Array<{ id: number; name: string; status: number; other: string | null }>>([]);
   const [selectedSongRoomId, setSelectedSongRoomId] = useState<string>('');
+  const [timeAdjustStepMin, setTimeAdjustStepMin] = useState<5 | 10 | 15>(5);
 
   const getNominationTypeLabel = (type: 'main' | 'inside' | 'together') => {
     switch (type) {
@@ -309,6 +312,23 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
     } catch {
       // パースエラー時は何もしない（権限なし扱い）
     }
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/project-variables?name=session_time_adjust_step_min', { cache: 'no-store' });
+        const j = await res.json();
+        const n = Number(j?.data?.value);
+        if (!cancelled && (n === 5 || n === 10 || n === 15)) setTimeAdjustStepMin(n);
+      } catch {
+        // ignore (default 5)
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -988,8 +1008,6 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
     return () => clearInterval(checkSessionInterval);
   }, [session?.id, tableId]);
 
-  if (!tableId) return null;
-
   // 指名料金の合計を計算（テーブルページと同じロジック）
   const calculateNominationCharges = (): number => {
     // nominations APIのcostは「指名登録 + 延長時加算」の累計になっている前提
@@ -1062,9 +1080,9 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
       } else if (typeId === 'inside') {
         nominationCharge = charges['inside'] || 0;
       } else if (typeId === 'together') {
-        const mainCharge = charges['main'] || 0;
         const togetherCharge = charges['together'] || 0;
-        nominationCharge = mainCharge + togetherCharge;
+        // 同伴指名は同伴料金に指名料金が含まれるため、最初のセットでは同伴料金のみ
+        nominationCharge = togetherCharge;
       }
 
       // 指名を登録
@@ -1270,7 +1288,49 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
 
   // セット延長処理
   const handleSetExtension = () => {
+    const currentGuests = Number(session?.client || parseInt(guestCount || '0', 10) || 1);
+    setExtensionGuestCount(String(Math.max(1, currentGuests)));
     setShowSetExtensionDialog(true);
+  };
+
+  const handleSetJoin = () => {
+    setJoinGuestCount('1');
+    setShowSetJoinDialog(true);
+  };
+
+  const confirmSetJoin = async () => {
+    if (!session) {
+      error('エラー', 'セッション情報が見つかりません');
+      return;
+    }
+    const addCount = parseInt(joinGuestCount, 10);
+    if (isNaN(addCount) || addCount <= 0) {
+      error('エラー', '有効な人数を入力してください');
+      return;
+    }
+
+    try {
+      const currentGuests = Number(session.client || parseInt(guestCount || '0', 10) || 0);
+      const nextGuests = currentGuests + addCount;
+      const response = await fetch(`/api/sessions/${session.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ client: nextGuests }),
+      });
+      const result = await response.json();
+      if (!result.success) {
+        throw new Error(result.error || 'セット追加に失敗しました');
+      }
+      setSession(prev => (prev ? { ...prev, client: nextGuests } : prev));
+      setGuestCount(String(nextGuests));
+      setShowSetJoinDialog(false);
+      setJoinGuestCount('1');
+      await loadSession();
+      success('セット追加', `${addCount}名分のセットを追加しました`);
+    } catch (err) {
+      console.error('セット追加エラー:', err);
+      error('エラー', err instanceof Error ? err.message : 'セット追加に失敗しました');
+    }
   };
 
   const appendExtensionRoomSurcharges = async (
@@ -1472,10 +1532,13 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
     );
   };
 
+  const lastAutoSavedRemainingRef = useRef<number | null>(null);
+  const autoSaveRemainingTimerRef = useRef<any>(null);
+
   // 残り時間変更処理（停止中のみ）
-  const handleChangeRemainingTime = async () => {
+  const handleChangeRemainingTime = async (opts?: { silent?: boolean; keepEditing?: boolean }) => {
     if (!session || !session.is_paused) {
-      error('エラー', '停止中のみ残り時間を変更できます');
+      if (!opts?.silent) error('エラー', '停止中のみ残り時間を変更できます');
       return;
     }
 
@@ -1484,7 +1547,7 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
     const newRemainingSeconds = minutes * 60 + seconds;
 
     if (newRemainingSeconds < 0) {
-      error('エラー', '残り時間は0以上である必要があります');
+      if (!opts?.silent) error('エラー', '残り時間は0以上である必要があります');
       return;
     }
 
@@ -1524,17 +1587,88 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
         setSession(prev => prev ? { ...prev, ...result.data } : result.data);
       }
 
-      setIsEditingRemainingTime(false);
-      setEditingRemainingMinutes('');
-      setEditingRemainingSeconds('');
+      if (!opts?.keepEditing) {
+        setIsEditingRemainingTime(false);
+        setEditingRemainingMinutes('');
+        setEditingRemainingSeconds('');
+      }
       await loadSession();
       setTimeout(() => {
         loadSession();
       }, 500);
-      success('残り時間変更', '残り時間を変更しました');
+      if (!opts?.silent) success('残り時間変更', '残り時間を変更しました');
     } catch (err) {
       console.error('残り時間変更エラー:', err);
-      error('エラー', err instanceof Error ? err.message : '残り時間の変更に失敗しました');
+      if (!opts?.silent) error('エラー', err instanceof Error ? err.message : '残り時間の変更に失敗しました');
+    }
+  };
+
+  useEffect(() => {
+    if (!session?.is_paused) return;
+    if (!isEditingRemainingTime) return;
+
+    // 入力途中（空文字など）は保存しない
+    const mStr = editingRemainingMinutes.trim();
+    const sStr = editingRemainingSeconds.trim();
+    if (mStr === '' || sStr === '') return;
+
+    const minutes = Number(mStr);
+    const seconds = Number(sStr);
+    if (!Number.isFinite(minutes) || minutes < 0) return;
+    if (!Number.isFinite(seconds) || seconds < 0 || seconds > 59) return;
+
+    const next = Math.floor(minutes) * 60 + Math.floor(seconds);
+    if (lastAutoSavedRemainingRef.current === next) return;
+
+    if (autoSaveRemainingTimerRef.current) clearTimeout(autoSaveRemainingTimerRef.current);
+    autoSaveRemainingTimerRef.current = setTimeout(async () => {
+      lastAutoSavedRemainingRef.current = next;
+      await handleChangeRemainingTime({ silent: true, keepEditing: true });
+    }, 450);
+
+    return () => {
+      if (autoSaveRemainingTimerRef.current) clearTimeout(autoSaveRemainingTimerRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.is_paused, isEditingRemainingTime, editingRemainingMinutes, editingRemainingSeconds]);
+
+  const formatHHMM = (d: Date) =>
+    d.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
+
+  const shiftStartEndByMinutes = async (deltaMinutes: number) => {
+    if (!session || !session.is_paused) {
+      error('エラー', '停止中のみ時間を調整できます');
+      return;
+    }
+    if (!session.created_at || !session.paused_at) {
+      error('エラー', '時間情報が不足しています');
+      return;
+    }
+    try {
+      // created_at と paused_at を同じだけずらすことで、残り時間（elapsed計算）は変えない
+      const baseCreated = new Date(session.created_at).getTime();
+      const basePausedAt = new Date(session.paused_at).getTime();
+      const deltaMs = deltaMinutes * 60 * 1000;
+      const nextCreatedAt = new Date(baseCreated + deltaMs).toISOString();
+      const nextPausedAt = new Date(basePausedAt + deltaMs).toISOString();
+
+      const response = await fetch(`/api/sessions/${session.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ created_at: nextCreatedAt, paused_at: nextPausedAt }),
+      });
+      const result = await response.json();
+      if (!result.success) throw new Error(result.error || '時間の調整に失敗しました');
+      if (result.data) setSession(prev => (prev ? { ...prev, ...result.data } : result.data));
+      setIsEditingRemainingTime(false);
+      setEditingRemainingMinutes('');
+      setEditingRemainingSeconds('');
+      await loadSession();
+      setTimeout(() => loadSession(), 500);
+      success('時間調整', '開始/終了時刻を調整しました（残り時間は維持）');
+    } catch (err) {
+      console.error('時間調整エラー:', err);
+      error('エラー', err instanceof Error ? err.message : '時間の調整に失敗しました');
     }
   };
 
@@ -1652,9 +1786,9 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
         }
       }
 
-      const mainCharge = charges['main'] || 0;
       const togetherCharge = charges['together'] || 0;
-      const nominationCharge = mainCharge + togetherCharge;
+      // 同伴指名は同伴料金に指名料金が含まれるため、最初のセットでは同伴料金のみ
+      const nominationCharge = togetherCharge;
 
       // 指名を登録
       const response = await fetch('/api/nominations', {
@@ -2035,6 +2169,8 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
     inside: 'bg-blue-50 text-blue-700 border-blue-200',
     together: 'bg-rose-50 text-rose-700 border-rose-200'
   };
+
+  if (!tableId) return null;
 
   return (
     <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
@@ -2619,7 +2755,74 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
                   </CardHeader>
                   <CardContent className="space-x-2 flex">
                     <div className="w-1/2 bg-white rounded-md p-3 border border-purple-200 text-center">
-                      <div className="text-[11px] text-gray-500 mb-1">残り時間</div>
+                      <div className="mb-1">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="text-[11px] text-gray-500">
+                            <div>開始 {session?.created_at ? formatHHMM(new Date(session.created_at)) : '--:--'}</div>
+                            <div>
+                              終了{' '}
+                              {session?.created_at
+                                ? formatHHMM(new Date(new Date(session.created_at).getTime() + (session.set_count || 1) * 3600 * 1000))
+                                : '--:--'}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <select
+                              className="h-7 rounded border border-gray-200 bg-white px-2 text-[11px]"
+                              value={timeAdjustStepMin}
+                              onChange={async (e) => {
+                                const n = Number(e.target.value);
+                                if (n !== 5 && n !== 10 && n !== 15) return;
+                                setTimeAdjustStepMin(n as any);
+                                try {
+                                  await fetch('/api/project-variables', {
+                                    method: 'PATCH',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({
+                                      name: 'session_time_adjust_step_min',
+                                      value: String(n),
+                                      other: '開始/終了時刻の調整単位（分）',
+                                    }),
+                                  });
+                                } catch {
+                                  // ignore
+                                }
+                              }}
+                              title="調整単位（分）"
+                            >
+                              <option value={5}>5分</option>
+                              <option value={10}>10分</option>
+                              <option value={15}>15分</option>
+                            </select>
+                          </div>
+                        </div>
+                        <div className="mt-2 grid grid-cols-2 gap-2">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="h-9 text-sm font-semibold"
+                            onClick={() => void shiftStartEndByMinutes(-timeAdjustStepMin)}
+                            disabled={!session?.is_paused}
+                            title="開始/終了を前に（停止中のみ）"
+                          >
+                            <Minus className="w-4 h-4 mr-1" />
+                            {timeAdjustStepMin}分
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="h-9 text-sm font-semibold"
+                            onClick={() => void shiftStartEndByMinutes(timeAdjustStepMin)}
+                            disabled={!session?.is_paused}
+                            title="開始/終了を後に（停止中のみ）"
+                          >
+                            <Plus className="w-4 h-4 mr-1" />
+                            {timeAdjustStepMin}分
+                          </Button>
+                        </div>
+                      </div>
                       {session?.is_paused && isEditingRemainingTime ? (
                         <div className="space-y-2">
                           <div className="flex items-center justify-center gap-1">
@@ -2643,40 +2846,21 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
                               placeholder="秒"
                             />
                           </div>
-                          <div className="flex gap-1 justify-center">
-                            <Button
-                              size="sm"
-                              onClick={handleChangeRemainingTime}
-                              className="bg-green-600 hover:bg-green-700 text-white"
-                            >
-                              <Save className="w-3 h-3 mr-1" />
-                              {/* 変更 */}
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => {
-                                setIsEditingRemainingTime(false);
-                                setEditingRemainingMinutes('');
-                                setEditingRemainingSeconds('');
-                              }}
-                            >
-                              <X className="w-3 h-3 mr-1" />
-                              {/* キャンセル */}
-                            </Button>
-                          </div>
+                          {/* <div className="text-[11px] text-gray-500">
+                            入力内容は自動で保存されます
+                          </div> */}
                         </div>
                       ) : (
                         <>
                           <div className={`text-2xl font-bold leading-none ${session?.is_paused ? 'text-gray-400' : 'text-purple-600'}`}>
                             {Math.floor(setExtensionCountdown / 60)}:{(setExtensionCountdown % 60).toString().padStart(2, '0')}
                           </div>
-                          <div className="text-[11px] text-gray-500 mt-1">
+                          {/* <div className="text-[11px] text-gray-500 mt-1">
                             {Math.floor(setExtensionCountdown / 60)}分 {setExtensionCountdown % 60}秒
-                          </div>
+                          </div> */}
                           {session?.is_paused && (
                             <>
-                              <div className="text-xs text-orange-600 mt-1 font-semibold">停止中</div>
+                              {/* <div className="text-xs text-orange-600 mt-1 font-semibold">停止中</div> */}
                               <Button
                                 size="sm"
                                 variant="outline"
@@ -2700,42 +2884,53 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
                         <div>セット数: {session.set_count}</div>
                         <div>人数: {session.client}名</div>
                       </div>
-                      <Button
-                        onClick={handleSetExtension}
-                        size="sm"
-                        className="flex-1 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
-                      >
-                        <Clock className="w-4 h-4 mr-1" />
-                        <span className="text-xs font-semibold">セット延長</span>
-                      </Button>
-                      <Button
-                        onClick={handleCancelSet}
-                        size="sm"
-                        disabled={setExtensionCountdown < 3600 || setExtensions.length === 0}
-                        variant="outline"
-                        className="flex-1 border-red-300 text-red-600 hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        <X className="w-4 h-4 mr-1" />
-                        <span className="text-xs font-semibold">1セットキャンセル</span>
-                      </Button>
-                      <Button
-                        onClick={handlePauseResume}
-                        size="sm"
-                        variant={session?.is_paused ? "default" : "outline"}
-                        className={session?.is_paused ? "flex-1 bg-green-600 hover:bg-green-700 text-white" : "flex-1 border-purple-300 text-purple-700 hover:bg-purple-50"}
-                      >
-                        {session?.is_paused ? (
-                          <>
-                            <Play className="w-4 h-4 mr-1" />
-                            <span className="text-xs font-semibold">再開</span>
-                          </>
-                        ) : (
-                          <>
-                            <Pause className="w-4 h-4 mr-1" />
-                            <span className="text-xs font-semibold">停止</span>
-                          </>
-                        )}
-                      </Button>
+                      <div className="grid grid-cols-2 gap-2">
+                        <Button
+                          onClick={handleSetJoin}
+                          size="sm"
+                          variant="outline"
+                          className="h-9 border-blue-300 text-blue-700 hover:bg-blue-50"
+                        >
+                          <Users className="w-4 h-4 mr-1" />
+                          <span className="text-xs font-semibold">セット追加</span>
+                        </Button>
+                        <Button
+                          onClick={handleSetExtension}
+                          size="sm"
+                          className="h-9 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
+                        >
+                          <Clock className="w-4 h-4 mr-1" />
+                          <span className="text-xs font-semibold">セット延長</span>
+                        </Button>
+                        <Button
+                          onClick={handleCancelSet}
+                          size="sm"
+                          disabled={setExtensionCountdown < 3600 || setExtensions.length === 0}
+                          variant="outline"
+                          className="h-9 border-red-300 text-red-600 hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          <X className="w-4 h-4 mr-1" />
+                          <span className="text-xs font-semibold">1セット<br />キャンセル</span>
+                        </Button>
+                        <Button
+                          onClick={handlePauseResume}
+                          size="sm"
+                          variant={session?.is_paused ? "default" : "outline"}
+                          className={session?.is_paused ? "h-9 bg-green-600 hover:bg-green-700 text-white" : "h-9 border-purple-300 text-purple-700 hover:bg-purple-50"}
+                        >
+                          {session?.is_paused ? (
+                            <>
+                              <Play className="w-4 h-4 mr-1" />
+                              <span className="text-xs font-semibold">再開</span>
+                            </>
+                          ) : (
+                            <>
+                              <Pause className="w-4 h-4 mr-1" />
+                              <span className="text-xs font-semibold">停止</span>
+                            </>
+                          )}
+                        </Button>
+                      </div>
                     </div>
                   </CardContent>
                 </Card>
@@ -2890,7 +3085,7 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
                             let breakdownText = '';
                             if (nomination.type_id === 'together') {
                               if (togetherCharge > 0 || mainCharge > 0) {
-                                breakdownText = `¥${togetherCharge.toLocaleString()}＋¥${mainCharge.toLocaleString()}`;
+                                breakdownText = `¥${togetherCharge.toLocaleString()}`;
                                 if (extCountSince > 0) {
                                   breakdownText += `＋¥${mainCharge.toLocaleString()}×${extCountSince}`;
                                 }
@@ -3154,6 +3349,63 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
           </Button>
         </div>
       </div>
+
+      {/* セット追加（合流）ダイアログ */}
+      <Dialog open={showSetJoinDialog} onOpenChange={setShowSetJoinDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center">
+              <Users className="w-5 h-5 mr-2" />
+              セット追加
+            </DialogTitle>
+            <DialogDescription>
+              途中合流する人数を入力してください。現在の利用人数に追加し、人数分のセット料金を注文合計に加算します。
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="rounded-none bg-blue-50 p-3 text-sm text-blue-900">
+              現在人数: {session?.client || guestCount || 0}名
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="join-guest-count">追加人数</Label>
+              <Input
+                id="join-guest-count"
+                type="number"
+                min="1"
+                value={joinGuestCount}
+                onChange={(e) => setJoinGuestCount(e.target.value)}
+                className="w-full"
+              />
+              <p className="text-sm text-gray-500">
+                追加セット料金: {joinGuestCount && !isNaN(parseInt(joinGuestCount)) && parseInt(joinGuestCount) > 0
+                  ? formatCurrency((addCharges['set_price'] || 0) * parseInt(joinGuestCount))
+                  : formatCurrency(0)}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex justify-end space-x-3">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowSetJoinDialog(false);
+                setJoinGuestCount('1');
+              }}
+            >
+              キャンセル
+            </Button>
+            <Button
+              onClick={confirmSetJoin}
+              disabled={!joinGuestCount || joinGuestCount.trim() === '' || isNaN(parseInt(joinGuestCount)) || parseInt(joinGuestCount) <= 0}
+              className="bg-blue-600 hover:bg-blue-700"
+            >
+              <CheckCircle className="w-4 h-4 mr-2" />
+              追加確定
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* セット延長ダイアログ */}
       <Dialog open={showSetExtensionDialog} onOpenChange={setShowSetExtensionDialog}>

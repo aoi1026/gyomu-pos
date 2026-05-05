@@ -1182,40 +1182,44 @@ export default function PayrollPreviewPage() {
             </div>
           </CardHeader>
           <CardContent className="p-0 sm:p-4 md:p-6">
-            {/* テーブル表示（全画面サイズで水平スクロール） */}
-            <div ref={payrollScrollRef} className="w-full min-w-0 overflow-x-auto">
+            {/* テーブル表示（高さ固定＋スクロール。最上段は固定） */}
+            <div
+              ref={payrollScrollRef}
+              className="w-full min-w-0 max-h-[min(60vh,calc(100vh-22rem))] overflow-auto overscroll-contain"
+              style={{ scrollbarGutter: 'stable' }}
+            >
                 <table className="text-xs sm:text-sm divide-y divide-gray-200 w-max">
                 <thead className="bg-gray-50">
                   <tr className="text-left text-gray-600">
-                    <th rowSpan={2} className="p-2 sm:p-3 font-semibold sticky left-0 bg-gray-50 z-20 min-w-[110px] sm:min-w-[130px] border-r border-gray-200 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.08)]">キャスト</th>
-                    <th rowSpan={2} className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[70px]">勤務時間</th>
-                    <th colSpan={5} className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap border-l-2 border-gray-300 border-r-2 border-gray-300">控除</th>
-                    <th rowSpan={2} className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[80px] border-l-2 border-gray-400">ペナルティ</th>
-                    <th rowSpan={2} className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[90px]">控除合計</th>
-                    <th rowSpan={2} className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[70px]">時給</th>
-                    <th rowSpan={2} className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[90px]">時間給</th>
-                    <th colSpan={5 + payrollCategories.length} className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap border-l-2 border-gray-300 border-r-2 border-gray-300">バック</th>
-                    <th rowSpan={2} className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[90px] border-l-2 border-gray-400">ボーナス</th>
-                    <th rowSpan={2} className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[90px]">ポイント</th>
-                    <th rowSpan={2} className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[95px] border-r-2 border-gray-300">追加ポイント</th>
-                    <th rowSpan={2} className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[90px]">バック合計</th>
-                    <th rowSpan={2} className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[90px]">合計</th>
-                    <th rowSpan={2} className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[90px] border-l border-gray-200">未払い</th>
+                    <th rowSpan={2} className="p-2 sm:p-3 font-semibold sticky left-0 top-0 bg-gray-50 z-30 min-w-[110px] sm:min-w-[130px] border-r border-gray-200 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.08)]">キャスト</th>
+                    <th rowSpan={2} className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[70px] sticky top-0 bg-gray-50 z-20">勤務時間</th>
+                    <th colSpan={5} className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap border-l-2 border-gray-300 border-r-2 border-gray-300 sticky top-0 bg-gray-50 z-20">控除</th>
+                    <th rowSpan={2} className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[80px] border-l-2 border-gray-400 sticky top-0 bg-gray-50 z-20">ペナルティ</th>
+                    <th rowSpan={2} className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[90px] sticky top-0 bg-gray-50 z-20">控除合計</th>
+                    <th rowSpan={2} className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[70px] sticky top-0 bg-gray-50 z-20">時給</th>
+                    <th rowSpan={2} className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[90px] sticky top-0 bg-gray-50 z-20">時間給</th>
+                    <th colSpan={5 + payrollCategories.length} className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap border-l-2 border-gray-300 border-r-2 border-gray-300 sticky top-0 bg-gray-50 z-20">バック</th>
+                    <th rowSpan={2} className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[90px] border-l-2 border-gray-400 sticky top-0 bg-gray-50 z-20">ボーナス</th>
+                    <th rowSpan={2} className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[90px] sticky top-0 bg-gray-50 z-20">ポイント</th>
+                    <th rowSpan={2} className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[95px] border-r-2 border-gray-300 sticky top-0 bg-gray-50 z-20">追加ポイント</th>
+                    <th rowSpan={2} className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[90px] sticky top-0 bg-gray-50 z-20">バック合計</th>
+                    <th rowSpan={2} className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[90px] sticky top-0 bg-gray-50 z-20">合計</th>
+                    <th rowSpan={2} className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[90px] border-l border-gray-200 sticky top-0 bg-gray-50 z-20">未払い</th>
                   </tr>
                   <tr className="text-left text-gray-600 border-t-2 border-gray-400">
-                    <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[90px] border-l-2 border-gray-300">前借日払</th>
-                    <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[70px]">送迎</th>
-                    <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[80px]">ヘアメイク</th>
-                    <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[70px]">レンタル</th>
-                    <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[70px] border-r-2 border-gray-300">その他</th>
+                    <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[90px] border-l-2 border-gray-300 sticky top-[38px] sm:top-[46px] bg-gray-50 z-20">前借日払</th>
+                    <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[70px] sticky top-[38px] sm:top-[46px] bg-gray-50 z-20">送迎</th>
+                    <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[80px] sticky top-[38px] sm:top-[46px] bg-gray-50 z-20">ヘアメイク</th>
+                    <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[70px] sticky top-[38px] sm:top-[46px] bg-gray-50 z-20">レンタル</th>
+                    <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[70px] border-r-2 border-gray-300 sticky top-[38px] sm:top-[46px] bg-gray-50 z-20">その他</th>
 
-                    <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[90px] border-l-2 border-gray-300">本指名</th>
-                    <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[90px]">本指名延長</th>
-                    <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[90px]">場内指名</th>
-                    <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[90px]">場内指名延長</th>
-                    <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[90px]">同伴</th>
+                    <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[90px] border-l-2 border-gray-300 sticky top-[38px] sm:top-[46px] bg-gray-50 z-20">本指名</th>
+                    <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[90px] sticky top-[38px] sm:top-[46px] bg-gray-50 z-20">本指名延長</th>
+                    <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[90px] sticky top-[38px] sm:top-[46px] bg-gray-50 z-20">場内指名</th>
+                    <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[90px] sticky top-[38px] sm:top-[46px] bg-gray-50 z-20">場内指名延長</th>
+                    <th className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[90px] sticky top-[38px] sm:top-[46px] bg-gray-50 z-20">同伴</th>
                     {payrollCategories.map((c) => (
-                      <th key={c.id} className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[90px]">{c.name}</th>
+                      <th key={c.id} className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[90px] sticky top-[38px] sm:top-[46px] bg-gray-50 z-20">{c.name}</th>
                     ))}
                   </tr>
                 </thead>

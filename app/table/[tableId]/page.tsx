@@ -102,6 +102,8 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
   const [setExtensions, setSetExtensions] = useState<Array<{ count: number; timestamp: number; price?: number }>>([]); // 延長履歴（priceは延長料金の合計を保存）
   const [showSetExtensionDialog, setShowSetExtensionDialog] = useState(false);
   const [extensionGuestCount, setExtensionGuestCount] = useState<string>('');
+  const [showSetJoinDialog, setShowSetJoinDialog] = useState(false);
+  const [joinGuestCount, setJoinGuestCount] = useState<string>('1');
   const [isEditingRemainingTime, setIsEditingRemainingTime] = useState(false);
   const [editingRemainingMinutes, setEditingRemainingMinutes] = useState<string>('');
   const [editingRemainingSeconds, setEditingRemainingSeconds] = useState<string>('');
@@ -125,6 +127,7 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
   const [showKaraokeDialog, setShowKaraokeDialog] = useState(false);
   const [songRooms, setSongRooms] = useState<Array<{ id: number; name: string; status: number; other: string | null }>>([]);
   const [selectedSongRoomId, setSelectedSongRoomId] = useState<string>('');
+  const [timeAdjustStepMin, setTimeAdjustStepMin] = useState<5 | 10 | 15>(5);
   const [additionalServices, setAdditionalServices] = useState<Array<{
     id?: number;
     type: 'bottle_keep' | 'vip_room' | 'karaoke';
@@ -182,6 +185,23 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
     };
   }, [showKaraokeDialog]);
 
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/project-variables?name=session_time_adjust_step_min', { cache: 'no-store' });
+        const j = await res.json();
+        const n = Number(j?.data?.value);
+        if (!cancelled && (n === 5 || n === 10 || n === 15)) setTimeAdjustStepMin(n);
+      } catch {
+        // ignore (default 5)
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const getNominationTypeLabel = (type: 'main' | 'inside' | 'together') => {
     switch (type) {
       case 'main':
@@ -235,10 +255,9 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
 
             let chargeToRemove = 0;
             if (nominationToDelete.type_id === 'together') {
-              // 同伴指名の場合は本指名料と同伴料の合計を削除
-              const mainCharge = charges['main'] || 0;
+              // 同伴指名は同伴料金のみ（最初のセットでは本指名料金を含めない）
               const togetherCharge = charges['together'] || 0;
-              chargeToRemove = mainCharge + togetherCharge;
+              chargeToRemove = togetherCharge;
             } else {
               chargeToRemove = charges[nominationToDelete.type_id] || 0;
             }
@@ -674,7 +693,7 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
   }, [tableAuth, isSessionActive]);
 
   // セッション情報を取得
-  const [session, setSession] = useState<{ id: number; created_at: string; set_count: number; set_extensions?: Array<{ count: number; timestamp: number }>; is_paused?: boolean; paused_at?: string; paused_elapsed?: number } | null>(null);
+  const [session, setSession] = useState<{ id: number; created_at: string; set_count: number; client?: number; set_extensions?: Array<{ count: number; timestamp: number }>; is_paused?: boolean; paused_at?: string; paused_elapsed?: number } | null>(null);
   
   // セッション開始通知を一度だけ表示するためのフラグ（セッションIDごと）
   const sessionStartNotifiedRef = useRef<{ [sessionId: number]: boolean }>({});
@@ -791,6 +810,10 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
             const activeSession = result.data.find((s: any) => s.id.toString() === sessionId && s.status === 1);
             if (activeSession) {
               setSession(activeSession);
+              if (activeSession.client) {
+                setGuestCount(activeSession.client.toString());
+                localStorage.setItem('guest_count', activeSession.client.toString());
+              }
               // セット延長情報を同期
               if (activeSession.set_extensions) {
                 setSetExtensions(activeSession.set_extensions);
@@ -1015,10 +1038,9 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
 
       let nominationCharge = 0;
       if (typeId === 'together') {
-        // 同伴指名の場合は本指名料と同伴料の両方を追加
-        const mainCharge = charges['main'] || 0;
+        // 同伴指名は同伴料金に指名料金が含まれるため、最初のセットでは同伴料金のみ
         const togetherCharge = charges['together'] || 0;
-        nominationCharge = mainCharge + togetherCharge;
+        nominationCharge = togetherCharge;
       } else {
         // その他の指名の場合は該当する料金を追加
         nominationCharge = charges[typeId] || 0;
@@ -1968,7 +1990,50 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
 
   // セット延長処理
   const handleSetExtension = () => {
+    const currentGuests = Number(session?.client || parseInt(guestCount || '0', 10) || 1);
+    setExtensionGuestCount(String(Math.max(1, currentGuests)));
     setShowSetExtensionDialog(true);
+  };
+
+  const handleSetJoin = () => {
+    setJoinGuestCount('1');
+    setShowSetJoinDialog(true);
+  };
+
+  const confirmSetJoin = async () => {
+    if (!session) {
+      error('エラー', 'セッション情報が見つかりません');
+      return;
+    }
+    const addCount = parseInt(joinGuestCount, 10);
+    if (isNaN(addCount) || addCount <= 0) {
+      error('エラー', '有効な人数を入力してください');
+      return;
+    }
+
+    try {
+      const currentGuests = Number(session.client || parseInt(guestCount || '0', 10) || 0);
+      const nextGuests = currentGuests + addCount;
+      const response = await fetch(`/api/sessions/${session.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ client: nextGuests }),
+      });
+      const result = await response.json();
+      if (!result.success) {
+        throw new Error(result.error || 'セット追加に失敗しました');
+      }
+      setSession(prev => (prev ? { ...prev, client: nextGuests } : prev));
+      setGuestCount(String(nextGuests));
+      localStorage.setItem('guest_count', String(nextGuests));
+      setShowSetJoinDialog(false);
+      setJoinGuestCount('1');
+      await loadSession();
+      success('セット追加', `${addCount}名分のセットを追加しました`);
+    } catch (err) {
+      console.error('セット追加エラー:', err);
+      error('エラー', err instanceof Error ? err.message : 'セット追加に失敗しました');
+    }
   };
 
   const confirmSetExtension = async () => {
@@ -2175,10 +2240,13 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
     await loadNominations();
   };
 
+  const lastAutoSavedRemainingRef = useRef<number | null>(null);
+  const autoSaveRemainingTimerRef = useRef<any>(null);
+
   // 残り時間変更処理（停止中のみ）
-  const handleChangeRemainingTime = async () => {
+  const handleChangeRemainingTime = async (opts?: { silent?: boolean; keepEditing?: boolean }) => {
     if (!session || !session.is_paused) {
-      error('エラー', '停止中のみ残り時間を変更できます');
+      if (!opts?.silent) error('エラー', '停止中のみ残り時間を変更できます');
       return;
     }
 
@@ -2187,7 +2255,7 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
     const newRemainingSeconds = minutes * 60 + seconds;
 
     if (newRemainingSeconds < 0) {
-      error('エラー', '残り時間は0以上である必要があります');
+      if (!opts?.silent) error('エラー', '残り時間は0以上である必要があります');
       return;
     }
 
@@ -2227,14 +2295,86 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
         setSession(prev => prev ? { ...prev, ...result.data } : result.data);
       }
 
+      if (!opts?.keepEditing) {
+        setIsEditingRemainingTime(false);
+        setEditingRemainingMinutes('');
+        setEditingRemainingSeconds('');
+      }
+      await loadSession();
+      if (!opts?.silent) success('残り時間変更', '残り時間を変更しました');
+    } catch (err) {
+      console.error('残り時間変更エラー:', err);
+      if (!opts?.silent) error('エラー', err instanceof Error ? err.message : '残り時間の変更に失敗しました');
+    }
+  };
+
+  useEffect(() => {
+    if (!session?.is_paused) return;
+    if (!isEditingRemainingTime) return;
+
+    const mStr = editingRemainingMinutes.trim();
+    const sStr = editingRemainingSeconds.trim();
+    if (mStr === '' || sStr === '') return;
+
+    const minutes = Number(mStr);
+    const seconds = Number(sStr);
+    if (!Number.isFinite(minutes) || minutes < 0) return;
+    if (!Number.isFinite(seconds) || seconds < 0 || seconds > 59) return;
+
+    const next = Math.floor(minutes) * 60 + Math.floor(seconds);
+    if (lastAutoSavedRemainingRef.current === next) return;
+
+    if (autoSaveRemainingTimerRef.current) clearTimeout(autoSaveRemainingTimerRef.current);
+    autoSaveRemainingTimerRef.current = setTimeout(async () => {
+      lastAutoSavedRemainingRef.current = next;
+      await handleChangeRemainingTime({ silent: true, keepEditing: true });
+    }, 450);
+
+    return () => {
+      if (autoSaveRemainingTimerRef.current) clearTimeout(autoSaveRemainingTimerRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.is_paused, isEditingRemainingTime, editingRemainingMinutes, editingRemainingSeconds]);
+
+  const formatHHMM = (d: Date) =>
+    d.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
+
+  const shiftStartEndByMinutes = async (deltaMinutes: number) => {
+    if (!session || !session.is_paused) {
+      error('エラー', '停止中のみ時間を調整できます');
+      return;
+    }
+    if (!session.created_at || !session.paused_at) {
+      error('エラー', '時間情報が不足しています');
+      return;
+    }
+    try {
+      const baseCreated = new Date(session.created_at).getTime();
+      const basePausedAt = new Date(session.paused_at).getTime();
+      const deltaMs = deltaMinutes * 60 * 1000;
+      const nextCreatedAt = new Date(baseCreated + deltaMs).toISOString();
+      const nextPausedAt = new Date(basePausedAt + deltaMs).toISOString();
+
+      const response = await fetch(`/api/sessions/${session.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ created_at: nextCreatedAt, paused_at: nextPausedAt }),
+      });
+      const result = await response.json();
+      if (!result.success) throw new Error(result.error || '時間の調整に失敗しました');
+
+      if (result.data) {
+        setSession(prev => (prev ? { ...prev, ...result.data } : result.data));
+      }
+
       setIsEditingRemainingTime(false);
       setEditingRemainingMinutes('');
       setEditingRemainingSeconds('');
       await loadSession();
-      success('残り時間変更', '残り時間を変更しました');
+      success('時間調整', '開始/終了時刻を調整しました（残り時間は維持）');
     } catch (err) {
-      console.error('残り時間変更エラー:', err);
-      error('エラー', err instanceof Error ? err.message : '残り時間の変更に失敗しました');
+      console.error('時間調整エラー:', err);
+      error('エラー', err instanceof Error ? err.message : '時間の調整に失敗しました');
     }
   };
 
@@ -3392,8 +3532,8 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
 
       <div className="w-full px-2 sm:px-4 md:px-6 lg:px-8 pt-4 pb-0">
         <div className="flex flex-col lg:flex-row gap-4 min-h-screen lg:h-[calc(100vh-96px)]">
-          {/* 左側（全幅の5/6） */}
-          <div className="w-full lg:w-5/6 relative flex-1 flex flex-col min-h-0">
+          {/* 左側（商品・操作エリア） */}
+          <div className="w-full lg:w-2/3 relative flex-1 flex flex-col min-h-0">
             <div className="flex-1 overflow-y-auto space-y-4 sm:space-y-6 pb-20">
               {/* セッション管理 */}
               {!isSessionActive && (
@@ -3976,7 +4116,7 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
 
           {/* カート・注文 */}
           {isSessionActive && (
-            <div className="w-full lg:w-1/6 lg:min-w-[260px] flex flex-col min-h-0 order-first lg:order-last">
+            <div className="w-full lg:w-1/4 lg:min-w-[320px] flex flex-col min-h-0 order-first lg:order-last">
               <div className="flex-1 overflow-y-auto space-y-4">
                 {/* セット延長 */}
                 <Card className="bg-gradient-to-r from-purple-50 to-pink-50 border-purple-200">
@@ -3988,7 +4128,74 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
                   </CardHeader>
                   <CardContent className="space-x-2 flex flex-col sm:flex-row">
                     <div className="w-full sm:w-1/2 bg-white rounded-md p-2 sm:p-3 border border-purple-200 text-center relative mb-2 sm:mb-0">
-                      <div className="text-[11px] text-gray-500 mb-1"> </div>
+                      <div className="mb-1">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="text-[11px] text-gray-500 text-left">
+                            <div>開始 {session?.created_at ? formatHHMM(new Date(session.created_at)) : '--:--'}</div>
+                            <div>
+                              終了{' '}
+                              {session?.created_at
+                                ? formatHHMM(new Date(new Date(session.created_at).getTime() + (session.set_count || 1) * 3600 * 1000))
+                                : '--:--'}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <select
+                              className="h-7 rounded border border-gray-200 bg-white px-2 text-[11px]"
+                              value={timeAdjustStepMin}
+                              onChange={async (e) => {
+                                const n = Number(e.target.value);
+                                if (n !== 5 && n !== 10 && n !== 15) return;
+                                setTimeAdjustStepMin(n as any);
+                                try {
+                                  await fetch('/api/project-variables', {
+                                    method: 'PATCH',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({
+                                      name: 'session_time_adjust_step_min',
+                                      value: String(n),
+                                      other: '開始/終了時刻の調整単位（分）',
+                                    }),
+                                  });
+                                } catch {
+                                  // ignore
+                                }
+                              }}
+                              title="調整単位（分）"
+                            >
+                              <option value={5}>5分</option>
+                              <option value={10}>10分</option>
+                              <option value={15}>15分</option>
+                            </select>
+                          </div>
+                        </div>
+                        <div className="mt-2 grid grid-cols-2 gap-2">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="h-9 text-sm font-semibold"
+                            onClick={() => void shiftStartEndByMinutes(-timeAdjustStepMin)}
+                            disabled={!session?.is_paused}
+                            title="開始/終了を前に（停止中のみ）"
+                          >
+                            <Minus className="w-4 h-4 mr-1" />
+                            {timeAdjustStepMin}分
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="h-9 text-sm font-semibold"
+                            onClick={() => void shiftStartEndByMinutes(timeAdjustStepMin)}
+                            disabled={!session?.is_paused}
+                            title="開始/終了を後に（停止中のみ）"
+                          >
+                            <Plus className="w-4 h-4 mr-1" />
+                            {timeAdjustStepMin}分
+                          </Button>
+                        </div>
+                      </div>
                       {/* {session?.is_paused && (
                     <div className="absolute top-1 right-1">
                       <span className="inline-flex items-center text-orange-700 border border-orange-200 px-2 py-0.5 text-[10px] font-semibold leading-none">
@@ -4019,37 +4226,18 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
                               placeholder="秒"
                             />
                           </div>
-                          <div className="flex gap-1 justify-center">
-                            <Button
-                              size="sm"
-                              onClick={handleChangeRemainingTime}
-                              className="bg-green-600 hover:bg-green-700 text-white"
-                            >
-                              <Save className="w-3 h-3 mr-1" />
-                              {/* 変更 */}
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => {
-                                setIsEditingRemainingTime(false);
-                                setEditingRemainingMinutes('');
-                                setEditingRemainingSeconds('');
-                              }}
-                            >
-                              <X className="w-3 h-3 mr-1" />
-                              {/* キャンセル */}
-                            </Button>
-                          </div>
+                          {/* <div className="text-[11px] text-gray-500">
+                            入力内容は自動で保存されます
+                          </div> */}
                         </div>
                       ) : (
                         <>
                           <div className={`text-xl sm:text-2xl font-bold leading-none ${session?.is_paused ? 'text-gray-400' : 'text-purple-600'}`}>
                             {Math.floor(setExtensionCountdown / 60)}:{(setExtensionCountdown % 60).toString().padStart(2, '0')}
                           </div>
-                          <div className="text-[9px] sm:text-[11px] text-gray-500 mt-1">
+                          {/* <div className="text-[9px] sm:text-[11px] text-gray-500 mt-1">
                             {Math.floor(setExtensionCountdown / 60)}分 {setExtensionCountdown % 60}秒
-                          </div>
+                          </div> */}
                           {session?.is_paused && (
                             <>
                               <Button
@@ -4074,44 +4262,55 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
                     <div className="w-full sm:w-1/2 flex flex-col space-y-2">
                       <div className="text-xs sm:text-sm text-gray-700">
                         <div>セット数: {localStorage.getItem('set_count') || 1}</div>
-                        {/* <div>人数: {guestCount}名</div> */}
+                        <div>人数: {session?.client || guestCount || 0}名</div>
                       </div>
-                      <Button
-                        onClick={handleSetExtension}
-                        size="sm"
-                        className="flex-1 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-xs sm:text-sm"
-                      >
-                        <Clock className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
-                        <span className="text-[10px] sm:text-xs font-semibold">セット延長</span>
-                      </Button>
-                      <Button
-                        onClick={handleCancelSet}
-                        size="sm"
-                        disabled={setExtensionCountdown < 3600 || setExtensions.length === 0}
-                        variant="outline"
-                        className="flex-1 border-red-300 text-red-600 hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed text-xs sm:text-sm"
-                      >
-                        <X className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
-                        <span className="text-[10px] sm:text-xs font-semibold">1セットキャンセル</span>
-                      </Button>
-                      <Button
-                        onClick={handlePauseResume}
-                        size="sm"
-                        variant={session?.is_paused ? "default" : "outline"}
-                        className={session?.is_paused ? "flex-1 bg-green-600 hover:bg-green-700 text-white text-xs sm:text-sm" : "flex-1 border-purple-300 text-purple-700 hover:bg-purple-50 text-xs sm:text-sm"}
-                      >
-                        {session?.is_paused ? (
-                          <>
-                            <Play className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
-                            <span className="text-[10px] sm:text-xs font-semibold">再開</span>
-                          </>
-                        ) : (
-                          <>
-                            <Pause className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
-                            <span className="text-[10px] sm:text-xs font-semibold">停止</span>
-                          </>
-                        )}
-                      </Button>
+                      <div className="grid grid-cols-2 gap-2">
+                        <Button
+                          onClick={handleSetJoin}
+                          size="sm"
+                          variant="outline"
+                          className="h-9 border-blue-300 text-blue-700 hover:bg-blue-50 text-xs sm:text-sm"
+                        >
+                          <Users className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
+                          <span className="text-[10px] sm:text-xs font-semibold">セット追加</span>
+                        </Button>
+                        <Button
+                          onClick={handleSetExtension}
+                          size="sm"
+                          className="h-9 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-xs sm:text-sm"
+                        >
+                          <Clock className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
+                          <span className="text-[10px] sm:text-xs font-semibold">セット延長</span>
+                        </Button>
+                        <Button
+                          onClick={handleCancelSet}
+                          size="sm"
+                          disabled={setExtensionCountdown < 3600 || setExtensions.length === 0}
+                          variant="outline"
+                          className="h-9 border-red-300 text-red-600 hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed text-xs sm:text-sm"
+                        >
+                          <X className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
+                          <span className="text-[10px] sm:text-xs font-semibold">1セット<br />キャンセル</span>
+                        </Button>
+                        <Button
+                          onClick={handlePauseResume}
+                          size="sm"
+                          variant={session?.is_paused ? "default" : "outline"}
+                          className={session?.is_paused ? "h-9 bg-green-600 hover:bg-green-700 text-white text-xs sm:text-sm" : "h-9 border-purple-300 text-purple-700 hover:bg-purple-50 text-xs sm:text-sm"}
+                        >
+                          {session?.is_paused ? (
+                            <>
+                              <Play className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
+                              <span className="text-[10px] sm:text-xs font-semibold">再開</span>
+                            </>
+                          ) : (
+                            <>
+                              <Pause className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
+                              <span className="text-[10px] sm:text-xs font-semibold">停止</span>
+                            </>
+                          )}
+                        </Button>
+                      </div>
                     </div>
                   </CardContent>
                 </Card>
@@ -4257,7 +4456,7 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
                             let breakdownText = '';
                             if (nomination.type_id === 'together') {
                               if (togetherCharge > 0 || mainCharge > 0) {
-                                breakdownText = `¥${togetherCharge.toLocaleString()}＋¥${mainCharge.toLocaleString()}`;
+                                breakdownText = `¥${togetherCharge.toLocaleString()}`;
                                 if (extCountSince > 0) {
                                   breakdownText += `＋¥${mainCharge.toLocaleString()}×${extCountSince}`;
                                 }
@@ -5154,6 +5353,63 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
               >
                 <CheckCircle className="w-4 h-4 mr-2" />
                 確認
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* セット追加（合流）ダイアログ */}
+        <Dialog open={showSetJoinDialog} onOpenChange={setShowSetJoinDialog}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle className="flex items-center">
+                <Users className="w-5 h-5 mr-2" />
+                セット追加
+              </DialogTitle>
+              <DialogDescription>
+                途中合流する人数を入力してください。現在の利用人数に追加し、人数分のセット料金を注文合計に加算します。
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4">
+              <div className="rounded-none bg-blue-50 p-3 text-sm text-blue-900">
+                現在人数: {session?.client || guestCount || 0}名
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="join-guest-count">追加人数</Label>
+                <Input
+                  id="join-guest-count"
+                  type="number"
+                  min="1"
+                  value={joinGuestCount}
+                  onChange={(e) => setJoinGuestCount(e.target.value)}
+                  className="w-full"
+                />
+                <p className="text-sm text-gray-500">
+                  追加セット料金: {joinGuestCount && !isNaN(parseInt(joinGuestCount)) && parseInt(joinGuestCount) > 0
+                    ? formatCurrency((addCharges['set_price'] || 0) * parseInt(joinGuestCount))
+                    : formatCurrency(0)}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex justify-end space-x-3">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowSetJoinDialog(false);
+                  setJoinGuestCount('1');
+                }}
+              >
+                キャンセル
+              </Button>
+              <Button
+                onClick={confirmSetJoin}
+                disabled={!joinGuestCount || joinGuestCount.trim() === '' || isNaN(parseInt(joinGuestCount)) || parseInt(joinGuestCount) <= 0}
+                className="bg-blue-600 hover:bg-blue-700"
+              >
+                <CheckCircle className="w-4 h-4 mr-2" />
+                追加確定
               </Button>
             </div>
           </DialogContent>

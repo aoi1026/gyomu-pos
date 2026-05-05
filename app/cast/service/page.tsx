@@ -475,7 +475,7 @@ export default function ServicePage() {
                               className="border-red-300 text-red-600 hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                               <X className="w-4 h-4 mr-1" />
-                              1セットキャンセル
+                              1セット<br />キャンセル
                             </Button>
                           </div>
                         </div>
