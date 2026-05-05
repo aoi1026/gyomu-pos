@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import RoleGate from '@/components/auth/RoleGate';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -31,6 +31,7 @@ export default function ShiftsPage() {
   const [selectedCell, setSelectedCell] = useState<{castId: number, date: string} | null>(null);
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [isRegistering, setIsRegistering] = useState(false);
+  const shiftTableScrollRef = useRef<HTMLDivElement | null>(null);
 
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
@@ -115,6 +116,33 @@ export default function ShiftsPage() {
       loadShifts();
     }
   }, [year, month, casts.length]);
+
+  /** 表示中の月が今月のとき、水平スクロールを本日の日付列が「名前」の直後に来る位置へ */
+  useLayoutEffect(() => {
+    if (isLoading || casts.length === 0) return;
+    const now = new Date();
+    if (now.getFullYear() !== year || now.getMonth() !== month) return;
+
+    const scrollEl = shiftTableScrollRef.current;
+    if (!scrollEl) return;
+
+    const day = now.getDate();
+    const dayTh = scrollEl.querySelector(`#shift-header-day-${day}`);
+    const nameTh = scrollEl.querySelector('#shift-header-name');
+    if (!dayTh || !nameTh) return;
+
+    const applyScroll = () => {
+      const nameRect = nameTh.getBoundingClientRect();
+      const dayRect = (dayTh as HTMLElement).getBoundingClientRect();
+      const delta = dayRect.left - nameRect.right;
+      scrollEl.scrollLeft = Math.max(0, scrollEl.scrollLeft + delta);
+    };
+
+    requestAnimationFrame(() => {
+      applyScroll();
+      requestAnimationFrame(applyScroll);
+    });
+  }, [isLoading, year, month, casts.length, shifts.length, daysInMonth.length]);
 
   // 指定されたキャストと日付のシフトが存在するかチェック
   const hasShift = (castId: number, date: Date): boolean => {
@@ -253,7 +281,7 @@ export default function ShiftsPage() {
 
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           {/* 月選択 */}
-          <Card className="mb-6">
+          <Card className="mb-2">
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <Button
@@ -280,23 +308,26 @@ export default function ShiftsPage() {
             </CardContent>
           </Card>
 
-          {/* シフト表 */}
+          {/* シフト表（縦スクロール＋日付行固定。高さはビューポートに合わせて調整） */}
           <Card className="shadow-xl border border-gray-200 rounded-xl overflow-hidden bg-white">
-            <CardHeader className="bg-white border-b border-gray-200 px-6 py-5">
-              <CardTitle className="text-2xl font-bold text-gray-900">シフト表</CardTitle>
-            </CardHeader>
             <CardContent className="p-0 bg-white">
               {isLoading ? (
                 <div className="flex items-center justify-center py-12">
                   <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
                 </div>
               ) : (
-                <div className="overflow-x-auto relative">
-                  <div className="inline-block min-w-full">
-                    <table className="min-w-full border-collapse">
+                <div
+                  ref={shiftTableScrollRef}
+                  className="max-h-[min(70vh,calc(100vh-15rem))] sm:max-h-[calc(100vh-14rem)] overflow-auto overscroll-contain relative"
+                  style={{ scrollbarGutter: 'stable' }}
+                >
+                  <table className="min-w-full border-collapse">
                       <thead>
-                        <tr className="bg-gray-50 border-b text-center border-gray-300">
-                          <th className="sticky left-0 z-20 bg-blue-50 border-r border-gray-300 px-5 py-4 text-center font-bold min-w-[180px] shadow-[2px_0_4px_rgba(0,0,0,0.1)] text-blue-700 text-sm">
+                        <tr className="border-b text-center border-gray-300">
+                          <th
+                            id="shift-header-name"
+                            className="sticky left-0 top-0 z-40 bg-blue-50 border-r border-gray-300 px-5 py-4 text-center font-bold min-w-[180px] shadow-[2px_0_4px_rgba(0,0,0,0.1)] text-blue-700 text-sm"
+                          >
                             名前
                           </th>
                           {daysInMonth.map((date) => {
@@ -307,7 +338,8 @@ export default function ShiftsPage() {
                             return (
                               <th
                                 key={date.toISOString()}
-                                className={`border-r border-gray-300 px-3 py-3 text-center min-w-[75px] ${
+                                id={`shift-header-day-${date.getDate()}`}
+                                className={`sticky top-0 z-30 border-r border-gray-300 px-3 py-3 text-center min-w-[75px] shadow-[0_4px_6px_-2px_rgba(0,0,0,0.08)] ${
                                   isSaturday
                                     ? 'bg-blue-50'
                                     : isSunday
@@ -336,7 +368,7 @@ export default function ShiftsPage() {
                               </th>
                             );
                           })}
-                          <th className="sticky right-0 z-20 bg-purple-50 border-l border-gray-300 px-5 py-4 text-center font-bold min-w-[140px] shadow-[-2px_0_4px_rgba(0,0,0,0.1)] text-purple-700 text-sm">
+                          <th className="sticky right-0 top-0 z-40 bg-purple-50 border-l border-gray-300 px-5 py-4 text-center font-bold min-w-[140px] shadow-[-2px_0_4px_rgba(0,0,0,0.1)] text-purple-700 text-sm">
                             日数
                           </th>
                         </tr>
@@ -353,7 +385,7 @@ export default function ShiftsPage() {
                                   : 'bg-gray-50/30 hover:bg-gray-100'
                               }`}
                             >
-                              <td className="sticky left-0 z-10 bg-blue-50 border-r border-gray-300 px-5 py-4 text-center font-semibold shadow-[2px_0_4px_rgba(0,0,0,0.1)] text-blue-700 text-sm">
+                              <td className="sticky left-0 z-20 bg-blue-50 border-r border-gray-300 px-5 py-4 text-center font-semibold shadow-[2px_0_4px_rgba(0,0,0,0.1)] text-blue-700 text-sm">
                                 {cast.name}
                               </td>
                               {daysInMonth.map((date) => {
@@ -386,7 +418,7 @@ export default function ShiftsPage() {
                                   </td>
                                 );
                               })}
-                              <td className="sticky right-0 z-10 bg-purple-50 border-l border-gray-300 px-5 py-4 text-center font-bold shadow-[-2px_0_4px_rgba(0,0,0,0.1)] text-sm">
+                              <td className="sticky right-0 z-20 bg-purple-50 border-l border-gray-300 px-5 py-4 text-center font-bold shadow-[-2px_0_4px_rgba(0,0,0,0.1)] text-sm">
                                 <span className="inline-flex items-center justify-center min-w-[36px] h-8 px-3 rounded-md bg-purple-200 text-purple-800 font-bold text-sm border border-purple-400">
                                   {getShiftCount(cast.id)}
                                 </span>
@@ -396,7 +428,6 @@ export default function ShiftsPage() {
                         })}
                       </tbody>
                     </table>
-                  </div>
                 </div>
               )}
             </CardContent>
