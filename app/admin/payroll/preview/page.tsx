@@ -80,6 +80,10 @@ export default function PayrollPreviewPage() {
     applyPayrollRounding(Number(row?.total_pay_yen || 0), payrollRoundingUnit, payrollRoundingMode);
   const roundedRealTotal = (row: any) =>
     roundedTotalPay(row) - Number(row?.paid_price || 0);
+  const printableMonthlyRows = useMemo(
+    () => monthlyRows.filter((r) => roundedTotalPay(r) > 0),
+    [monthlyRows, payrollRoundingMode, payrollRoundingUnit]
+  );
 
   // モバイル／タブレットでキーボード表示時に入力欄が隠れないよう自動スクロール
   useEffect(() => {
@@ -576,6 +580,10 @@ export default function PayrollPreviewPage() {
   };
 
   const handlePrintMonthlyRow = async (row: any) => {
+    if (roundedTotalPay(row) <= 0) {
+      info('印刷', '支給額が0円のため、給与明細は出力しません');
+      return;
+    }
     try {
       await doPrint(() => getPayloadForMonthlyRow(row), `給与明細印刷（${row?.name ?? ''}）`);
     } catch (e: any) {
@@ -583,6 +591,10 @@ export default function PayrollPreviewPage() {
     }
   };
   const handlePreviewMonthlyRow = async (row: any) => {
+    if (roundedTotalPay(row) <= 0) {
+      info('プレビュー', '支給額が0円のため、給与明細は表示しません');
+      return;
+    }
     try {
       await doPreview(() => getPayloadForMonthlyRow(row));
     } catch (e: any) {
@@ -646,21 +658,22 @@ export default function PayrollPreviewPage() {
   const getPayloadForMonthlyAll = async (): Promise<ReceiptPayload[]> => {
     const storeName = await fetchStoreName();
     const issuedAt = new Date();
+    const rows = printableMonthlyRows;
     const summary: ReceiptPayload = {
       storeName,
       tableName: '給与計算',
       title: 'キャスト別給与（一覧）',
       issuedAt,
-      lines: [{ left: '検索条件', right: searchConditionText }, { left: '件数', right: String(monthlyRows.length) }],
+      lines: [{ left: '検索条件', right: searchConditionText }, { left: '件数', right: String(rows.length) }],
       totalLabel: '総額合計',
-      totalAmount: monthlyRows.reduce((sum, r) => sum + (Number(r?.realTotal_price ?? (Number(r?.total_pay_yen || 0) - Number(r?.paid_price || 0))) || 0), 0),
+      totalAmount: rows.reduce((sum, r) => sum + roundedRealTotal(r), 0),
     };
-    const rowPayloads = await Promise.all(monthlyRows.map((r) => getPayloadForMonthlyRow(r)));
+    const rowPayloads = await Promise.all(rows.map((r) => getPayloadForMonthlyRow(r)));
     return [summary, ...rowPayloads];
   };
 
   const handlePrintMonthlyAll = async () => {
-    if (!monthlyRows.length) {
+    if (!printableMonthlyRows.length) {
       info('印刷', '印刷するデータがありません');
       return;
     }
@@ -671,7 +684,7 @@ export default function PayrollPreviewPage() {
     }
   };
   const handlePreviewMonthlyAll = async () => {
-    if (!monthlyRows.length) {
+    if (!printableMonthlyRows.length) {
       info('印刷', '印刷するデータがありません');
       return;
     }
