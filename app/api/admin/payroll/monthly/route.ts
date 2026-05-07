@@ -106,9 +106,22 @@ export async function GET(request: NextRequest) {
         WHERE role = 'cast'
       ),
       att AS (
-        SELECT a.staff_id AS user_id, COALESCE(SUM(a.total_work_hours), 0) AS hours
+        SELECT
+          a.staff_id AS user_id,
+          COALESCE(SUM(
+            CASE
+              WHEN a.clock_out IS NULL THEN EXTRACT(EPOCH FROM (NOW() - a.clock_in)) / 3600.0
+              ELSE COALESCE(a.total_work_hours, EXTRACT(EPOCH FROM (a.clock_out - a.clock_in)) / 3600.0)
+            END
+          ), 0) AS hours,
+          COALESCE(SUM(
+            CASE
+              WHEN a.clock_out IS NULL THEN FLOOR(GREATEST(0, EXTRACT(EPOCH FROM (NOW() - a.clock_in)) / 60.0) / 15.0) * 0.25
+              ELSE FLOOR(GREATEST(0, COALESCE(a.total_work_hours, EXTRACT(EPOCH FROM (a.clock_out - a.clock_in)) / 3600.0)) * 4.0) / 4.0
+            END
+          ), 0) AS paid_hours
         FROM attendance a
-        WHERE DATE(a.created_at) >= $1::date AND DATE(a.created_at) < $2::date
+        WHERE DATE(a.clock_in) >= $1::date AND DATE(a.clock_in) < $2::date
         GROUP BY a.staff_id
       ),
       ext_events AS (
@@ -147,7 +160,7 @@ export async function GET(request: NextRequest) {
         c.main_nomination,
         c.inside_nomination,
         c.together_nomination,
-        (COALESCE(att.hours, 0) * COALESCE(c.hourly_price, 0))::DECIMAL(12,2) AS base_pay,
+        (COALESCE(att.paid_hours, 0) * COALESCE(c.hourly_price, 0))::DECIMAL(12,2) AS base_pay,
         COALESCE(nom.main_cnt, 0) AS main_nomination_count,
         COALESCE(nom.main_ext_cnt, 0) AS main_nomination_extension_count,
         COALESCE(nom.inside_cnt, 0) AS inside_nomination_count,
@@ -202,30 +215,37 @@ export async function GET(request: NextRequest) {
             const categoryTotals = sd.category_totals && typeof sd.category_totals === 'object' ? sd.category_totals : {};
             const categoryAmounts = catAmountMap[uid] || {};
             const sales_back_yen = Object.values(categoryTotals).reduce((s: number, x: any) => s + (Number(x) || 0), 0);
+            const basePay = Number(r.base_pay || 0);
+            const bonus = Number(sd.bonus_yen || 0);
+            const point = Number(sd.point_yen || 0);
+            const addPoint = Number(sd.additional_point_yen || 0);
+            const backTotal = Number(sd.back_total || 0);
+            const totalPay = basePay + backTotal + bonus + point + addPoint;
+            const paid = Number(sd.paid_price || 0);
             return {
               user_id: r.user_id,
               name: r.name,
               email: r.email,
-              basic_hours: Number(sd.basic_hours || 0),
+              basic_hours: Number(r.basic_hours || sd.basic_hours || 0),
               hourly_price: Number(sd.hourly_price || 0),
               main_nomination: r.main_nomination,
               inside_nomination: r.inside_nomination,
               together_nomination: r.together_nomination,
-              base_pay: Number(sd.base_pay || 0),
+              base_pay: basePay,
               main_nomination_count: Number(sd.main_nomination_count || 0),
               main_nomination_extension_count: Number(sd.main_nomination_extension_count || 0),
               inside_nomination_count: Number(sd.inside_nomination_count || 0),
               inside_nomination_extension_count: Number(sd.inside_nomination_extension_count || 0),
               together_nomination_count: Number(sd.together_nomination_count || 0),
-              paid_price: Number(sd.paid_price || 0),
+              paid_price: paid,
               pickup_yen: Number(sd.pickup_yen || 0),
               hairmake_yen: Number(sd.hairmake_yen || 0),
               rental_yen: Number(sd.rental_yen || 0),
               other_deduct_yen: Number(sd.other_deduct_yen || 0),
               penalty_yen: Number(sd.penalty_yen || 0),
-              bonus_yen: Number(sd.bonus_yen || 0),
-              point_yen: Number(sd.point_yen || 0),
-              additional_point_yen: Number(sd.additional_point_yen || 0),
+              bonus_yen: bonus,
+              point_yen: point,
+              additional_point_yen: addPoint,
               categoryTotals,
               categoryAmounts,
               main_nomination_fee: Number(sd.main_nomination_fee || 0),
@@ -234,10 +254,10 @@ export async function GET(request: NextRequest) {
               inside_nomination_extension_fee: Number(sd.inside_nomination_extension_fee || 0),
               together_nomination_fee: Number(sd.together_nomination_fee || 0),
               sales_back_yen,
-              back_total: Number(sd.back_total || 0),
+              back_total: backTotal,
               deduction_yen: Number(sd.deduction_yen || 0),
-              total_pay_yen: Number(sd.total_pay_yen || 0),
-              realTotal_price: Number(sd.realTotal_price || 0),
+              total_pay_yen: totalPay,
+              realTotal_price: totalPay - paid,
               _fromSalaryDaily: true,
             };
           }
@@ -246,7 +266,7 @@ export async function GET(request: NextRequest) {
       };
     } else if (mode === 'month' || mode === 'range') {
       // 月/範囲: salary_daily の集計を利用。カテゴリ列は salesorder から amount・castsalary を取得
-      const [castsRes, aggRes, catAggRes, catSalesRes] = await Promise.all([
+      const [castsRes, aggRes, catAggRes, catSalesRes, liveAttRes] = await Promise.all([
         client.query(
           `SELECT id AS user_id, name, mail AS email, hourly_price, main_nomination, inside_nomination, together_nomination FROM "user" WHERE role = 'cast' ORDER BY name`
         ),
@@ -299,11 +319,36 @@ export async function GET(request: NextRequest) {
            GROUP BY so.cast_id, p.category_id`,
           [rangeStart, rangeEndExclusive]
         ).catch(() => ({ rows: [] })),
+        client.query(
+          `SELECT
+             a.staff_id AS user_id,
+             COALESCE(SUM(
+               CASE
+                 WHEN a.clock_out IS NULL THEN EXTRACT(EPOCH FROM (NOW() - a.clock_in)) / 3600.0
+                 ELSE COALESCE(a.total_work_hours, EXTRACT(EPOCH FROM (a.clock_out - a.clock_in)) / 3600.0)
+               END
+             ), 0)::DECIMAL(10,2) AS basic_hours,
+             COALESCE(SUM(
+               CASE
+                 WHEN a.clock_out IS NULL THEN FLOOR(GREATEST(0, EXTRACT(EPOCH FROM (NOW() - a.clock_in)) / 60.0) / 15.0) * 0.25
+                 ELSE FLOOR(GREATEST(0, COALESCE(a.total_work_hours, EXTRACT(EPOCH FROM (a.clock_out - a.clock_in)) / 3600.0)) * 4.0) / 4.0
+               END * COALESCE(u.hourly_price, 0)
+             ), 0)::DECIMAL(12,2) AS base_pay
+           FROM attendance a
+           INNER JOIN "user" u ON u.id = a.staff_id
+           WHERE DATE(a.clock_in) >= $1::date AND DATE(a.clock_in) < $2::date
+           GROUP BY a.staff_id`,
+          [rangeStart, rangeEndExclusive]
+        ).catch(() => ({ rows: [] })),
       ]);
       const casts = castsRes.rows as any[];
       const aggByUser: Record<string, any> = {};
       for (const r of (aggRes.rows as any[])) {
         aggByUser[String(r.user_id)] = r;
+      }
+      const liveAttByUser: Record<string, any> = {};
+      for (const r of (liveAttRes.rows as any[])) {
+        liveAttByUser[String(r.user_id)] = r;
       }
       const catAmountMapRange: Record<string, Record<string, number>> = {};
       for (const r of (catAggRes.rows as any[])) {
@@ -324,28 +369,36 @@ export async function GET(request: NextRequest) {
         rows: casts.map((c) => {
           const uid = String(c.user_id);
           const a = aggByUser[uid];
+          const liveAtt = liveAttByUser[uid];
           const categoryTotals = catBackMap[uid] || {};
           const categoryAmounts = catAmountMapRange[uid] || {};
           const categoryBackTotal = Object.values(categoryTotals).reduce((s, x) => s + (Number(x) || 0), 0);
           if (a) {
+            const basePay = Number(liveAtt?.base_pay ?? a.base_pay ?? 0);
+            const bonus = Number(a.bonus_yen || 0);
+            const point = Number(a.point_yen || 0);
+            const addPoint = Number(a.additional_point_yen || 0);
+            const backTotal = Number(a.back_total || 0);
+            const totalPay = basePay + backTotal + bonus + point + addPoint;
+            const paid = Number(a.paid_price || 0);
             return {
               ...c,
-              basic_hours: Number(a.basic_hours || 0),
-              base_pay: Number(a.base_pay || 0),
+              basic_hours: Number(liveAtt?.basic_hours ?? a.basic_hours ?? 0),
+              base_pay: basePay,
               main_nomination_count: Number(a.main_nomination_count || 0),
               main_nomination_extension_count: Number(a.main_nomination_extension_count || 0),
               inside_nomination_count: Number(a.inside_nomination_count || 0),
               inside_nomination_extension_count: Number(a.inside_nomination_extension_count || 0),
               together_nomination_count: Number(a.together_nomination_count || 0),
-              paid_price: Number(a.paid_price || 0),
+              paid_price: paid,
               pickup_yen: Number(a.pickup_yen || 0),
               hairmake_yen: Number(a.hairmake_yen || 0),
               rental_yen: Number(a.rental_yen || 0),
               other_deduct_yen: Number(a.other_deduct_yen || 0),
               penalty_yen: Number(a.penalty_yen || 0),
-              bonus_yen: Number(a.bonus_yen || 0),
-              point_yen: Number(a.point_yen || 0),
-              additional_point_yen: Number(a.additional_point_yen || 0),
+              bonus_yen: bonus,
+              point_yen: point,
+              additional_point_yen: addPoint,
               categoryTotals,
               categoryAmounts,
               main_nomination_fee: Number(a.main_nomination_fee || 0),
@@ -354,16 +407,17 @@ export async function GET(request: NextRequest) {
               inside_nomination_extension_fee: Number(a.inside_nomination_extension_fee || 0),
               together_nomination_fee: Number(a.together_nomination_fee || 0),
               sales_back_yen: categoryBackTotal,
-              back_total: Number(a.back_total || 0),
+              back_total: backTotal,
               deduction_yen: Number(a.deduction_yen || 0),
-              total_pay_yen: Number(a.total_pay_yen || 0),
-              realTotal_price: Number(a.realTotal_price || 0),
+              total_pay_yen: totalPay,
+              realTotal_price: totalPay - paid,
             };
           }
+          const basePay = Number(liveAtt?.base_pay || 0);
           return {
             ...c,
-            basic_hours: 0,
-            base_pay: 0,
+            basic_hours: Number(liveAtt?.basic_hours || 0),
+            base_pay: basePay,
             main_nomination_count: 0,
             main_nomination_extension_count: 0,
             inside_nomination_count: 0,
@@ -388,8 +442,8 @@ export async function GET(request: NextRequest) {
             sales_back_yen: 0,
             back_total: 0,
             deduction_yen: 0,
-            total_pay_yen: 0,
-            realTotal_price: 0,
+            total_pay_yen: basePay,
+            realTotal_price: basePay,
           };
         }),
       };

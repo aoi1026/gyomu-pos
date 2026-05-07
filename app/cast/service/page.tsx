@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { useNotificationContext } from '@/lib/notification-context';
+import { removeLatestExtensionRoomSurcharges } from '@/lib/remove-latest-extension-room-surcharges';
 
 interface Table {
   id: number;
@@ -297,6 +298,7 @@ export default function ServicePage() {
         throw new Error(result.error || 'セットキャンセルに失敗しました');
       }
 
+      await removeLatestExtensionRoomSurcharges(selectedSessionForExtension.id);
       await loadSessions();
       setShowCancelSetDialog(false);
       setSelectedSessionForExtension(null);

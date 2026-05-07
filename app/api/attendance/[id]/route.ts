@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/database';
 
+function paidQuarterHours(hours: number): number {
+  if (!Number.isFinite(hours) || hours <= 0) return 0;
+  return Math.floor(hours * 4) / 4;
+}
+
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
@@ -141,7 +146,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
               [staffId]
             );
             const hourlyPrice = Number(hourlyRes.rows[0]?.hourly_price) || 0;
-            const basePayAdd = hours * (Number.isFinite(hourlyPrice) ? hourlyPrice : 0);
+            const basePayAdd = paidQuarterHours(hours) * (Number.isFinite(hourlyPrice) ? hourlyPrice : 0);
 
             await client.query(
               `
@@ -207,14 +212,14 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         if (oy === ny && om === nm) {
           const dh = newH - oldH;
           if (dh !== 0) {
-            await adjustSalaryMonth(ny, nm, dh, dh * hourlyPrice);
+            await adjustSalaryMonth(ny, nm, dh, (paidQuarterHours(newH) - paidQuarterHours(oldH)) * hourlyPrice);
           }
         } else {
           if (oldH !== 0) {
-            await adjustSalaryMonth(oy, om, -oldH, -oldH * hourlyPrice);
+            await adjustSalaryMonth(oy, om, -oldH, -paidQuarterHours(oldH) * hourlyPrice);
           }
           if (newH !== 0) {
-            await adjustSalaryMonth(ny, nm, newH, newH * hourlyPrice);
+            await adjustSalaryMonth(ny, nm, newH, paidQuarterHours(newH) * hourlyPrice);
           }
         }
       }
@@ -306,7 +311,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
         const m = ci.getMonth() + 1;
         const hourlyRes = await client.query(`SELECT hourly_price FROM "user" WHERE id = $1`, [staffId]);
         const hp = Number(hourlyRes.rows[0]?.hourly_price) || 0;
-        const pay = hours * hp;
+        const pay = paidQuarterHours(hours) * hp;
         await client.query(
           `UPDATE salary SET
             basic_hours = GREATEST(0, COALESCE(basic_hours, 0) - $1),

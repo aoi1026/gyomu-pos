@@ -12,6 +12,7 @@ import {
   ArrowLeft, Calculator, Download, Lock, Unlock, Users,
   DollarSign, Clock, TrendingUp, FileText, Printer as PrinterIcon, Search, ChevronDown, ChevronUp
 } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { 
   mockPayrollRuns, mockPayrollItems, formatCurrency, formatDate,
   PayrollRun, PayrollItem
@@ -23,6 +24,23 @@ import { printReceiptViaOs } from '@/lib/printing/os-print';
 import type { ReceiptPayload } from '@/lib/printing/escpos-raster';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { fetchStoreName, fetchStoreAddress, fetchStorePhone } from '@/lib/printing/receipt-builders';
+
+function calculateQuarterBasePay(hours: number, hourlyPrice: number) {
+  const h = Number(hours) || 0;
+  const p = Number(hourlyPrice) || 0;
+  return (Math.floor(Math.max(0, h) * 4) / 4) * p;
+}
+
+type PayrollRoundingMode = 'round' | 'floor';
+type PayrollRoundingUnit = 1 | 10 | 100;
+
+function applyPayrollRounding(amount: number, unit: PayrollRoundingUnit, mode: PayrollRoundingMode) {
+  const value = Number(amount) || 0;
+  if (unit <= 1) return Math.round(value);
+  return mode === 'floor'
+    ? Math.floor(value / unit) * unit
+    : Math.round(value / unit) * unit;
+}
 
 export default function PayrollPreviewPage() {
   const [payrollRun, setPayrollRun] = useState<PayrollRun | null>(null);
@@ -53,6 +71,15 @@ export default function PayrollPreviewPage() {
   const [dailyRowsData, setDailyRowsData] = useState<Record<number, any[]>>({});
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewPayloads, setPreviewPayloads] = useState<ReceiptPayload[]>([]);
+  const [refreshIntervalMinutes, setRefreshIntervalMinutes] = useState<number>(15);
+  const [isPayrollRoundingModalOpen, setIsPayrollRoundingModalOpen] = useState(false);
+  const [payrollRoundingUnit, setPayrollRoundingUnit] = useState<PayrollRoundingUnit>(1);
+  const [payrollRoundingMode, setPayrollRoundingMode] = useState<PayrollRoundingMode>('round');
+
+  const roundedTotalPay = (row: any) =>
+    applyPayrollRounding(Number(row?.total_pay_yen || 0), payrollRoundingUnit, payrollRoundingMode);
+  const roundedRealTotal = (row: any) =>
+    roundedTotalPay(row) - Number(row?.paid_price || 0);
 
   // モバイル／タブレットでキーボード表示時に入力欄が隠れないよう自動スクロール
   useEffect(() => {
@@ -822,6 +849,18 @@ export default function PayrollPreviewPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedYear, selectedMonth, dateMode, periodStart, periodEnd, singleDate]);
 
+  useEffect(() => {
+    const intervalMs = Math.max(1, Number(refreshIntervalMinutes) || 15) * 60 * 1000;
+    const intervalId = window.setInterval(() => {
+      const hasUnlockedRows = Object.values(rowUnlocked).some(Boolean);
+      if (!hasUnlockedRows) {
+        void fetchMonthlyRows(selectedYear, selectedMonth, false, false);
+      }
+    }, intervalMs);
+    return () => window.clearInterval(intervalId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedYear, selectedMonth, dateMode, periodStart, periodEnd, singleDate, rowUnlocked, refreshIntervalMinutes]);
+
   const calculatePayroll = async () => {
     setIsCalculating(true);
     
@@ -964,12 +1003,104 @@ export default function PayrollPreviewPage() {
                      payrollRun.status === 'paid' ? '支払済' : '下書き'}
                   </Badge>
                 )}
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="flex items-center gap-2">
+                    <Label htmlFor="payroll-preview-refresh-interval" className="text-xs sm:text-sm whitespace-nowrap">
+                      更新間隔
+                    </Label>
+                    <Select
+                      value={String(refreshIntervalMinutes)}
+                      onValueChange={(value) => setRefreshIntervalMinutes(Number(value) || 15)}
+                    >
+                      <SelectTrigger id="payroll-preview-refresh-interval" className="w-[112px] h-9 bg-white">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="1">1分</SelectItem>
+                        <SelectItem value="5">5分</SelectItem>
+                        <SelectItem value="15">15分</SelectItem>
+                        <SelectItem value="30">30分</SelectItem>
+                        <SelectItem value="60">60分</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-9 bg-white"
+                    onClick={() => setIsPayrollRoundingModalOpen(true)}
+                  >
+                    給与丸め設定
+                  </Button>
+                </div>
               </div>
             </div>
           </div>
         </header>
 
         <div className="max-w-7xl mx-auto px-3 sm:px-4 md:px-6 lg:px-8 py-4 sm:py-6 md:py-8 min-w-0">
+          <Dialog open={isPayrollRoundingModalOpen} onOpenChange={setIsPayrollRoundingModalOpen}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle className="flex items-center">
+                  <DollarSign className="w-5 h-5 mr-2" />
+                  給与丸め設定
+                </DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="payroll-preview-rounding-unit">丸め単位</Label>
+                  <Select
+                    value={String(payrollRoundingUnit)}
+                    onValueChange={(value) => {
+                      const n = Number(value);
+                      setPayrollRoundingUnit((n === 10 || n === 100 ? n : 1) as PayrollRoundingUnit);
+                    }}
+                  >
+                    <SelectTrigger id="payroll-preview-rounding-unit">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="1">1円</SelectItem>
+                      <SelectItem value="10">10円</SelectItem>
+                      <SelectItem value="100">100円</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="payroll-preview-rounding-mode">丸め方法</Label>
+                  <Select
+                    value={payrollRoundingMode}
+                    onValueChange={(value) =>
+                      setPayrollRoundingMode(value === 'floor' ? 'floor' : 'round')
+                    }
+                  >
+                    <SelectTrigger id="payroll-preview-rounding-mode">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="round">四捨五入</SelectItem>
+                      <SelectItem value="floor">切り捨て</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="rounded-md bg-gray-50 p-3 text-xs text-gray-600 space-y-1">
+                  <div>例: 9,158円</div>
+                  <div>100円 + 切り捨て: 9,100円 / 四捨五入: 9,200円</div>
+                  <div>10円 + 切り捨て: 9,150円 / 四捨五入: 9,160円</div>
+                  <div>1円: 9,158円</div>
+                </div>
+
+                <div className="flex justify-end">
+                  <Button onClick={() => setIsPayrollRoundingModalOpen(false)}>設定を閉じる</Button>
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
+
           {/* 期間選択（検索条件） */}
           <Card className="mb-4 sm:mb-6 md:mb-4 shadow-sm">
             <CardContent className="p-4 sm:p-5 md:p-6">
@@ -1234,7 +1365,10 @@ export default function PayrollPreviewPage() {
                       const rows = [...monthlyRows];
                       const next = { ...rows[idx], [key]: value };
                       // 再計算（新フォーマット）
-                      const base_pay = Number(next.basic_hours || 0) * Number(next.hourly_price || 0);
+                      const base_pay = calculateQuarterBasePay(
+                        Number(next.basic_hours || 0),
+                        Number(next.hourly_price || 0)
+                      );
                       const categoryBackTotal = payrollCategories.reduce((sum, c) => {
                         const v = Number(next.categoryTotals?.[c.id] ?? next.categoryTotals?.[String(c.id)] ?? 0);
                         return sum + (Number.isFinite(v) ? v : 0);
@@ -1515,10 +1649,10 @@ export default function PayrollPreviewPage() {
                           {formatCurrency(Number(row.back_total || 0))}
                         </td>
                         <td className="p-2 sm:p-3 text-center font-semibold text-xs sm:text-sm whitespace-nowrap">
-                          {formatCurrency(Number(row.total_pay_yen || 0))}
+                          {formatCurrency(roundedTotalPay(row))}
                         </td>
                         <td className="p-2 sm:p-3 text-center font-bold text-xs sm:text-sm whitespace-nowrap border-l border-gray-200">
-                          {formatCurrency(Number(row.realTotal_price || 0))}
+                          {formatCurrency(roundedRealTotal(row))}
                         </td>
                         {/* <td className="p-2">
                           <Button size="sm" variant="outline" onClick={saveRow}>保存</Button>
@@ -1615,8 +1749,8 @@ export default function PayrollPreviewPage() {
                               <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap">{formatCurrency(dailyRow.point_yen ?? 0)}</td>
                               <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap border-r-2 border-gray-300">{formatCurrency(dailyRow.additional_point_yen ?? 0)}</td>
                               <td className="p-2 sm:p-3 text-center font-semibold text-xs sm:text-sm whitespace-nowrap">{formatCurrency(dailyRow.back_total ?? 0)}</td>
-                              <td className="p-2 sm:p-3 text-center font-semibold text-xs sm:text-sm whitespace-nowrap">{formatCurrency(dailyRow.total_pay_yen ?? 0)}</td>
-                              <td className="p-2 sm:p-3 text-center font-bold text-xs sm:text-sm whitespace-nowrap border-l border-gray-200">{formatCurrency(dailyRow.realTotal_price ?? 0)}</td>
+                              <td className="p-2 sm:p-3 text-center font-semibold text-xs sm:text-sm whitespace-nowrap">{formatCurrency(roundedTotalPay(dailyRow))}</td>
+                              <td className="p-2 sm:p-3 text-center font-bold text-xs sm:text-sm whitespace-nowrap border-l border-gray-200">{formatCurrency(roundedRealTotal(dailyRow))}</td>
                             </tr>
                           ))}
                           {/* 日別合計行 */}
@@ -1814,11 +1948,11 @@ export default function PayrollPreviewPage() {
                       {formatCurrency(monthlyRows.reduce((sum, r) => sum + Number(r.back_total || 0), 0))}
                     </td>
                     <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap">
-                      {formatCurrency(monthlyRows.reduce((sum, r) => sum + Number(r.total_pay_yen || 0), 0))}
+                      {formatCurrency(monthlyRows.reduce((sum, r) => sum + roundedTotalPay(r), 0))}
                     </td>
                     <td className="p-2 sm:p-3 text-center whitespace-nowrap border-l border-gray-200">
                       <div className="flex flex-col items-center gap-2">
-                        <div className="font-bold">{formatCurrency(monthlyRows.reduce((sum, r) => sum + Number(r.realTotal_price || 0), 0))}</div>
+                        <div className="font-bold">{formatCurrency(monthlyRows.reduce((sum, r) => sum + roundedRealTotal(r), 0))}</div>
                         {/* <div className="flex items-center justify-center gap-1">
                           <Button
                             size="sm"

@@ -12,12 +12,36 @@ function formatHours(hours: number) {
 }
 
 type Category = { id: number; name: string };
+export type PayrollRoundingMode = 'round' | 'floor';
+export type PayrollRoundingUnit = 1 | 10 | 100;
+
+function applyPayrollRounding(
+  amount: number,
+  unit: PayrollRoundingUnit,
+  mode: PayrollRoundingMode
+) {
+  const value = Number(amount) || 0;
+  if (unit <= 1) return Math.round(value);
+  return mode === 'floor'
+    ? Math.floor(value / unit) * unit
+    : Math.round(value / unit) * unit;
+}
 
 /**
  * /admin/payroll/preview の「日付」検索時と同じ /api/admin/payroll/monthly?date= を使い、
  * キャスト別給与計算表を読み取り専用で表示する。
  */
-export default function PayrollDailyCastReadOnlyTable({ date }: { date: string }) {
+export default function PayrollDailyCastReadOnlyTable({
+  date,
+  refreshIntervalMinutes = 15,
+  roundingUnit = 1,
+  roundingMode = 'round',
+}: {
+  date: string;
+  refreshIntervalMinutes?: number;
+  roundingUnit?: PayrollRoundingUnit;
+  roundingMode?: PayrollRoundingMode;
+}) {
   const [rows, setRows] = useState<any[]>([]);
   const [payrollCategories, setPayrollCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(false);
@@ -26,8 +50,8 @@ export default function PayrollDailyCastReadOnlyTable({ date }: { date: string }
   useEffect(() => {
     if (!date) return;
     let cancelled = false;
-    (async () => {
-      setLoading(true);
+    const loadRows = async (showLoading: boolean) => {
+      if (showLoading) setLoading(true);
       setFetchError(null);
       try {
         const res = await fetch(`/api/admin/payroll/monthly?date=${encodeURIComponent(date)}`, {
@@ -50,13 +74,26 @@ export default function PayrollDailyCastReadOnlyTable({ date }: { date: string }
           setPayrollCategories([]);
         }
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled && showLoading) setLoading(false);
       }
-    })();
+    };
+
+    const intervalMs = Math.max(1, Number(refreshIntervalMinutes) || 15) * 60 * 1000;
+    loadRows(true);
+    const intervalId = window.setInterval(() => {
+      void loadRows(false);
+    }, intervalMs);
+
     return () => {
       cancelled = true;
+      window.clearInterval(intervalId);
     };
-  }, [date]);
+  }, [date, refreshIntervalMinutes]);
+
+  const roundedTotalPay = (row: any) =>
+    applyPayrollRounding(Number(row.total_pay_yen || 0), roundingUnit, roundingMode);
+  const roundedRealTotal = (row: any) =>
+    roundedTotalPay(row) - Number(row.paid_price || 0);
 
   if (loading) {
     return (
@@ -250,10 +287,10 @@ export default function PayrollDailyCastReadOnlyTable({ date }: { date: string }
                 {formatCurrency(Number(row.back_total || 0))}
               </td>
               <td className="p-2 sm:p-3 text-center font-semibold text-xs sm:text-sm whitespace-nowrap">
-                {formatCurrency(Number(row.total_pay_yen || 0))}
+                {formatCurrency(roundedTotalPay(row))}
               </td>
               <td className="p-2 sm:p-3 text-center font-bold text-xs sm:text-sm whitespace-nowrap border-l border-gray-200">
-                {formatCurrency(Number(row.realTotal_price || 0))}
+                {formatCurrency(roundedRealTotal(row))}
               </td>
             </tr>
           ))}
@@ -374,10 +411,10 @@ export default function PayrollDailyCastReadOnlyTable({ date }: { date: string }
               {formatCurrency(rows.reduce((sum, r) => sum + Number(r.back_total || 0), 0))}
             </td>
             <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap">
-              {formatCurrency(rows.reduce((sum, r) => sum + Number(r.total_pay_yen || 0), 0))}
+              {formatCurrency(rows.reduce((sum, r) => sum + roundedTotalPay(r), 0))}
             </td>
             <td className="p-2 sm:p-3 text-center font-bold text-xs sm:text-sm whitespace-nowrap border-l border-gray-200">
-              {formatCurrency(rows.reduce((sum, r) => sum + Number(r.realTotal_price || 0), 0))}
+              {formatCurrency(rows.reduce((sum, r) => sum + roundedRealTotal(r), 0))}
             </td>
           </tr>
         </tfoot>

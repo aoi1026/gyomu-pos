@@ -54,7 +54,7 @@ export async function PATCH(
     let castShareAdd = 0;
     if (cost !== undefined) {
       const costAdd = parseFloat(cost);
-      if (Number.isFinite(costAdd) && costAdd > 0) {
+      if (Number.isFinite(costAdd) && costAdd !== 0) {
         const rateRes = await client.query(
           `SELECT main_nomination, inside_nomination, together_nomination FROM "user" WHERE id = $1`,
           [current.cast_id]
@@ -75,11 +75,10 @@ export async function PATCH(
     let idx = 1;
 
     if (cost !== undefined) {
-      updates.push(`cost = cost + $${idx++}`);
+      updates.push(`cost = GREATEST(0, COALESCE(cost, 0) + $${idx++})`);
       values.push(parseFloat(cost));
 
-      // cost_castも同じタイミングで加算
-      updates.push(`cost_cast = COALESCE(cost_cast, 0) + $${idx++}`);
+      updates.push(`cost_cast = GREATEST(0, COALESCE(cost_cast, 0) + $${idx++})`);
       values.push(castShareAdd);
     }
 
@@ -94,12 +93,12 @@ export async function PATCH(
     }
 
     if (rank_cost_add !== undefined) {
-      updates.push(`rank_cost = COALESCE(rank_cost, 0) + $${idx++}`);
+      updates.push(`rank_cost = GREATEST(0, COALESCE(rank_cost, 0) + $${idx++})`);
       values.push(parseFloat(rank_cost_add));
     }
 
     if (rank_point_add !== undefined) {
-      updates.push(`rank_point = COALESCE(rank_point, 0) + $${idx++}`);
+      updates.push(`rank_point = GREATEST(0, COALESCE(rank_point, 0) + $${idx++})`);
       values.push(parseFloat(rank_point_add));
     }
 
@@ -118,8 +117,8 @@ export async function PATCH(
       );
     }
 
-    // cost_castに加算した増分（castShareAdd）を、salaryの指名料取り分にも反映
-    if (cost !== undefined && Number.isFinite(castShareAdd) && castShareAdd > 0) {
+    // cost_castに加算した増分（castShareAdd）を、salaryの指名料取り分にも反映（延長取り消しで負の加算も可）
+    if (cost !== undefined && Number.isFinite(castShareAdd) && castShareAdd !== 0) {
       const year = Number(current.year);
       const month = Number(current.month);
       const castId = Number(current.cast_id);
@@ -142,9 +141,9 @@ export async function PATCH(
           VALUES ($1, $2, $3, $4, $5, $6)
           ON CONFLICT (user_id, year, month)
           DO UPDATE SET
-            main_nomination_fee = COALESCE(salary.main_nomination_fee, 0) + EXCLUDED.main_nomination_fee,
-            inside_nomination_fee = COALESCE(salary.inside_nomination_fee, 0) + EXCLUDED.inside_nomination_fee,
-            together_nomination_fee = COALESCE(salary.together_nomination_fee, 0) + EXCLUDED.together_nomination_fee
+            main_nomination_fee = GREATEST(0, COALESCE(salary.main_nomination_fee, 0) + EXCLUDED.main_nomination_fee),
+            inside_nomination_fee = GREATEST(0, COALESCE(salary.inside_nomination_fee, 0) + EXCLUDED.inside_nomination_fee),
+            together_nomination_fee = GREATEST(0, COALESCE(salary.together_nomination_fee, 0) + EXCLUDED.together_nomination_fee)
           `,
           [castId, year, month, addMainFee, addInsideFee, addTogetherFee]
         );

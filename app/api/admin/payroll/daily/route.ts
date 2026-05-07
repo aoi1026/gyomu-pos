@@ -11,6 +11,11 @@ function addDays(dateStr: string, days: number) {
   return `${yyyy}-${mm}-${dd}`;
 }
 
+function paidQuarterHours(hours: number): number {
+  if (!Number.isFinite(hours) || hours <= 0) return 0;
+  return Math.floor(hours * 4) / 4;
+}
+
 export async function GET(request: NextRequest) {
   let client;
   try {
@@ -99,11 +104,24 @@ export async function GET(request: NextRequest) {
         GROUP BY ee.ext_date
       ),
       att AS (
-        SELECT DATE(a.created_at) AS date, COALESCE(SUM(a.total_work_hours), 0) AS hours
+        SELECT
+          DATE(a.clock_in) AS date,
+          COALESCE(SUM(
+            CASE
+              WHEN a.clock_out IS NULL THEN EXTRACT(EPOCH FROM (NOW() - a.clock_in)) / 3600.0
+              ELSE COALESCE(a.total_work_hours, EXTRACT(EPOCH FROM (a.clock_out - a.clock_in)) / 3600.0)
+            END
+          ), 0) AS hours,
+          COALESCE(SUM(
+            CASE
+              WHEN a.clock_out IS NULL THEN FLOOR(GREATEST(0, EXTRACT(EPOCH FROM (NOW() - a.clock_in)) / 60.0) / 15.0) * 0.25
+              ELSE FLOOR(GREATEST(0, COALESCE(a.total_work_hours, EXTRACT(EPOCH FROM (a.clock_out - a.clock_in)) / 3600.0)) * 4.0) / 4.0
+            END
+          ), 0) AS paid_hours
         FROM attendance a
         WHERE a.staff_id = $3::int
-          AND DATE(a.created_at) >= $1::date AND DATE(a.created_at) < $2::date
-        GROUP BY DATE(a.created_at)
+          AND DATE(a.clock_in) >= $1::date AND DATE(a.clock_in) < $2::date
+        GROUP BY DATE(a.clock_in)
       ),
       nom_main AS (
         SELECT DATE(n.created_at) AS date, COUNT(*)::int AS cnt, COALESCE(SUM(n.cost_cast), 0) AS sum_fee
@@ -136,7 +154,7 @@ export async function GET(request: NextRequest) {
         ci.user_id,
         ci.hourly_price,
         COALESCE(att.hours, 0)::DECIMAL(10,2) AS basic_hours,
-        (COALESCE(att.hours, 0) * COALESCE(ci.hourly_price, 0))::DECIMAL(12,2) AS base_pay,
+        (COALESCE(att.paid_hours, 0) * COALESCE(ci.hourly_price, 0))::DECIMAL(12,2) AS base_pay,
         COALESCE(nm.cnt, 0)::INT AS main_nomination_count,
         COALESCE(me.cnt, 0)::INT AS main_nomination_extension_count,
         COALESCE(ni.cnt, 0)::INT AS inside_nomination_count,
@@ -207,12 +225,19 @@ export async function GET(request: NextRequest) {
           ? saved.category_totals
           : {};
         const categoryAmounts = catAmountMap[dateStr] || {};
+        const basePay = Number(r.base_pay || 0);
+        const backTotal = Number(saved.back_total || 0);
+        const bonus = Number(saved.bonus_yen || 0);
+        const point = Number(saved.point_yen || 0);
+        const addPoint = Number(saved.additional_point_yen || 0);
+        const totalPay = basePay + backTotal + bonus + point + addPoint;
+        const paid = Number(saved.paid_price || 0);
         return {
           date: dateStr,
           user_id: saved.user_id,
           hourly_price: Number(saved.hourly_price || 0),
-          basic_hours: Number(saved.basic_hours || 0),
-          base_pay: Number(saved.base_pay || 0),
+          basic_hours: Number(r.basic_hours || saved.basic_hours || 0),
+          base_pay: basePay,
           main_nomination_count: Number(saved.main_nomination_count || 0),
           main_nomination_extension_count: Number(saved.main_nomination_extension_count || 0),
           inside_nomination_count: Number(saved.inside_nomination_count || 0),
@@ -226,19 +251,19 @@ export async function GET(request: NextRequest) {
           inside_nomination_extension_fee: Number(saved.inside_nomination_extension_fee || 0),
           together_nomination_fee: Number(saved.together_nomination_fee || 0),
           sales_back_yen: Object.values(categoryTotals).reduce((s: number, x: any) => s + (Number(x) || 0), 0),
-          paid_price: Number(saved.paid_price || 0),
+          paid_price: paid,
           pickup_yen: Number(saved.pickup_yen || 0),
           hairmake_yen: Number(saved.hairmake_yen || 0),
           rental_yen: Number(saved.rental_yen || 0),
           other_deduct_yen: Number(saved.other_deduct_yen || 0),
           penalty_yen: Number(saved.penalty_yen || 0),
           deduction_yen: Number(saved.deduction_yen || 0),
-          bonus_yen: Number(saved.bonus_yen || 0),
-          point_yen: Number(saved.point_yen || 0),
-          additional_point_yen: Number(saved.additional_point_yen || 0),
-          back_total: Number(saved.back_total || 0),
-          total_pay_yen: Number(saved.total_pay_yen || 0),
-          realTotal_price: Number(saved.realTotal_price || 0),
+          bonus_yen: bonus,
+          point_yen: point,
+          additional_point_yen: addPoint,
+          back_total: backTotal,
+          total_pay_yen: totalPay,
+          realTotal_price: totalPay - paid,
         };
       }
 
@@ -485,7 +510,7 @@ export async function PUT(request: NextRequest) {
     const additional_point_yen = editable.additional_point_yen ?? (saved ? Number(saved.additional_point_yen) : undefined) ?? 0;
 
     const hourly = saved ? Number(saved.hourly_price) : hourly_price;
-    const base_pay = basic_hours * (hourly || 0);
+    const base_pay = paidQuarterHours(basic_hours) * (hourly || 0);
 
     const mainCnt = Number(row.main_nomination_count || 0);
     const mainExtCnt = Number(row.main_nomination_extension_count || 0);

@@ -28,6 +28,10 @@ import { calculateBack, formatBackAmount, formatBackRate } from '@/lib/cast-back
 import { createStaffCall, createServiceOrder, getCallTypeLabel, getServiceTypeLabel } from '@/lib/staff-call-system';
 import { createOrderNotification, getOrderTypeLabel } from '@/lib/order-monitoring-system';
 import { useNotificationContext } from '@/lib/notification-context';
+import { removeLatestExtensionRoomSurcharges } from '@/lib/remove-latest-extension-room-surcharges';
+import { perNominationExtensionCharge, extensionUnitPrice as nominationExtensionUnitFromEntry } from '@/lib/nomination-extension-fee';
+import { nominationOrderLineTotal } from '@/lib/nomination-order-line-total';
+import { getCastRealtimeSubtitle } from '@/lib/cast-realtime-subtitle';
 import StripeProvider from '@/components/providers/StripeProvider';
 import StripePaymentForm from '@/components/payment/StripePaymentForm';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -892,25 +896,64 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
     return () => clearInterval(interval);
   }, [tableAuth]);
 
-  const loadCasts = async () => {
+  const loadCasts = async (opts?: { silent?: boolean }) => {
     try {
-      setIsCastsLoading(true);
-      // 出勤中のキャストのみを取得
-      const response = await fetch('/api/casts?only_active=true');
+      if (!opts?.silent) setIsCastsLoading(true);
+      const response = await fetch('/api/casts?only_active=true', { cache: 'no-store' });
       const result = await response.json();
 
       if (result.success) {
         setCasts(result.data);
-        setAvailableCasts(result.data); // availableCastsも更新
-      } else {
+        setAvailableCasts(result.data);
+      } else if (!opts?.silent) {
         error('エラー', 'キャストデータの取得に失敗しました');
       }
     } catch (err) {
-      error('エラー', 'キャストデータの取得に失敗しました');
+      if (!opts?.silent) error('エラー', 'キャストデータの取得に失敗しました');
     } finally {
-      setIsCastsLoading(false);
+      if (!opts?.silent) setIsCastsLoading(false);
     }
   };
+
+  // 指名・キャスト用注文など、出勤キャスト一覧を表示している間は DB 最新をポーリング
+  useEffect(() => {
+    const needPoll =
+      isSessionActive &&
+      (leftMode === 'nomination' ||
+        (leftMode === 'order' && isForCast) ||
+        showNominationCastDialog ||
+        showCastSelection ||
+        showFieldNominationDialog ||
+        (showOrderDialog && isForCast) ||
+        showServiceOrderDialog);
+
+    if (!needPoll) return;
+
+    const tick = () => {
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
+      void loadCasts({ silent: true });
+    };
+
+    const id = setInterval(tick, 5000);
+    const onVis = () => {
+      if (document.visibilityState === 'visible') tick();
+    };
+    document.addEventListener('visibilitychange', onVis);
+    tick();
+    return () => {
+      clearInterval(id);
+      document.removeEventListener('visibilitychange', onVis);
+    };
+  }, [
+    isSessionActive,
+    leftMode,
+    isForCast,
+    showNominationCastDialog,
+    showCastSelection,
+    showFieldNominationDialog,
+    showOrderDialog,
+    showServiceOrderDialog,
+  ]);
 
   const loadAddCharges = async () => {
     try {
@@ -1897,10 +1940,9 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
       }
     });
 
-    // 指名料金（DBのnomination.costは「指名登録 + 延長時加算」の累計になっている前提）
+    // 指名料金（明細と同じ式：初期指名料 ＋ 固定延長単価×延長回数。旧データは cost からの逆算で整合）
     nominations.forEach(nomination => {
-      const cost = Number((nomination as any).cost);
-      subtotal += Number.isFinite(cost) ? cost : 0;
+      subtotal += nominationOrderLineTotal(nomination, setExtensions, addCharges);
     });
 
     // 追加サービス料金の合計
@@ -2079,8 +2121,18 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
     }
 
     // 延長情報を追加（priceは「延長料金の合計」＝単価×人数として保存し、明細を固定化）
-    const extensionUnitPrice = charges['extension_price'];
-    const newExtension = { count, timestamp: Date.now(), price: extensionUnitPrice * count };
+    const extensionPricePerGuest = charges['extension_price'];
+    const savedNominationUnit = Number((setExtensions?.[0] as any)?.nomination_unit);
+    const nominationUnit =
+      Number.isFinite(savedNominationUnit) && savedNominationUnit >= 0
+        ? savedNominationUnit
+        : Number(charges['main']) || 0;
+    const newExtension = {
+      count,
+      timestamp: Date.now(),
+      price: extensionPricePerGuest * count,
+      nomination_unit: nominationUnit,
+    };
     const updatedExtensions = [...setExtensions, newExtension];
     setSetExtensions(updatedExtensions);
 
@@ -2154,29 +2206,16 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
 
     // 各指名のcostを更新（延長のたびに「該当する指名料」を加算）
     // 仕様: 延長時に場内指名(inside)は自動的に本指名(main)へ切り替え、基本料金に本指名料金を加算する
-    for (const nomination of nominations) {
-      let charge = 0;
-      const mainCharge = charges['main'] || 0;
+    const extUnitPerGuest = nominationExtensionUnitFromEntry(newExtension, charges['extension_price'] || 0);
 
-      if (nomination.type_id === 'inside') {
-        // 場内指名は本指名に切り替え → 本指名料金を加算
-        charge = mainCharge;
-      } else if (nomination.type_id === 'together') {
-        // 同伴指名は延長時は本指名料金を加算（既存仕様踏襲）
-        charge = mainCharge;
-      } else {
-        // main など
-        charge = mainCharge;
-      }
+    for (const nomination of nominations) {
+      const charge = nominationUnit;
       extensionNominationCharges.push(charge);
       if (charge > 0) {
-        // rank_cost は「延長料金(1名分) + 本指名料」を加算、rank_point は延長ごとに +1
-        const extTotal = newExtension.price ?? 0;
-        const extUnit = count > 0 ? extTotal / count : 0;
         nominationDeltaById.set(Number(nomination.id), {
           add: charge,
           ...(nomination.type_id === 'inside' ? { toMainFlag: 1 as const } : {}),
-          rankCostAdd: extUnit + charge,
+          rankCostAdd: extUnitPerGuest + charge,
           rankPointAdd: 1,
         });
       }
@@ -2193,7 +2232,7 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
               cost: charge,
               ...(nomination.type_id === 'inside' ? { tomain_nomination: 1 } : {}),
               // rank用加算
-              rank_cost_add: (count > 0 ? (newExtension.price ?? 0) / count : 0) + charge,
+              rank_cost_add: extUnitPerGuest + charge,
               rank_point_add: 1
             })
           });
@@ -2496,6 +2535,68 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
             if (!result.success) {
               throw new Error(result.error || 'セットキャンセルの更新に失敗しました');
             }
+
+            await removeLatestExtensionRoomSurcharges(parseInt(sessionId, 10));
+            await loadAdditionalServices();
+
+            let charges = addCharges;
+            if (Object.keys(charges).length === 0) {
+              try {
+                const chargesResponse = await fetch('/api/add-charges');
+                const chargesResult = await chargesResponse.json();
+                if (chargesResult.success && chargesResult.charges) {
+                  const chargesMap: { [key: string]: number } = {};
+                  chargesResult.charges.forEach((ch: any) => {
+                    chargesMap[ch.charge_name] = parseFloat(ch.value) || 0;
+                  });
+                  charges = chargesMap;
+                  setAddCharges(chargesMap);
+                }
+              } catch (e) {
+                console.error('追加料金取得エラー:', e);
+              }
+            }
+
+            const extUnitForCanceled = nominationExtensionUnitFromEntry(lastExtension, charges['extension_price'] || 0);
+            const canceledNominationUnitRaw = Number((lastExtension as any)?.nomination_unit);
+            const canceledNominationUnit =
+              Number.isFinite(canceledNominationUnitRaw) && canceledNominationUnitRaw >= 0
+                ? canceledNominationUnitRaw
+                : Number((updatedExtensions?.[0] as any)?.nomination_unit) || Number(charges['main']) || 0;
+            for (const nomination of nominations) {
+              const charge = canceledNominationUnit;
+              if (charge <= 0) continue;
+              const createdMs = Date.parse(String(nomination.created_at || (nomination as any).updated_at || '')) || 0;
+              const extAfter = updatedExtensions.filter((e: any) => {
+                const ts = Number(e?.timestamp);
+                return Number.isFinite(ts) && ts > createdMs;
+              }).length;
+              const body: Record<string, unknown> = {
+                cost: -charge,
+                rank_cost_add: -(extUnitForCanceled + charge),
+                rank_point_add: -1,
+              };
+              if (nomination.type_id === 'inside' && extAfter === 0) {
+                body.tomain_nomination = 0;
+              }
+              try {
+                await fetch(`/api/nominations/${nomination.id}`, {
+                  method: 'PATCH',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(body),
+                });
+              } catch (e) {
+                console.error(`セットキャンセル時 指名${nomination.id} 巻き戻しエラー:`, e);
+              }
+            }
+
+            setNominationCharges(prev => {
+              const n = nominations.length;
+              const next = prev.slice(0, Math.max(0, prev.length - n));
+              localStorage.setItem('nomination_charges', JSON.stringify(next));
+              return next;
+            });
+            await loadNominations();
 
             // ローカルストレージに保存
             if (updatedExtensions.length > 0) {
@@ -3826,6 +3927,7 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
                               onClick={() => {
                                 setCurrentNominationType('main');
                                 localStorage.setItem('nomination_type', 'main');
+                                void loadCasts();
                                 setShowNominationCastDialog(true);
                               }}
                             >
@@ -3848,6 +3950,7 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
                               onClick={() => {
                                 setCurrentNominationType('inside');
                                 localStorage.setItem('nomination_type', 'inside');
+                                void loadCasts();
                                 setShowNominationCastDialog(true);
                               }}
                             >
@@ -4326,7 +4429,7 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
                   セッション料金・セット延長・承認済み商品の合計を表示します
                 </CardDescription> */}
                   </CardHeader>
-                  <CardContent className="space-y-4">
+                  <CardContent className="h-[460px] overflow-y-auto pr-2 space-y-4">
                     {/* 承認状況の表示 */}
                     {(() => {
                       const acceptedOrders = cartOrders.filter(order => {
@@ -4442,6 +4545,11 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
                               typeLabel = `${getNominationTypeLabel(nomination.type_id)}${promoted ? '（本指名へ昇格）' : ''} - ${nomination.cast_name}`;
                             }
 
+                            const lineTotal = nominationOrderLineTotal(
+                              nomination,
+                              setExtensions,
+                              addCharges
+                            );
                             const totalCost = Number((nomination as any).cost) || 0;
                             const mainCharge = addCharges['main'] || 0;
                             const togetherCharge = addCharges['together'] || 0;
@@ -4450,21 +4558,50 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
                               const ts = Number(e?.timestamp);
                               return Number.isFinite(ts) && ts > createdMs;
                             }).length;
-                            const extAdd = mainCharge * extCountSince;
-                            const initialCost = Math.max(0, totalCost - extAdd);
+                            const extAddLegacy = mainCharge * extCountSince;
+                            const rawInitial = (nomination as any).initial_nomination_cost;
+                            const hasStoredInitial =
+                              rawInitial != null &&
+                              rawInitial !== '' &&
+                              Number.isFinite(Number(rawInitial));
+                            const initialDisplay = hasStoredInitial
+                              ? Number(rawInitial)
+                              : Math.max(0, totalCost - extAddLegacy);
+                            const extSum = Math.max(0, totalCost - initialDisplay);
+                            const relevantExts = setExtensions.filter((e: any) => {
+                              const ts = Number(e?.timestamp);
+                              return Number.isFinite(ts) && ts > createdMs;
+                            });
+                            const unitFromExtRaw = Number((relevantExts?.[0] as any)?.nomination_unit);
+                            const perExt =
+                              Number.isFinite(unitFromExtRaw) && unitFromExtRaw >= 0
+                                ? unitFromExtRaw
+                                : extCountSince > 0 && extSum > 0
+                                  ? extSum / extCountSince
+                                  : 0;
+                            const fmtPerExt =
+                              Math.abs(perExt - Math.round(perExt)) < 1e-6
+                                ? Math.round(perExt).toLocaleString()
+                                : perExt.toLocaleString(undefined, { maximumFractionDigits: 2 });
 
                             let breakdownText = '';
                             if (nomination.type_id === 'together') {
-                              if (togetherCharge > 0 || mainCharge > 0) {
-                                breakdownText = `¥${togetherCharge.toLocaleString()}`;
-                                if (extCountSince > 0) {
-                                  breakdownText += `＋¥${mainCharge.toLocaleString()}×${extCountSince}`;
+                              const baseInit = hasStoredInitial ? initialDisplay : togetherCharge;
+                              if (baseInit > 0 || (extCountSince > 0 && extSum > 0)) {
+                                breakdownText =
+                                  baseInit > 0 ? `¥${baseInit.toLocaleString()}` : '';
+                                if (extCountSince > 0 && extSum > 0) {
+                                  breakdownText +=
+                                    (breakdownText ? ' ＋ ' : '') +
+                                    `¥${fmtPerExt}×${extCountSince}`;
                                 }
                               }
-                            } else if (extCountSince > 0 && extAdd > 0) {
-                              breakdownText = `¥${initialCost.toLocaleString()} + ¥${mainCharge.toLocaleString()} × ${extCountSince}`;
+                            } else if (extCountSince > 0 && extSum > 0) {
+                              breakdownText = `¥${initialDisplay.toLocaleString()} ＋ ¥${fmtPerExt} × ${extCountSince}`;
                             } else {
-                              const typeCharge = addCharges[nomination.type_id] || 0;
+                              const typeCharge = hasStoredInitial
+                                ? initialDisplay
+                                : addCharges[nomination.type_id] || 0;
                               if (typeCharge > 0) {
                                 breakdownText = `¥${typeCharge.toLocaleString()}`;
                               }
@@ -4478,7 +4615,7 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
                                     <div className="text-gray-400 text-[10px] sm:text-xs mt-0.5">{breakdownText}</div>
                                   )}
                                 </div>
-                                <span className="flex-shrink-0">{formatCurrency(totalCost)}</span>
+                                <span className="flex-shrink-0">{formatCurrency(lineTotal)}</span>
                               </div>
                             );
                           })}
@@ -4489,37 +4626,103 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
                       {additionalServices.length > 0 && (
                         <div className="border-t pt-2 space-y-1">
                           <div className="text-[10px] sm:text-xs font-semibold text-gray-600 mb-1">追加サービス</div>
-                          {additionalServices.map((service, index) => {
-                            let serviceLabel = '';
-                            let breakdownText = '';
-                            if (service.type === 'bottle_keep') {
-                              serviceLabel = 'ボトルキープ';
-                            } else if (service.type === 'vip_room') {
-                              serviceLabel = 'VIPルーム利用';
-                              if (service.count > 1) {
-                                const unitCharge = service.charge / service.count;
-                                breakdownText = `¥${unitCharge.toLocaleString()} × ${service.count}部屋`;
-                              }
-                            } else if (service.type === 'karaoke') {
-                              serviceLabel = 'カラオケ利用';
-                              if (service.count > 1) {
-                                const unitCharge = service.charge / service.count;
-                                breakdownText = `¥${unitCharge.toLocaleString()} × ${service.count}曲`;
-                              }
-                            }
+                          {(() => {
+                            const mergedTypes = ['vip_room', 'karaoke'] as const;
 
-                            return (
-                              <div key={index} className="flex justify-between items-start text-xs sm:text-sm pl-2 sm:pl-3 gap-2">
+                            const merged = mergedTypes.flatMap((type) => {
+                              const rows = additionalServices.filter((s: any) => s?.type === type);
+                              if (rows.length === 0) return [];
+
+                              const baseRows = rows.filter((s: any) => String(s?.note || '') !== 'セット延長');
+                              const extRows = rows.filter((s: any) => String(s?.note || '') === 'セット延長');
+
+                              const sumCharge = (arr: any[]) =>
+                                arr.reduce((sum: number, s: any) => {
+                                  const v = Number(s?.charge);
+                                  return sum + (Number.isFinite(v) ? v : 0);
+                                }, 0);
+
+                              const baseTotal = sumCharge(baseRows);
+                              const extTotal = sumCharge(extRows);
+                              const extTimes = extRows.length;
+                              const extUnit = extTimes > 0 ? extTotal / extTimes : 0;
+                              const label = type === 'vip_room' ? 'VIPルーム利用' : 'カラオケ利用';
+
+                              const fmt = (n: number) =>
+                                Math.abs(n - Math.round(n)) < 1e-6
+                                  ? Math.round(n).toLocaleString()
+                                  : n.toLocaleString(undefined, { maximumFractionDigits: 2 });
+
+                              const parts: string[] = [];
+                              if (baseTotal > 0) parts.push(`¥${fmt(baseTotal)}`);
+                              if (extTimes > 0 && extUnit > 0) parts.push(`¥${fmt(extUnit)} × ${extTimes}`);
+                              const breakdown = parts.join(' + ');
+                              const total = baseTotal + extTotal;
+
+                              return [
+                                {
+                                  key: `merged_${type}`,
+                                  label,
+                                  charge: total,
+                                  breakdown,
+                                },
+                              ];
+                            });
+
+                            const otherRows = additionalServices.filter(
+                              (s: any) => !mergedTypes.includes(s?.type)
+                            );
+
+                            const rendered = [
+                              ...merged,
+                              ...otherRows.map((service: any, index: number) => {
+                                let serviceLabel = '';
+                                let breakdownText = '';
+                                if (service.type === 'bottle_keep') {
+                                  serviceLabel = 'ボトルキープ';
+                                } else if (service.type === 'vip_room') {
+                                  serviceLabel = 'VIPルーム利用';
+                                  if (service.count > 1) {
+                                    const unitCharge = service.charge / service.count;
+                                    breakdownText = `¥${unitCharge.toLocaleString()} × ${service.count}部屋`;
+                                  } else if (service.note) {
+                                    breakdownText = service.note;
+                                  }
+                                } else if (service.type === 'karaoke') {
+                                  serviceLabel = 'カラオケ利用';
+                                  if (service.count > 1) {
+                                    const unitCharge = service.charge / service.count;
+                                    breakdownText = `¥${unitCharge.toLocaleString()} × ${service.count}曲`;
+                                  } else if (service.note) {
+                                    breakdownText = service.note;
+                                  }
+                                }
+                                return {
+                                  key: `row_${index}`,
+                                  label: serviceLabel,
+                                  charge: service.charge,
+                                  breakdown: breakdownText,
+                                };
+                              }),
+                            ];
+
+                            return rendered.map((row: any) => (
+                              <div
+                                key={row.key}
+                                className="flex justify-between items-start text-xs sm:text-sm pl-2 sm:pl-3 gap-2"
+                              >
                                 <div className="min-w-0 flex-1">
-                                  <div className="text-gray-700 truncate">{serviceLabel}</div>
-                                  {breakdownText && (
-                                    <div className="text-gray-400 text-[10px] sm:text-xs mt-0.5">{breakdownText}</div>
+                                  <div className="text-gray-700 truncate">{row.label}</div>
+                                  {row.breakdown && (
+                                    <div className="text-gray-400 text-[10px] sm:text-xs mt-0.5">
+                                      {row.breakdown}
+                                    </div>
                                   )}
                                 </div>
-                                <span className="flex-shrink-0">{formatCurrency(service.charge)}</span>
+                                <span className="flex-shrink-0">{formatCurrency(row.charge)}</span>
                               </div>
-                            );
-                          })}
+                            ));
+                          })()}
                         </div>
                       )}
 
@@ -4556,10 +4759,13 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
                           }
                         });
 
-                        // 指名料金（DBのnomination.cost累計）
+                        // 指名料金（明細と同じ計算式の合計）
                         nominations.forEach(nomination => {
-                          const cost = Number((nomination as any).cost);
-                          subtotal += Number.isFinite(cost) ? cost : 0;
+                          subtotal += nominationOrderLineTotal(
+                            nomination,
+                            setExtensions,
+                            addCharges
+                          );
                         });
 
                         // 追加サービス料金の合計
@@ -4848,11 +5054,11 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
                   <SelectContent>
                     {availableCasts.map((cast) => (
                       <SelectItem key={cast.id} value={cast.id}>
-                        <div className="flex items-center justify-between w-full">
-                          <span>{cast.name}</span>
-                          <Badge variant="outline" className="text-xs ml-2">
-                            空き
-                          </Badge>
+                        <div className="flex flex-col items-start gap-0.5 py-0.5 max-w-[280px]">
+                          <span className="font-medium">{cast.name}</span>
+                          <span className="text-[10px] text-gray-500 leading-tight whitespace-normal">
+                            {getCastRealtimeSubtitle(cast, { nominationType: 'inside' })}
+                          </span>
                         </div>
                       </SelectItem>
                     ))}
@@ -4997,20 +5203,19 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
                         setSelectedMenuItem(null);
                       }
                     }}
-                    className="flex items-center justify-between p-4 h-auto"
+                    className="flex items-center justify-start p-4 h-auto"
                   >
-                    <div className="flex items-center space-x-3">
-                      <div className="w-10 h-10 bg-pink-100 rounded-lg flex items-center justify-center">
+                    <div className="flex items-center space-x-3 min-w-0">
+                      <div className="w-10 h-10 bg-pink-100 rounded-lg flex items-center justify-center shrink-0">
                         <Users className="w-5 h-5 text-pink-600" />
                       </div>
-                      <div className="text-left">
+                      <div className="text-left min-w-0">
                         <h4 className="font-medium">{cast.name}</h4>
-                        <p className="text-sm text-gray-500">キャスト</p>
+                        <p className="text-[11px] text-gray-500 leading-snug break-words">
+                          {getCastRealtimeSubtitle(cast, {})}
+                        </p>
                       </div>
                     </div>
-                    <Badge variant="outline" className="bg-green-50 text-green-700">
-                      空き
-                    </Badge>
                   </Button>
                 ))}
               </div>
@@ -5068,6 +5273,8 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
                     setIsForCast(e.target.checked);
                     if (!e.target.checked) {
                       setSelectedCast('none');
+                    } else {
+                      void loadCasts({ silent: true });
                     }
                   }}
                   className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500"
@@ -5099,7 +5306,12 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
                     ) : (
                       casts.map((cast) => (
                         <SelectItem key={cast.id} value={cast.id.toString()}>
-                          {cast.name}
+                          <div className="flex flex-col items-start gap-0.5 py-0.5 max-w-[280px]">
+                            <span className="font-medium leading-tight">{cast.name}</span>
+                            <span className="text-[10px] text-gray-500 leading-tight whitespace-normal">
+                              {getCastRealtimeSubtitle(cast, {})}
+                            </span>
+                          </div>
                         </SelectItem>
                       ))
                     )}
@@ -5222,7 +5434,12 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
                     ) : (
                       casts.map((cast) => (
                         <SelectItem key={cast.id} value={cast.id.toString()}>
-                          {cast.name}
+                          <div className="flex flex-col items-start gap-0.5 py-0.5 max-w-[280px]">
+                            <span className="font-medium leading-tight">{cast.name}</span>
+                            <span className="text-[10px] text-gray-500 leading-tight whitespace-normal">
+                              {getCastRealtimeSubtitle(cast, {})}
+                            </span>
+                          </div>
                         </SelectItem>
                       ))
                     )}
@@ -5294,7 +5511,7 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
                 {currentNominationType ? getNominationTypeLabel(currentNominationType) : '指名'} - キャスト選択
               </DialogTitle>
               <DialogDescription>
-                指名するキャストを選択してください
+                指名するキャストを選択してください。表示内容は数秒ごとに自動更新されます。
               </DialogDescription>
             </DialogHeader>
 
@@ -5308,7 +5525,12 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
                   <SelectContent>
                     {availableCasts.map((cast) => (
                       <SelectItem key={cast.id} value={cast.id.toString()}>
-                        {cast.name}
+                        <div className="flex flex-col items-start gap-0.5 py-0.5 max-w-[280px]">
+                          <span className="font-medium leading-tight">{cast.name}</span>
+                          <span className="text-[10px] text-gray-500 leading-tight whitespace-normal">
+                            {getCastRealtimeSubtitle(cast, { nominationType: currentNominationType })}
+                          </span>
+                        </div>
                       </SelectItem>
                     ))}
                   </SelectContent>

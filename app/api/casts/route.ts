@@ -7,9 +7,12 @@ import { hashPassword } from '@/lib/hash';
 export async function GET(request: NextRequest) {
   const client = await pool.connect();
   try {
-    // genderカラムが存在するか確認し、存在しない場合は追加
+    // gender / 出勤状態 カラムの存在確認
     await client.query(`
       ALTER TABLE "user" ADD COLUMN IF NOT EXISTS gender VARCHAR(10)
+    `);
+    await client.query(`
+      ALTER TABLE "user" ADD COLUMN IF NOT EXISTS attendance_status INTEGER DEFAULT 0
     `);
 
     // クエリパラメータで出勤中のキャストのみをフィルタリングするかどうかを確認
@@ -17,7 +20,21 @@ export async function GET(request: NextRequest) {
     const onlyActive = searchParams.get('only_active') === 'true';
     
     let query = `
-      SELECT id, name, mail, other, gender, created_at, attendance_status
+      SELECT
+        id,
+        name,
+        mail,
+        other,
+        gender,
+        created_at,
+        updated_at,
+        attendance_status,
+        hourly_price,
+        main_nomination,
+        inside_nomination,
+        together_nomination,
+        drink_back,
+        food_back
       FROM "user"
       WHERE role = 'cast'
     `;

@@ -17,7 +17,10 @@ import {
   ArrowLeft, Clock, User, Calendar, MessageSquare, LogIn, LogOut, Search, Pencil, Trash2, DollarSign
 } from 'lucide-react';
 import { useNotificationContext } from '@/lib/notification-context';
-import PayrollDailyCastReadOnlyTable from '@/components/admin/PayrollDailyCastReadOnlyTable';
+import PayrollDailyCastReadOnlyTable, {
+  PayrollRoundingMode,
+  PayrollRoundingUnit,
+} from '@/components/admin/PayrollDailyCastReadOnlyTable';
 
 interface Cast {
   id: number;
@@ -53,18 +56,14 @@ function getLocalYmd(d = new Date()): string {
   return `${y}-${m}-${day}`;
 }
 
-/** 出勤時刻のデフォルト: 現在時刻を最も近い15分に丸める（同日に収める） */
+/** 出勤時刻のデフォルト: 現在時刻（そのまま） */
 function defaultClockInHourMinute(): { hour: string; minute: string } {
   const now = new Date();
-  let totalMin = now.getHours() * 60 + now.getMinutes();
-  let rounded = Math.round(totalMin / 15) * 15;
-  if (rounded >= 24 * 60) rounded = 23 * 60 + 45;
-  const h = Math.floor(rounded / 60);
-  const m = rounded % 60;
-  return { hour: String(h).padStart(2, '0'), minute: String(m).padStart(2, '0') };
+  return {
+    hour: String(now.getHours()).padStart(2, '0'),
+    minute: String(now.getMinutes()).padStart(2, '0'),
+  };
 }
-
-const QUARTER_MINUTES = ['00', '15', '30', '45'] as const;
 
 /** datetime-local 用 YYYY-MM-DDTHH:mm（ローカル） */
 function toDatetimeLocalValue(iso: string): string {
@@ -101,6 +100,10 @@ export default function AdminAttendancePage() {
   const [isHistoryEditModalOpen, setIsHistoryEditModalOpen] = useState(false);
   const [historyEditClockIn, setHistoryEditClockIn] = useState('');
   const [historyEditClockOut, setHistoryEditClockOut] = useState('');
+  const [payrollRefreshIntervalMinutes, setPayrollRefreshIntervalMinutes] = useState<number>(15);
+  const [isPayrollRoundingModalOpen, setIsPayrollRoundingModalOpen] = useState(false);
+  const [payrollRoundingUnit, setPayrollRoundingUnit] = useState<PayrollRoundingUnit>(1);
+  const [payrollRoundingMode, setPayrollRoundingMode] = useState<PayrollRoundingMode>('round');
 
   const router = useRouter();
   const { success, error, confirm } = useNotificationContext();
@@ -323,8 +326,8 @@ export default function AdminAttendancePage() {
     if (!selectedCast) return;
     const hour = parseInt(clockInHour, 10);
     const minute = parseInt(clockInMinute, 10);
-    if (isNaN(hour) || hour < 0 || hour > 23 || isNaN(minute) || ![0, 15, 30, 45].includes(minute)) {
-      error('エラー', '出勤時間を正しく選択してください（15分単位）');
+    if (isNaN(hour) || hour < 0 || hour > 23 || isNaN(minute) || minute < 0 || minute > 59) {
+      error('エラー', '出勤時間を正しく選択してください');
       return;
     }
 
@@ -569,6 +572,37 @@ export default function AdminAttendancePage() {
                 <p className="text-xs sm:text-sm text-gray-500">キャストの出勤・退勤記録</p>
               </div>
             </div>
+            {/* <div className="flex flex-wrap items-center gap-2">
+              <div className="flex items-center gap-2">
+                <Label htmlFor="payroll-refresh-interval" className="text-xs sm:text-sm whitespace-nowrap">
+                  更新間隔
+                </Label>
+                <Select
+                  value={String(payrollRefreshIntervalMinutes)}
+                  onValueChange={(value) => setPayrollRefreshIntervalMinutes(Number(value) || 15)}
+                >
+                  <SelectTrigger id="payroll-refresh-interval" className="w-[112px] h-9 bg-white">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="1">1分</SelectItem>
+                    <SelectItem value="5">5分</SelectItem>
+                    <SelectItem value="15">15分</SelectItem>
+                    <SelectItem value="30">30分</SelectItem>
+                    <SelectItem value="60">60分</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-9 bg-white"
+                onClick={() => setIsPayrollRoundingModalOpen(true)}
+              >
+                給与丸め設定
+              </Button>
+            </div> */}
           </div>
         </div>
       </header>
@@ -710,7 +744,12 @@ export default function AdminAttendancePage() {
                 </p>
               </CardHeader>
               <CardContent className="p-0 sm:p-4 pt-0 sm:pt-0">
-                <PayrollDailyCastReadOnlyTable date={salesReportDate} />
+                <PayrollDailyCastReadOnlyTable
+                  date={salesReportDate}
+                  refreshIntervalMinutes={payrollRefreshIntervalMinutes}
+                  roundingUnit={payrollRoundingUnit}
+                  roundingMode={payrollRoundingMode}
+                />
               </CardContent>
             </Card>
           </TabsContent>
@@ -837,6 +876,70 @@ export default function AdminAttendancePage() {
         </Tabs>
       </div>
 
+      {/* 給与丸め設定モーダル */}
+      <Dialog open={isPayrollRoundingModalOpen} onOpenChange={setIsPayrollRoundingModalOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center">
+              <DollarSign className="w-5 h-5 mr-2" />
+              給与丸め設定
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="payroll-rounding-unit">丸め単位</Label>
+              <Select
+                value={String(payrollRoundingUnit)}
+                onValueChange={(value) => {
+                  const n = Number(value);
+                  setPayrollRoundingUnit((n === 10 || n === 100 ? n : 1) as PayrollRoundingUnit);
+                }}
+              >
+                <SelectTrigger id="payroll-rounding-unit">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="1">1円</SelectItem>
+                  <SelectItem value="10">10円</SelectItem>
+                  <SelectItem value="100">100円</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="payroll-rounding-mode">丸め方法</Label>
+              <Select
+                value={payrollRoundingMode}
+                onValueChange={(value) =>
+                  setPayrollRoundingMode(value === 'floor' ? 'floor' : 'round')
+                }
+              >
+                <SelectTrigger id="payroll-rounding-mode">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="round">四捨五入</SelectItem>
+                  <SelectItem value="floor">切り捨て</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="rounded-md bg-gray-50 p-3 text-xs text-gray-600 space-y-1">
+              <div>例: 9,158円</div>
+              <div>100円 + 切り捨て: 9,100円 / 四捨五入: 9,200円</div>
+              <div>10円 + 切り捨て: 9,150円 / 四捨五入: 9,160円</div>
+              <div>1円: 9,158円</div>
+            </div>
+
+            <DialogFooter>
+              <Button onClick={() => setIsPayrollRoundingModalOpen(false)}>
+                設定を閉じる
+              </Button>
+            </DialogFooter>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* 出勤記録モーダル（時間選択・キャンセルで取り消し） */}
       <Dialog
         open={isClockInModalOpen}
@@ -862,8 +965,8 @@ export default function AdminAttendancePage() {
               </div>
 
               <div>
-                <Label>出勤時間（15分単位）</Label>
-                <p className="text-xs text-muted-foreground mt-1 mb-2">デフォルトは現在時刻に最も近い15分です。変更できます。</p>
+                <Label>出勤時間</Label>
+                <p className="text-xs text-muted-foreground mt-1 mb-2">デフォルトは現在時刻です。変更できます。</p>
                 <div className="flex flex-wrap items-center gap-2 mt-1">
                   <Select value={clockInHour} onValueChange={setClockInHour}>
                     <SelectTrigger className="w-[88px]">
@@ -883,7 +986,7 @@ export default function AdminAttendancePage() {
                       <SelectValue placeholder="分" />
                     </SelectTrigger>
                     <SelectContent>
-                      {QUARTER_MINUTES.map((m) => (
+                      {Array.from({ length: 60 }, (_, i) => String(i).padStart(2, '0')).map((m) => (
                         <SelectItem key={m} value={m}>
                           {m}
                         </SelectItem>

@@ -28,6 +28,10 @@ import {
   buildFullReceipt,
 } from '@/lib/printing/receipt-builders';
 import { buildFullReceiptTextEscPos } from '@/lib/printing/escpos-text';
+import { removeLatestExtensionRoomSurcharges } from '@/lib/remove-latest-extension-room-surcharges';
+import { perNominationExtensionCharge, extensionUnitPrice as nominationExtensionUnitFromEntry } from '@/lib/nomination-extension-fee';
+import { nominationOrderLineTotal } from '@/lib/nomination-order-line-total';
+import { getCastRealtimeSubtitle } from '@/lib/cast-realtime-subtitle';
 import type { FullReceiptPayload } from '@/lib/printing/escpos-raster';
 import { previewFullReceiptInWindow, printFullReceiptViaOs } from '@/lib/printing/os-print';
 
@@ -1008,21 +1012,19 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
     return () => clearInterval(checkSessionInterval);
   }, [session?.id, tableId]);
 
-  // 指名料金の合計を計算（テーブルページと同じロジック）
+  // 指名料金の合計を計算（注文合計・明細右列と同じ式）
   const calculateNominationCharges = (): number => {
-    // nominations APIのcostは「指名登録 + 延長時加算」の累計になっている前提
-    return nominations.reduce((sum, n) => {
-      const v = Number((n as any).cost);
-      return sum + (Number.isFinite(v) ? v : 0);
-    }, 0);
+    return nominations.reduce(
+      (sum, n) => sum + nominationOrderLineTotal(n, setExtensions, addCharges),
+      0
+    );
   };
 
   // キャストリストを取得
-  const loadCasts = async () => {
-    setIsCastsLoading(true);
+  const loadCasts = async (opts?: { silent?: boolean }) => {
+    if (!opts?.silent) setIsCastsLoading(true);
     try {
-      // 出勤中のキャストのみを取得
-      const response = await fetch('/api/casts?only_active=true');
+      const response = await fetch('/api/casts?only_active=true', { cache: 'no-store' });
       const result = await response.json();
       if (result.success) {
         setCasts(result.data || []);
@@ -1030,9 +1032,46 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
     } catch (error) {
       console.error('キャスト取得エラー:', error);
     } finally {
-      setIsCastsLoading(false);
+      if (!opts?.silent) setIsCastsLoading(false);
     }
   };
+
+  useEffect(() => {
+    const needPoll =
+      !!session &&
+      !!tableId &&
+      (leftMode === 'nomination' ||
+        (leftMode === 'order' && isForCast) ||
+        showNominationCastDialog ||
+        showCastSelectionDialog ||
+        (showOrderDialog && isForCast));
+
+    if (!needPoll) return;
+
+    const tick = () => {
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
+      void loadCasts({ silent: true });
+    };
+
+    const id = setInterval(tick, 5000);
+    const onVis = () => {
+      if (document.visibilityState === 'visible') tick();
+    };
+    document.addEventListener('visibilitychange', onVis);
+    tick();
+    return () => {
+      clearInterval(id);
+      document.removeEventListener('visibilitychange', onVis);
+    };
+  }, [
+    session,
+    tableId,
+    leftMode,
+    isForCast,
+    showNominationCastDialog,
+    showCastSelectionDialog,
+    showOrderDialog,
+  ]);
 
   // サービスデータを取得
   const loadServices = async () => {
@@ -1409,8 +1448,18 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
       }
     }
 
-    const extensionUnitPrice = charges['extension_price'] || 0;
-    const newExtension = { count, timestamp: Date.now(), price: extensionUnitPrice * count };
+    const extensionPricePerGuest = charges['extension_price'] || 0;
+    const savedNominationUnit = Number((setExtensions?.[0] as any)?.nomination_unit);
+    const nominationUnit =
+      Number.isFinite(savedNominationUnit) && savedNominationUnit >= 0
+        ? savedNominationUnit
+        : Number(charges['main']) || 0;
+    const newExtension = {
+      count,
+      timestamp: Date.now(),
+      price: extensionPricePerGuest * count,
+      nomination_unit: nominationUnit,
+    };
     const updatedExtensions = [...setExtensions, newExtension];
 
     const newSetCount = (session.set_count || 1) + 1;
@@ -1430,11 +1479,19 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
         throw new Error(result.error || 'セット延長に失敗しました');
       }
 
-      // 各指名のcostを更新（延長のたびに本指名料金を加算）
-      const mainCharge = charges['main'] || 0;
+      // 各指名のcostを更新（延長のたびに本指名料金相当を加算）
+      const extUnitPerGuest = nominationExtensionUnitFromEntry(newExtension, charges['extension_price'] || 0);
+      const nominationDeltaById = new Map<number, { add: number; toMainFlag?: 1; rankCostAdd: number; rankPointAdd: number }>();
+
       for (const nomination of nominations) {
-        const charge = mainCharge;
+        const charge = nominationUnit;
         if (charge > 0) {
+          nominationDeltaById.set(Number(nomination.id), {
+            add: charge,
+            ...(nomination.type_id === 'inside' ? { toMainFlag: 1 as const } : {}),
+            rankCostAdd: extUnitPerGuest + charge,
+            rankPointAdd: 1,
+          });
           try {
             await fetch(`/api/nominations/${nomination.id}`, {
               method: 'PATCH',
@@ -1442,9 +1499,9 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
               body: JSON.stringify({
                 cost: charge,
                 ...(nomination.type_id === 'inside' ? { tomain_nomination: 1 } : {}),
-                rank_cost_add: (count > 0 ? (newExtension.price ?? 0) / count : 0) + charge,
-                rank_point_add: 1
-              })
+                rank_cost_add: extUnitPerGuest + charge,
+                rank_point_add: 1,
+              }),
             });
           } catch (err) {
             console.error(`指名ID ${nomination.id} のcost更新エラー:`, err);
@@ -1453,15 +1510,20 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
       }
 
       // 指名のUI即時反映
-      if (nominations.length > 0 && mainCharge > 0) {
+      if (nominationDeltaById.size > 0) {
         setNominations(prev =>
           prev.map((n: any) => {
+            const delta = nominationDeltaById.get(Number(n.id));
+            if (!delta) return n;
             const currentCost = Number(n.cost);
-            const nextCost = (Number.isFinite(currentCost) ? currentCost : 0) + mainCharge;
+            const nextCost = (Number.isFinite(currentCost) ? currentCost : 0) + delta.add;
             return {
               ...n,
               cost: nextCost,
-              ...(n.type_id === 'inside' ? { tomain_nomination: 1 } : {}),
+              tomain_nomination: delta.toMainFlag ?? n.tomain_nomination ?? 0,
+              rank_cost: (Number(n.rank_cost) || 0) + (Number(delta.rankCostAdd) || 0),
+              rank_point: (Number(n.rank_point) || 0) + (Number(delta.rankPointAdd) || 0),
+              updated_at: new Date().toISOString(),
             };
           })
         );
@@ -1512,7 +1574,7 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
         
         // DBにset_countとset_extensionsを同期
         try {
-          await fetch(`/api/sessions/${session.id}`, {
+          const res = await fetch(`/api/sessions/${session.id}`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -1520,9 +1582,67 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
               set_extensions: updatedExtensions
             })
           });
-          
+          const json = await res.json().catch(() => ({}));
+          if (!json.success) {
+            throw new Error(json.error || 'セットキャンセルの更新に失敗しました');
+          }
+
+          let charges = addCharges;
+          if (Object.keys(charges).length === 0) {
+            try {
+              const chargesResponse = await fetch('/api/add-charges');
+              const chargesResult = await chargesResponse.json();
+              if (chargesResult.success && chargesResult.charges) {
+                const chargesMap: { [key: string]: number } = {};
+                chargesResult.charges.forEach((ch: any) => {
+                  chargesMap[ch.charge_name] = parseFloat(ch.value) || 0;
+                });
+                charges = chargesMap;
+                setAddCharges(chargesMap);
+              }
+            } catch (e) {
+              console.error('追加料金取得エラー:', e);
+            }
+          }
+
+          const extUnitForCanceled = nominationExtensionUnitFromEntry(lastExtension, charges['extension_price'] || 0);
+          const canceledNominationUnitRaw = Number((lastExtension as any)?.nomination_unit);
+          const canceledNominationUnit =
+            Number.isFinite(canceledNominationUnitRaw) && canceledNominationUnitRaw >= 0
+              ? canceledNominationUnitRaw
+              : Number((updatedExtensions?.[0] as any)?.nomination_unit) || Number(charges['main']) || 0;
+          for (const nomination of nominations) {
+            const charge = canceledNominationUnit;
+            if (charge <= 0) continue;
+            const createdMs = Date.parse(String(nomination.created_at || (nomination as any).updated_at || '')) || 0;
+            const extAfter = updatedExtensions.filter((e: any) => {
+              const ts = Number(e?.timestamp);
+              return Number.isFinite(ts) && ts > createdMs;
+            }).length;
+            const body: Record<string, unknown> = {
+              cost: -charge,
+              rank_cost_add: -(extUnitForCanceled + charge),
+              rank_point_add: -1,
+            };
+            if (nomination.type_id === 'inside' && extAfter === 0) {
+              body.tomain_nomination = 0;
+            }
+            try {
+              await fetch(`/api/nominations/${nomination.id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+              });
+            } catch (e) {
+              console.error(`セットキャンセル時 指名${nomination.id} 巻き戻しエラー:`, e);
+            }
+          }
+
+          await removeLatestExtensionRoomSurcharges(session.id);
           setSetExtensions(updatedExtensions);
+          await loadAdditionalServices(session.id);
           await loadSession();
+          if (session?.id) await loadNominations(session.id);
           success('セットキャンセル', `${lastExtension.count}名分のセットをキャンセルしました`);
         } catch (err) {
           console.error('セットキャンセルエラー:', err);
@@ -2964,7 +3084,7 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
                       </Button>
                     </div>
                   </CardHeader>
-                  <CardContent className="space-y-4">
+                  <CardContent className="h-[460px] overflow-y-auto pr-2 space-y-4">
                     {/* 承認状況の表示 */}
                     <div className="bg-blue-50 rounded-lg p-3 text-sm">
                       <div className="space-y-1">
@@ -3071,6 +3191,11 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
                               typeLabel = `${getNominationTypeLabel(nomination.type_id)}${promoted ? '（本指名へ昇格）' : ''} - ${nomination.cast_name}`;
                             }
 
+                            const lineTotal = nominationOrderLineTotal(
+                              nomination,
+                              setExtensions,
+                              addCharges
+                            );
                             const totalCost = Number((nomination as any).cost) || 0;
                             const mainCharge = addCharges['main'] || 0;
                             const togetherCharge = addCharges['together'] || 0;
@@ -3079,21 +3204,50 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
                               const ts = Number(e?.timestamp);
                               return Number.isFinite(ts) && ts > createdMs;
                             }).length;
-                            const extAdd = mainCharge * extCountSince;
-                            const initialCost = Math.max(0, totalCost - extAdd);
+                            const extAddLegacy = mainCharge * extCountSince;
+                            const rawInitial = (nomination as any).initial_nomination_cost;
+                            const hasStoredInitial =
+                              rawInitial != null &&
+                              rawInitial !== '' &&
+                              Number.isFinite(Number(rawInitial));
+                            const initialDisplay = hasStoredInitial
+                              ? Number(rawInitial)
+                              : Math.max(0, totalCost - extAddLegacy);
+                            const extSum = Math.max(0, totalCost - initialDisplay);
+                            const relevantExts = setExtensions.filter((e: any) => {
+                              const ts = Number(e?.timestamp);
+                              return Number.isFinite(ts) && ts > createdMs;
+                            });
+                            const unitFromExtRaw = Number((relevantExts?.[0] as any)?.nomination_unit);
+                            const perExt =
+                              Number.isFinite(unitFromExtRaw) && unitFromExtRaw >= 0
+                                ? unitFromExtRaw
+                                : extCountSince > 0 && extSum > 0
+                                  ? extSum / extCountSince
+                                  : 0;
+                            const fmtPerExt =
+                              Math.abs(perExt - Math.round(perExt)) < 1e-6
+                                ? Math.round(perExt).toLocaleString()
+                                : perExt.toLocaleString(undefined, { maximumFractionDigits: 2 });
 
                             let breakdownText = '';
                             if (nomination.type_id === 'together') {
-                              if (togetherCharge > 0 || mainCharge > 0) {
-                                breakdownText = `¥${togetherCharge.toLocaleString()}`;
-                                if (extCountSince > 0) {
-                                  breakdownText += `＋¥${mainCharge.toLocaleString()}×${extCountSince}`;
+                              const baseInit = hasStoredInitial ? initialDisplay : togetherCharge;
+                              if (baseInit > 0 || (extCountSince > 0 && extSum > 0)) {
+                                breakdownText =
+                                  baseInit > 0 ? `¥${baseInit.toLocaleString()}` : '';
+                                if (extCountSince > 0 && extSum > 0) {
+                                  breakdownText +=
+                                    (breakdownText ? ' ＋ ' : '') +
+                                    `¥${fmtPerExt}×${extCountSince}`;
                                 }
                               }
-                            } else if (extCountSince > 0 && extAdd > 0) {
-                              breakdownText = `¥${initialCost.toLocaleString()} + ¥${mainCharge.toLocaleString()} × ${extCountSince}`;
+                            } else if (extCountSince > 0 && extSum > 0) {
+                              breakdownText = `¥${initialDisplay.toLocaleString()} ＋ ¥${fmtPerExt} × ${extCountSince}`;
                             } else {
-                              const typeCharge = addCharges[nomination.type_id] || 0;
+                              const typeCharge = hasStoredInitial
+                                ? initialDisplay
+                                : addCharges[nomination.type_id] || 0;
                               if (typeCharge > 0) {
                                 breakdownText = `¥${typeCharge.toLocaleString()}`;
                               }
@@ -3107,7 +3261,7 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
                                     <div className="text-gray-400 text-xs mt-0.5">{breakdownText}</div>
                                   )}
                                 </div>
-                                <span className="flex-shrink-0">{formatCurrency(totalCost)}</span>
+                                <span className="flex-shrink-0">{formatCurrency(lineTotal)}</span>
                               </div>
                             );
                           })}
@@ -3118,39 +3272,96 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
                       {additionalServices.length > 0 && (
                         <div className="border-t pt-2 space-y-1">
                           <div className="text-xs font-semibold text-gray-600 mb-1">追加サービス</div>
-                          {additionalServices.map((service, index) => {
-                            let serviceLabel = '';
-                            let breakdownText = '';
-                            if (service.type === 'bottle_keep') {
-                              serviceLabel = 'ボトルキープ';
-                            } else if (service.type === 'vip_room') {
-                              serviceLabel = 'VIPルーム利用';
-                              if (service.note) breakdownText = service.note;
-                              else if (service.count > 1) {
-                                const unitCharge = service.charge / service.count;
-                                breakdownText = `¥${unitCharge.toLocaleString()} × ${service.count}部屋`;
-                              }
-                            } else if (service.type === 'karaoke') {
-                              serviceLabel = 'カラオケ利用';
-                              if (service.note) breakdownText = service.note;
-                              else if (service.count > 1) {
-                                const unitCharge = service.charge / service.count;
-                                breakdownText = `¥${unitCharge.toLocaleString()} × ${service.count}曲`;
-                              }
-                            }
-                            
-                            return (
-                              <div key={index} className="flex justify-between items-start text-sm pl-3 gap-2">
+                          {(() => {
+                            const mergedTypes = ['vip_room', 'karaoke'] as const;
+
+                            const merged = mergedTypes.flatMap((type) => {
+                              const rows = additionalServices.filter((s: any) => s?.type === type);
+                              if (rows.length === 0) return [];
+
+                              const baseRows = rows.filter((s: any) => String(s?.note || '') !== 'セット延長');
+                              const extRows = rows.filter((s: any) => String(s?.note || '') === 'セット延長');
+
+                              const sumCharge = (arr: any[]) =>
+                                arr.reduce((sum: number, s: any) => {
+                                  const v = Number(s?.charge);
+                                  return sum + (Number.isFinite(v) ? v : 0);
+                                }, 0);
+
+                              const baseTotal = sumCharge(baseRows);
+                              const extTotal = sumCharge(extRows);
+                              const extTimes = extRows.length;
+                              const extUnit = extTimes > 0 ? extTotal / extTimes : 0;
+                              const label = type === 'vip_room' ? 'VIPルーム利用' : 'カラオケ利用';
+
+                              const fmt = (n: number) =>
+                                Math.abs(n - Math.round(n)) < 1e-6
+                                  ? Math.round(n).toLocaleString()
+                                  : n.toLocaleString(undefined, { maximumFractionDigits: 2 });
+
+                              const parts: string[] = [];
+                              if (baseTotal > 0) parts.push(`¥${fmt(baseTotal)}`);
+                              if (extTimes > 0 && extUnit > 0) parts.push(`¥${fmt(extUnit)} × ${extTimes}`);
+                              const breakdown = parts.join(' + ');
+                              const total = baseTotal + extTotal;
+
+                              return [
+                                {
+                                  key: `merged_${type}`,
+                                  label,
+                                  charge: total,
+                                  breakdown,
+                                },
+                              ];
+                            });
+
+                            const otherRows = additionalServices.filter(
+                              (s: any) => !mergedTypes.includes(s?.type)
+                            );
+
+                            const rendered = [
+                              ...merged,
+                              ...otherRows.map((service: any, index: number) => {
+                                let serviceLabel = '';
+                                let breakdownText = '';
+                                if (service.type === 'bottle_keep') {
+                                  serviceLabel = 'ボトルキープ';
+                                } else if (service.type === 'vip_room') {
+                                  serviceLabel = 'VIPルーム利用';
+                                  if (service.note) breakdownText = service.note;
+                                  else if (service.count > 1) {
+                                    const unitCharge = service.charge / service.count;
+                                    breakdownText = `¥${unitCharge.toLocaleString()} × ${service.count}部屋`;
+                                  }
+                                } else if (service.type === 'karaoke') {
+                                  serviceLabel = 'カラオケ利用';
+                                  if (service.note) breakdownText = service.note;
+                                  else if (service.count > 1) {
+                                    const unitCharge = service.charge / service.count;
+                                    breakdownText = `¥${unitCharge.toLocaleString()} × ${service.count}曲`;
+                                  }
+                                }
+                                return {
+                                  key: `row_${index}`,
+                                  label: serviceLabel,
+                                  charge: service.charge,
+                                  breakdown: breakdownText,
+                                };
+                              }),
+                            ];
+
+                            return rendered.map((row: any) => (
+                              <div key={row.key} className="flex justify-between items-start text-sm pl-3 gap-2">
                                 <div className="min-w-0 flex-1">
-                                  <div className="text-gray-700 truncate">{serviceLabel}</div>
-                                  {breakdownText && (
-                                    <div className="text-gray-400 text-xs mt-0.5">{breakdownText}</div>
+                                  <div className="text-gray-700 truncate">{row.label}</div>
+                                  {row.breakdown && (
+                                    <div className="text-gray-400 text-xs mt-0.5">{row.breakdown}</div>
                                   )}
                                 </div>
-                                <span className="flex-shrink-0">{formatCurrency(service.charge)}</span>
+                                <span className="flex-shrink-0">{formatCurrency(row.charge)}</span>
                               </div>
-                            );
-                          })}
+                            ));
+                          })()}
                         </div>
                       )}
                       
@@ -3471,7 +3682,7 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
               同伴指名 - キャスト選択
             </DialogTitle>
             <DialogDescription>
-              同伴指名するキャストを選択してください
+              同伴指名するキャストを選択してください。表示内容は数秒ごとに自動更新されます。
             </DialogDescription>
           </DialogHeader>
           
@@ -3491,11 +3702,16 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
                     <Button
                       key={cast.id}
                       variant="outline"
-                      className="w-full justify-start"
+                      className="w-full justify-start h-auto py-3"
                       onClick={() => submitTogetherNomination(cast.id.toString(), cast.name)}
                     >
-                      <Users className="w-4 h-4 mr-2" />
-                      {cast.name}
+                      <Users className="w-4 h-4 mr-2 shrink-0 text-blue-600" />
+                      <div className="text-left min-w-0">
+                        <div className="font-medium">{cast.name}</div>
+                        <div className="text-[11px] text-gray-500 leading-snug break-words">
+                          {getCastRealtimeSubtitle(cast, { nominationType: 'together' })}
+                        </div>
+                      </div>
                     </Button>
                   ))}
                 </div>
@@ -3761,7 +3977,12 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
                   ) : (
                     casts.map((cast) => (
                       <SelectItem key={cast.id} value={cast.id.toString()}>
-                        {cast.name}
+                        <div className="flex flex-col items-start gap-0.5 py-0.5 max-w-[280px]">
+                          <span className="font-medium leading-tight">{cast.name}</span>
+                          <span className="text-[10px] text-gray-500 leading-tight whitespace-normal">
+                            {getCastRealtimeSubtitle(cast, {})}
+                          </span>
+                        </div>
                       </SelectItem>
                     ))
                   )}
@@ -3854,7 +4075,7 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
               {currentNominationType === 'main' ? '本指名' : currentNominationType === 'inside' ? '場内指名' : currentNominationType === 'together' ? '同伴指名' : '指名'}登録
             </DialogTitle>
             <DialogDescription>
-              指名するキャストを選択してください
+              指名するキャストを選択してください。表示内容は数秒ごとに自動更新されます。
             </DialogDescription>
           </DialogHeader>
 
@@ -3869,7 +4090,7 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
                   {casts.length === 0 ? (
                     <div className="text-center py-8 text-gray-500">
                       <Users className="w-12 h-12 mx-auto mb-2 text-gray-400" />
-                      <p>出勤中のキャストがありません</p>
+                      <p>該当するキャストがありません</p>
                     </div>
                   ) : (
                     casts.map((cast) => (
@@ -3879,11 +4100,13 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
                         className="w-full justify-start h-auto py-3"
                         onClick={() => handleNomination(cast.id.toString(), cast.name, currentNominationType || 'main')}
                       >
-                        <div className="flex items-center space-x-3">
-                          <Users className="w-5 h-5 text-purple-600" />
-                          <div className="text-left">
+                        <div className="flex items-start space-x-3 min-w-0">
+                          <Users className="w-5 h-5 text-purple-600 shrink-0 mt-0.5" />
+                          <div className="text-left min-w-0">
                             <div className="font-medium">{cast.name}</div>
-                            <div className="text-xs text-gray-500">ID: {cast.id}</div>
+                            <div className="text-[11px] text-gray-500 leading-snug break-words">
+                              {getCastRealtimeSubtitle(cast, { nominationType: currentNominationType })}
+                            </div>
                           </div>
                         </div>
                       </Button>

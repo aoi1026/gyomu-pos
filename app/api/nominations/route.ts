@@ -44,6 +44,10 @@ async function ensureNominationTable(client: any) {
     ALTER TABLE nomination
       ADD COLUMN IF NOT EXISTS rank_point DECIMAL(6,2) DEFAULT 0.00
   `);
+  await client.query(`
+    ALTER TABLE nomination
+      ADD COLUMN IF NOT EXISTS initial_nomination_cost DECIMAL(10,2)
+  `);
 
   await client.query(`CREATE INDEX IF NOT EXISTS idx_nomination_cast_id ON nomination(cast_id)`);
   await client.query(`CREATE INDEX IF NOT EXISTS idx_nomination_table_id ON nomination(table_id)`);
@@ -88,6 +92,7 @@ export async function GET(request: NextRequest) {
           n.tomain_nomination,
           n.rank_cost,
           n.rank_point,
+          n.initial_nomination_cost,
           n.created_at,
           n.updated_at
         FROM nomination n
@@ -223,11 +228,11 @@ export async function POST(request: NextRequest) {
 
     const result = await client.query(
       `
-        INSERT INTO nomination (cast_id, table_id, session_id, type_id, cost, cost_cast, tomain_nomination, rank_cost, rank_point)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-        RETURNING id, cast_id, table_id, session_id, type_id, cost, cost_cast, tomain_nomination, rank_cost, rank_point, created_at, updated_at
+        INSERT INTO nomination (cast_id, table_id, session_id, type_id, cost, cost_cast, tomain_nomination, rank_cost, rank_point, initial_nomination_cost)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        RETURNING id, cast_id, table_id, session_id, type_id, cost, cost_cast, tomain_nomination, rank_cost, rank_point, initial_nomination_cost, created_at, updated_at
       `,
-      [castId, tableId, sessionId, typeId, costValue, castShare, tomainNomination, rankCostInit, rankPointInit]
+      [castId, tableId, sessionId, typeId, costValue, castShare, tomainNomination, rankCostInit, rankPointInit, costValue]
     );
 
     const inserted = result.rows[0];
@@ -300,6 +305,7 @@ export async function POST(request: NextRequest) {
           n.tomain_nomination,
           n.rank_cost,
           n.rank_point,
+          n.initial_nomination_cost,
           n.created_at,
           n.updated_at
         FROM nomination n
