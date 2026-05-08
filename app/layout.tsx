@@ -6,6 +6,7 @@ import { Toaster } from '@/components/ui/sonner';
 import { NotificationProvider } from '@/lib/notification-context';
 import { SessionProvider } from '@/lib/session-context';
 import { PrinterProvider } from '@/lib/printer-context';
+import KeyboardAwareSetup from '@/components/KeyboardAwareSetup';
 
 const inter = Inter({ 
   subsets: ['latin'],
@@ -34,6 +35,7 @@ export default function RootLayout({
     <html lang="en">
       <body className={`${inter.className} antialiased`}>
         <Script src="/epos/epos-2.27.0.js" strategy="lazyOnload" />
+        <KeyboardAwareSetup />
         <NotificationProvider>
           <SessionProvider>
             <PrinterProvider>

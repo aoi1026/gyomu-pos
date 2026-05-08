@@ -1,6 +1,6 @@
 'use client';
 
-import type { FullReceiptPayload } from './escpos-raster';
+import type { FullReceiptPayload, ExtensionInfoReceiptPayload } from './escpos-raster';
 
 // ---------------------------------------------------------------------------
 // Shift-JIS encoder – built lazily from the browser's built-in TextDecoder
@@ -293,6 +293,79 @@ export function buildFullReceiptTextEscPos(
 
   b.push(feedLines(4), CUT);
 
+  return b.build();
+}
+
+// ---------------------------------------------------------------------------
+// Extension info receipt (現在料金 / 60分延長) – text-mode ESC/POS
+// ---------------------------------------------------------------------------
+
+export function buildExtensionInfoReceiptTextEscPos(
+  payload: ExtensionInfoReceiptPayload,
+): Uint8Array {
+  const b = new EscPosBuilder();
+
+  b.push(INIT, JAPAN_CS, KANJI_ON, KANJI_SJIS);
+
+  // Store name (3×3)
+  b.push(ALIGN_CENTER, SIZE_XLARGE, BOLD_ON);
+  b.line(payload.storeName || 'STORE');
+  b.push(SIZE_NORMAL, BOLD_OFF);
+
+  // Table number (2×1)
+  b.push(ALIGN_CENTER, SIZE_WIDE);
+  b.line(`【 ${payload.tableNumber} 】`);
+  b.push(SIZE_NORMAL);
+  b.lf();
+
+  // Top dashed separator (above the first section only).
+  b.push(ALIGN_LEFT);
+  b.line(dashedLine());
+
+  const drawSection = (
+    label: string,
+    total: number,
+    perPerson: number,
+    remainder: number,
+  ) => {
+    b.push(ALIGN_CENTER);
+    b.line(`【${label}】`);
+
+    b.push(ALIGN_LEFT);
+    b.line(dashedLine());
+
+    b.push(ALIGN_CENTER, SIZE_XLARGE, BOLD_ON);
+    b.line(`${fmtPlain(total)}-`);
+    b.push(SIZE_NORMAL, BOLD_OFF);
+
+    b.push(ALIGN_LEFT);
+    b.line(dashedLine());
+
+    b.push(ALIGN_CENTER);
+    b.line(`(お一人様 ${fmtPlain(perPerson)}円) (余り ${fmtPlain(remainder)}円)`);
+    b.lf();
+  };
+
+  drawSection(
+    payload.currentLabel || '現在料金',
+    payload.currentTotal,
+    payload.currentPerPerson,
+    payload.currentRemainder,
+  );
+
+  drawSection(
+    payload.extensionLabel || '延長料金',
+    payload.extensionTotal,
+    payload.extensionPerPerson,
+    payload.extensionRemainder,
+  );
+
+  if (payload.footerNote?.trim()) {
+    b.push(ALIGN_CENTER);
+    b.line(payload.footerNote.trim());
+  }
+
+  b.push(feedLines(4), CUT);
   return b.build();
 }
 

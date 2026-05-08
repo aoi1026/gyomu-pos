@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useRef } from 'react';
-import { X, Clock, ShoppingCart, Utensils, Users, DollarSign, CheckCircle, Bell, Trash2, CreditCard, Wine, Plus, Minus, Edit2, Save, XCircle, LogOut, Pause, Play, Package, Coffee, Printer, FileText } from 'lucide-react';
+import { X, Clock, ShoppingCart, Utensils, Users, DollarSign, CheckCircle, Bell, Trash2, CreditCard, Wine, Plus, Minus, Edit2, Save, XCircle, LogOut, Pause, Play, Package, Coffee, Printer, FileText, Timer } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -26,14 +26,19 @@ import {
   fetchPaymentId,
   fetchStoreId,
   buildFullReceipt,
+  buildExtensionInfoReceipt,
 } from '@/lib/printing/receipt-builders';
-import { buildFullReceiptTextEscPos } from '@/lib/printing/escpos-text';
+import { buildFullReceiptTextEscPos, buildExtensionInfoReceiptTextEscPos } from '@/lib/printing/escpos-text';
 import { removeLatestExtensionRoomSurcharges } from '@/lib/remove-latest-extension-room-surcharges';
 import { perNominationExtensionCharge, extensionUnitPrice as nominationExtensionUnitFromEntry } from '@/lib/nomination-extension-fee';
 import { nominationOrderLineTotal } from '@/lib/nomination-order-line-total';
 import { getCastRealtimeSubtitle } from '@/lib/cast-realtime-subtitle';
-import type { FullReceiptPayload } from '@/lib/printing/escpos-raster';
-import { previewFullReceiptInWindow, printFullReceiptViaOs } from '@/lib/printing/os-print';
+import type { FullReceiptPayload, ExtensionInfoReceiptPayload } from '@/lib/printing/escpos-raster';
+import {
+  previewFullReceiptInWindow,
+  printFullReceiptViaOs,
+  printExtensionInfoReceiptViaOs,
+} from '@/lib/printing/os-print';
 
 interface TableViewerProps {
   tableId: number | null;
@@ -138,6 +143,9 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
   const [showReceiptPreview, setShowReceiptPreview] = useState(false);
   const [receiptPreviewData, setReceiptPreviewData] = useState<FullReceiptPayload | null>(null);
 
+  const [showExtensionInfoPreview, setShowExtensionInfoPreview] = useState(false);
+  const [extensionInfoPreviewData, setExtensionInfoPreviewData] = useState<ExtensionInfoReceiptPayload | null>(null);
+
   const buildReceiptData = async (): Promise<FullReceiptPayload | null> => {
     if (!session || !tableId) return null;
     const [storeName, storeAddress, storePhone, greeting, paymentId, storeId] = await Promise.all([
@@ -217,6 +225,59 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
       setShowReceiptPreview(true);
     } catch (e) {
       console.error('領収書プレビューエラー:', e);
+      error('エラー', 'プレビューの生成に失敗しました');
+    }
+  };
+
+  const buildExtensionInfoReceiptData = async (): Promise<ExtensionInfoReceiptPayload | null> => {
+    if (!session || !tableId) return null;
+    const storeName = await fetchStoreName();
+    const tableNumber = String(tableData?.name ?? tableId);
+    return buildExtensionInfoReceipt({
+      storeName,
+      tableNumber,
+      guestCount: String(guestCount || ''),
+      cartOrders,
+      orderRequestStatus,
+      addCharges,
+      setExtensions,
+      nominations: nominations as any,
+      additionalServices,
+      extensionMinutes: 60,
+    });
+  };
+
+  const handlePrintExtensionInfoReceipt = async () => {
+    if (!session || !tableId) {
+      error('エラー', 'セッション情報がありません');
+      return;
+    }
+    try {
+      const payload = await buildExtensionInfoReceiptData();
+      if (!payload) return;
+      const escposData = buildExtensionInfoReceiptTextEscPos(payload);
+      await printer.requestPrint(escposData, '延長料金レシート印刷', {
+        osFallback: () => printExtensionInfoReceiptViaOs(payload),
+        eposPayload: payload,
+      });
+    } catch (e) {
+      console.error('延長料金レシート印刷エラー:', e);
+      error('エラー', '延長料金レシートの生成に失敗しました');
+    }
+  };
+
+  const handleShowExtensionInfoReceiptPreview = async () => {
+    if (!session || !tableId) {
+      error('エラー', 'セッション情報がありません');
+      return;
+    }
+    try {
+      const payload = await buildExtensionInfoReceiptData();
+      if (!payload) return;
+      setExtensionInfoPreviewData(payload);
+      setShowExtensionInfoPreview(true);
+    } catch (e) {
+      console.error('延長料金レシートプレビューエラー:', e);
       error('エラー', 'プレビューの生成に失敗しました');
     }
   };
@@ -3063,7 +3124,29 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
                       <DollarSign className="w-5 h-5 mr-2" />
                       注文合計
                     </CardTitle>
-                    <div className="flex items-center gap-1">
+                    <div className="flex justify-end gap-1 flex-col">
+                      <div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handlePrintExtensionInfoReceipt}
+                        className="h-8 gap-1"
+                        title="現在料金 / 60分延長料金レシートを印刷"
+                      >
+                        <Timer className="w-4 h-4" />
+                        <span className="hidden sm:inline">延長料金印刷</span>
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleShowExtensionInfoReceiptPreview}
+                        className="h-8 px-2"
+                        title="延長料金レシートのプレビュー"
+                      >
+                        <FileText className="w-4 h-4" />
+                      </Button>
+                      </div>
+                      <div>
                       <Button
                         variant="outline"
                         size="sm"
@@ -3082,6 +3165,7 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
                       >
                         <FileText className="w-4 h-4" />
                       </Button>
+                      </div>
                     </div>
                   </CardHeader>
                   <CardContent className="h-[460px] overflow-y-auto pr-2 space-y-4">
@@ -4435,6 +4519,78 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* 延長料金レシートプレビューダイアログ */}
+      <Dialog open={showExtensionInfoPreview} onOpenChange={setShowExtensionInfoPreview}>
+        <DialogContent className="max-w-sm max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>延長料金レシート プレビュー</DialogTitle>
+            <DialogDescription>印刷される現在料金と延長料金の内容です</DialogDescription>
+          </DialogHeader>
+          {extensionInfoPreviewData && (
+            <div className="border border-gray-200 p-5 bg-white font-sans text-sm">
+              <div className="text-center font-bold text-4xl tracking-widest mb-2">
+                {extensionInfoPreviewData.storeName}
+              </div>
+              <div className="text-center text-sm mb-4">
+                【 {extensionInfoPreviewData.tableNumber} 】
+              </div>
+              <div className="border-t border-dashed border-black mb-2" />
+              {[
+                {
+                  label: extensionInfoPreviewData.currentLabel,
+                  total: extensionInfoPreviewData.currentTotal,
+                  perPerson: extensionInfoPreviewData.currentPerPerson,
+                  remainder: extensionInfoPreviewData.currentRemainder,
+                },
+                {
+                  label: extensionInfoPreviewData.extensionLabel,
+                  total: extensionInfoPreviewData.extensionTotal,
+                  perPerson: extensionInfoPreviewData.extensionPerPerson,
+                  remainder: extensionInfoPreviewData.extensionRemainder,
+                },
+              ].map((sec, i) => (
+                <div key={i} className="mb-4">
+                  <div className="text-center text-xs mb-1">【{sec.label}】</div>
+                  <div className="border-t border-dashed border-black my-2" />
+                  <div className="text-center text-3xl tracking-wider my-2">
+                    ¥{sec.total.toLocaleString('ja-JP')}-
+                  </div>
+                  <div className="border-t border-dashed border-black my-2" />
+                  <div className="text-center text-xs">
+                    (お一人様 ¥{sec.perPerson.toLocaleString('ja-JP')}) (余り ¥{sec.remainder.toLocaleString('ja-JP')})
+                  </div>
+                </div>
+              ))}
+              {extensionInfoPreviewData.footerNote && (
+                <div className="text-center text-xs mt-4">
+                  {extensionInfoPreviewData.footerNote}
+                </div>
+              )}
+            </div>
+          )}
+          <div className="flex justify-end gap-2 mt-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowExtensionInfoPreview(false)}
+            >
+              閉じる
+            </Button>
+            <Button
+              size="sm"
+              onClick={async () => {
+                setShowExtensionInfoPreview(false);
+                await handlePrintExtensionInfoReceipt();
+              }}
+              className="gap-1"
+            >
+              <Printer className="w-4 h-4" />
+              印刷
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

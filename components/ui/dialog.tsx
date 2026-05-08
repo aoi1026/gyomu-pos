@@ -5,6 +5,7 @@ import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { X } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
+import { useKeyboardAware } from '@/lib/use-keyboard-aware';
 
 const Dialog = DialogPrimitive.Root;
 
@@ -31,8 +32,8 @@ DialogOverlay.displayName = DialogPrimitive.Overlay.displayName;
 
 const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
-  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
->(({ className, children, ...props }, ref) => {
+  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & { style?: React.CSSProperties }
+>(({ className, children, style, ...props }, ref) => {
   const contentRef = React.useRef<HTMLDivElement | null>(null);
   const combinedRef = React.useCallback(
     (node: HTMLDivElement | null) => {
@@ -46,110 +47,74 @@ const DialogContent = React.forwardRef<
     [ref]
   );
 
-  // キーボード表示時に自動スクロール
-  React.useEffect(() => {
-    const scrollToInput = (target: HTMLElement) => {
-      if (!contentRef.current || !target) return;
+  const keyboard = useKeyboardAware();
 
-      const scrollIntoView = () => {
-        if (!contentRef.current) return;
-        
-        const rect = target.getBoundingClientRect();
-        const viewportHeight = window.innerHeight;
-        
-        // visualViewport APIが利用可能な場合（モバイル/タブレット）
-        if (window.visualViewport) {
-          const visibleAreaTop = window.visualViewport.offsetTop;
-          const visibleAreaHeight = window.visualViewport.height;
-          const visibleAreaBottom = visibleAreaTop + visibleAreaHeight;
-          const keyboardHeight = viewportHeight - visibleAreaHeight;
-          
-          // キーボードが表示されている場合
-          if (keyboardHeight > 100) {
-            const targetBottom = rect.bottom;
-            const padding = 20;
-            
-            // 入力フィールドがキーボードに隠れる場合
-            if (targetBottom > visibleAreaBottom - padding) {
-              const scrollAmount = targetBottom - visibleAreaBottom + padding;
-              contentRef.current.scrollBy({
-                top: scrollAmount,
-                behavior: 'smooth',
-              });
-            }
-          } else {
-            // キーボードが表示されていない場合、通常のスクロール
-            if (rect.bottom > viewportHeight - 20) {
-              target.scrollIntoView({
-                behavior: 'smooth',
-                block: 'center',
-                inline: 'nearest',
-              });
-            }
-          }
-        } else {
-          // visualViewport APIが利用できない場合（デスクトップ等）
-          if (rect.bottom > viewportHeight - 20) {
-            target.scrollIntoView({
-              behavior: 'smooth',
-              block: 'center',
-              inline: 'nearest',
-            });
-          }
-        }
-      };
-
-      // キーボードの表示を待つために遅延を入れる
-      setTimeout(scrollIntoView, 100);
-      // 追加の遅延で確実にスクロール
-      setTimeout(scrollIntoView, 400);
+  // キーボードに合わせた位置調整。`isOpen` のときは表示領域の中央に配置し、
+  // 高さも表示領域に収まるように制限する。
+  const dynamicStyle: React.CSSProperties = React.useMemo(() => {
+    if (!keyboard.isOpen) return {};
+    const padding = 16;
+    const centerY =
+      keyboard.visibleOffsetTop + Math.max(padding, keyboard.visibleHeight / 2);
+    return {
+      top: `${centerY}px`,
+      maxHeight: `${Math.max(120, keyboard.visibleHeight - padding * 2)}px`,
     };
+  }, [keyboard.isOpen, keyboard.visibleHeight, keyboard.visibleOffsetTop]);
 
-    const handleFocusIn = (e: FocusEvent) => {
-      const target = e.target as HTMLElement;
-      if (
-        target &&
-        (target.tagName === 'INPUT' ||
-          target.tagName === 'TEXTAREA' ||
-          target.tagName === 'SELECT' ||
-          target.isContentEditable)
-      ) {
-        scrollToInput(target);
+  // フォーカスされた入力をキーボードに隠れない位置までスクロールする補助動作。
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const isFormElement = (el: Element | null) =>
+      !!el &&
+      (el.tagName === 'INPUT' ||
+        el.tagName === 'TEXTAREA' ||
+        el.tagName === 'SELECT' ||
+        (el as HTMLElement).isContentEditable);
+
+    const scrollFocusedIntoView = (target: HTMLElement) => {
+      const container = contentRef.current;
+      if (!container) return;
+
+      const vv = window.visualViewport;
+      const visibleTop = vv ? vv.offsetTop : 0;
+      const visibleBottom = vv ? vv.offsetTop + vv.height : window.innerHeight;
+      const padding = 24;
+
+      const rect = target.getBoundingClientRect();
+      if (rect.bottom > visibleBottom - padding) {
+        const overflow = rect.bottom - (visibleBottom - padding);
+        container.scrollBy({ top: overflow, behavior: 'smooth' });
+      } else if (rect.top < visibleTop + padding) {
+        const overflow = visibleTop + padding - rect.top;
+        container.scrollBy({ top: -overflow, behavior: 'smooth' });
       }
     };
 
-    const handleVisualViewportResize = () => {
-      // キーボード表示/非表示時のリサイズに対応
-      const activeElement = document.activeElement as HTMLElement;
-      if (
-        activeElement &&
-        (activeElement.tagName === 'INPUT' ||
-          activeElement.tagName === 'TEXTAREA' ||
-          activeElement.tagName === 'SELECT' ||
-          activeElement.isContentEditable)
-      ) {
-        scrollToInput(activeElement);
+    const handleFocusIn = (e: FocusEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (!isFormElement(target)) return;
+      // キーボードが立ち上がるのを待つ
+      setTimeout(() => target && scrollFocusedIntoView(target), 120);
+      setTimeout(() => target && scrollFocusedIntoView(target), 380);
+    };
+
+    const handleVvResize = () => {
+      const active = document.activeElement as HTMLElement | null;
+      if (isFormElement(active)) {
+        setTimeout(() => active && scrollFocusedIntoView(active), 60);
       }
     };
 
     const contentElement = contentRef.current;
-    if (contentElement) {
-      contentElement.addEventListener('focusin', handleFocusIn);
-      
-      // visualViewport APIが利用可能な場合、リサイズイベントも監視
-      if (window.visualViewport) {
-        window.visualViewport.addEventListener('resize', handleVisualViewportResize);
-        window.visualViewport.addEventListener('scroll', handleVisualViewportResize);
-      }
-      
-      return () => {
-        contentElement.removeEventListener('focusin', handleFocusIn);
-        if (window.visualViewport) {
-          window.visualViewport.removeEventListener('resize', handleVisualViewportResize);
-          window.visualViewport.removeEventListener('scroll', handleVisualViewportResize);
-        }
-      };
-    }
+    contentElement?.addEventListener('focusin', handleFocusIn);
+    window.visualViewport?.addEventListener('resize', handleVvResize);
+
+    return () => {
+      contentElement?.removeEventListener('focusin', handleFocusIn);
+      window.visualViewport?.removeEventListener('resize', handleVvResize);
+    };
   }, []);
 
   return (
@@ -157,6 +122,7 @@ const DialogContent = React.forwardRef<
     <DialogOverlay />
     <DialogPrimitive.Content
         ref={combinedRef}
+        style={{ ...dynamicStyle, ...style }}
       className={cn(
           'fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg max-h-[90vh] translate-x-[-50%] translate-y-[-50%] gap-4 border bg-background p-6 shadow-lg duration-200 overflow-y-auto overscroll-contain data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%] sm:rounded-lg',
         className

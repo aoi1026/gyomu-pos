@@ -34,6 +34,20 @@ export type FullReceiptPayload = {
   nomineeNames?: string;
 };
 
+export type ExtensionInfoReceiptPayload = {
+  storeName: string;
+  tableNumber: string;
+  currentLabel: string;
+  currentTotal: number;
+  currentPerPerson: number;
+  currentRemainder: number;
+  extensionLabel: string;
+  extensionTotal: number;
+  extensionPerPerson: number;
+  extensionRemainder: number;
+  footerNote?: string;
+};
+
 export function formatYen(amount: number) {
   const n = Number.isFinite(amount) ? Math.round(amount) : 0;
   return `¥${n.toLocaleString('ja-JP')}`;
@@ -398,6 +412,136 @@ export function buildEscPosRasterReceipt(payload: ReceiptPayload, opts?: { width
 export function buildFullReceiptEscPos(payload: FullReceiptPayload, opts?: { widthPx?: number }): Uint8Array {
   const widthPx = opts?.widthPx ?? 576;
   const canvas = makeFullReceiptCanvas(payload, widthPx);
+  const raster = canvasToRasterBytes(canvas);
+  const header = escposRasterHeader(canvas.width, canvas.height);
+  const bytes: number[] = [];
+  bytes.push(...escposInit());
+  bytes.push(...header);
+  bytes.push(...Array.from(raster));
+  bytes.push(...escposFeed(6));
+  bytes.push(...escposCut());
+  return new Uint8Array(bytes);
+}
+
+/* ─────────────── ExtensionInfoReceiptPayload (現在料金 / 延長料金) ─────────────── */
+
+export function makeExtensionInfoReceiptCanvas(
+  payload: ExtensionInfoReceiptPayload,
+  widthPx: number = 576
+): HTMLCanvasElement {
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('Canvasが利用できません');
+
+  const padX = 28;
+  const fontStore = 64;
+  const fontTableNum = 30;
+  const fontSection = 22;
+  const fontAmount = 60;
+  const fontPerPerson = 18;
+  const fontFooter = 18;
+
+  const gapAfterStore = 18;
+  const gapAfterTable = 28;
+  const gapAroundDashed = 14;
+  const gapAfterPer = 30;
+  const gapBeforeFooter = 26;
+
+  // Height estimation: store + table + topDashed + 2 sections (each: label, dashed,
+  // amount, dashed, per) + (optional) footer.
+  const sectionInnerH =
+    fontSection + gapAroundDashed +
+    1 + gapAroundDashed +
+    fontAmount + gapAroundDashed +
+    1 + gapAroundDashed +
+    fontPerPerson + gapAfterPer;
+
+  const h =
+    56 +
+    fontStore + gapAfterStore +
+    fontTableNum + gapAfterTable +
+    1 + gapAroundDashed +
+    sectionInnerH +
+    sectionInnerH +
+    (payload.footerNote ? gapBeforeFooter + fontFooter : 0) +
+    50;
+
+  canvas.width = widthPx;
+  canvas.height = Math.max(420, h);
+
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = '#000';
+
+  const cx = canvas.width / 2;
+  let y = 60;
+
+  ctx.textAlign = 'center';
+  ctx.font = `bold ${fontStore}px sans-serif`;
+  ctx.fillText(payload.storeName || 'STORE', cx, y);
+  y += gapAfterStore + Math.round(fontStore * 0.4);
+
+  ctx.font = `bold ${fontTableNum}px sans-serif`;
+  ctx.fillText(`【 ${payload.tableNumber} 】`, cx, y);
+  y += gapAfterTable;
+
+  // Top dashed separator (only above the first section).
+  drawDashedLine(ctx, padX, canvas.width - padX, y);
+  y += gapAroundDashed;
+
+  const drawSection = (label: string, total: number, perPerson: number, remainder: number) => {
+    ctx.font = `${fontSection}px sans-serif`;
+    ctx.fillText(`【${label}】`, cx, y + fontSection - 4);
+    y += fontSection + gapAroundDashed;
+
+    drawDashedLine(ctx, padX, canvas.width - padX, y);
+    y += gapAroundDashed;
+
+    ctx.font = `${fontAmount}px sans-serif`;
+    ctx.fillText(`${formatYen(total)}-`, cx, y + fontAmount - 8);
+    y += fontAmount + gapAroundDashed;
+
+    drawDashedLine(ctx, padX, canvas.width - padX, y);
+    y += gapAroundDashed;
+
+    ctx.font = `${fontPerPerson}px sans-serif`;
+    ctx.fillText(
+      `(お一人様 ${formatYen(perPerson)}) (余り ${formatYen(remainder)})`,
+      cx,
+      y + fontPerPerson - 4
+    );
+    y += fontPerPerson + gapAfterPer;
+  };
+
+  drawSection(
+    payload.currentLabel || '現在料金',
+    payload.currentTotal,
+    payload.currentPerPerson,
+    payload.currentRemainder
+  );
+
+  drawSection(
+    payload.extensionLabel || '延長料金',
+    payload.extensionTotal,
+    payload.extensionPerPerson,
+    payload.extensionRemainder
+  );
+
+  if (payload.footerNote?.trim()) {
+    y += gapBeforeFooter - gapAfterPer;
+    ctx.font = `${fontFooter}px sans-serif`;
+    ctx.fillText(payload.footerNote.trim(), cx, y + fontFooter - 4);
+  }
+
+  return canvas;
+}
+
+export function buildExtensionInfoReceiptEscPos(
+  payload: ExtensionInfoReceiptPayload,
+  opts?: { widthPx?: number }
+): Uint8Array {
+  const widthPx = opts?.widthPx ?? 576;
+  const canvas = makeExtensionInfoReceiptCanvas(payload, widthPx);
   const raster = canvasToRasterBytes(canvas);
   const header = escposRasterHeader(canvas.width, canvas.height);
   const bytes: number[] = [];

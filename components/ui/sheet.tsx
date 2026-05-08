@@ -6,6 +6,7 @@ import { cva, type VariantProps } from 'class-variance-authority';
 import { X } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
+import { useKeyboardAware } from '@/lib/use-keyboard-aware';
 
 const Sheet = SheetPrimitive.Root;
 
@@ -55,23 +56,45 @@ interface SheetContentProps
 
 const SheetContent = React.forwardRef<
   React.ElementRef<typeof SheetPrimitive.Content>,
-  SheetContentProps
->(({ side = 'right', className, children, ...props }, ref) => (
-  <SheetPortal>
-    <SheetOverlay />
-    <SheetPrimitive.Content
-      ref={ref}
-      className={cn(sheetVariants({ side }), className)}
-      {...props}
-    >
-      {children}
-      <SheetPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-secondary">
-        <X className="h-4 w-4" />
-        <span className="sr-only">Close</span>
-      </SheetPrimitive.Close>
-    </SheetPrimitive.Content>
-  </SheetPortal>
-));
+  SheetContentProps & { style?: React.CSSProperties }
+>(({ side = 'right', className, children, style, ...props }, ref) => {
+  const keyboard = useKeyboardAware();
+
+  // キーボード表示時は表示領域内に収まるよう位置と高さを調整する。
+  const dynamicStyle: React.CSSProperties = React.useMemo(() => {
+    if (!keyboard.isOpen) return {};
+    if (side === 'bottom') {
+      return { bottom: `${keyboard.keyboardHeight}px`, maxHeight: `${keyboard.visibleHeight - 16}px`, overflowY: 'auto' };
+    }
+    if (side === 'top') {
+      return { top: `${keyboard.visibleOffsetTop}px`, maxHeight: `${keyboard.visibleHeight - 16}px`, overflowY: 'auto' };
+    }
+    // left / right
+    return {
+      top: `${keyboard.visibleOffsetTop}px`,
+      height: `${keyboard.visibleHeight}px`,
+      overflowY: 'auto',
+    };
+  }, [keyboard.isOpen, keyboard.keyboardHeight, keyboard.visibleHeight, keyboard.visibleOffsetTop, side]);
+
+  return (
+    <SheetPortal>
+      <SheetOverlay />
+      <SheetPrimitive.Content
+        ref={ref}
+        style={{ ...dynamicStyle, ...style }}
+        className={cn(sheetVariants({ side }), className)}
+        {...props}
+      >
+        {children}
+        <SheetPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-secondary">
+          <X className="h-4 w-4" />
+          <span className="sr-only">Close</span>
+        </SheetPrimitive.Close>
+      </SheetPrimitive.Content>
+    </SheetPortal>
+  );
+});
 SheetContent.displayName = SheetPrimitive.Content.displayName;
 
 const SheetHeader = ({

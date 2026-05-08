@@ -12,7 +12,7 @@ import PrintConfirmModal from '@/components/admin/PrintConfirmModal';
 import type { PendingPrintJob } from '@/components/admin/PrintConfirmModal';
 import { useNotificationContext } from '@/lib/notification-context';
 import { isValidIpv4 } from '@/lib/printing/utils';
-import type { ReceiptPayload, FullReceiptPayload } from '@/lib/printing/escpos-raster';
+import type { ReceiptPayload, FullReceiptPayload, ExtensionInfoReceiptPayload } from '@/lib/printing/escpos-raster';
 
 type PrinterStatus = 'disconnected' | 'connecting' | 'connected';
 
@@ -36,7 +36,14 @@ type PrinterContextValue = {
   requestPrint: (
     data: Uint8Array,
     label?: string,
-    options?: { osFallback?: () => void; eposPayload?: ReceiptPayload | FullReceiptPayload | ReceiptPayload[] }
+    options?: {
+      osFallback?: () => void;
+      eposPayload?:
+        | ReceiptPayload
+        | FullReceiptPayload
+        | ExtensionInfoReceiptPayload
+        | ReceiptPayload[];
+    }
   ) => Promise<void>;
 };
 
@@ -277,7 +284,14 @@ export function PrinterProvider({ children }: { children: React.ReactNode }) {
     async (
       data: Uint8Array,
       label?: string,
-      options?: { osFallback?: () => void; eposPayload?: ReceiptPayload | FullReceiptPayload | ReceiptPayload[] }
+      options?: {
+        osFallback?: () => void;
+        eposPayload?:
+          | ReceiptPayload
+          | FullReceiptPayload
+          | ExtensionInfoReceiptPayload
+          | ReceiptPayload[];
+      }
     ) => {
       const jobLabel = label || '印刷';
       const osFallback = options?.osFallback;
@@ -298,12 +312,18 @@ export function PrinterProvider({ children }: { children: React.ReactNode }) {
       if (networkPrinterIp) {
         try {
           if (eposPayload) {
-            const { printReceiptViaEpos, printFullReceiptViaEpos, printReceiptsViaEpos } =
-              await import('@/lib/printing/epos-print');
+            const {
+              printReceiptViaEpos,
+              printFullReceiptViaEpos,
+              printReceiptsViaEpos,
+              printExtensionInfoReceiptViaEpos,
+            } = await import('@/lib/printing/epos-print');
             if (Array.isArray(eposPayload)) {
               await printReceiptsViaEpos(networkPrinterIp, eposPayload);
             } else if ('orderLines' in eposPayload) {
               await printFullReceiptViaEpos(networkPrinterIp, eposPayload);
+            } else if ('currentLabel' in eposPayload) {
+              await printExtensionInfoReceiptViaEpos(networkPrinterIp, eposPayload);
             } else {
               await printReceiptViaEpos(networkPrinterIp, eposPayload);
             }

@@ -1,6 +1,6 @@
 'use client';
 
-import type { ReceiptPayload, FullReceiptPayload } from '@/lib/printing/escpos-raster';
+import type { ReceiptPayload, FullReceiptPayload, ExtensionInfoReceiptPayload } from '@/lib/printing/escpos-raster';
 import { charWidth, truncateToWidth, leftRight } from '@/lib/printing/escpos-text';
 
 const EPOS_SDK_URL = '/epos/epos-2.27.0.js';
@@ -227,6 +227,73 @@ function buildFullReceiptText(p: EposPrinterDevice, payload: FullReceiptPayload)
   p.addCut(p.CUT_FEED);
 }
 
+function buildExtensionInfoReceiptText(p: EposPrinterDevice, payload: ExtensionInfoReceiptPayload): void {
+  if (typeof p.addTextLang === 'function') p.addTextLang(p.LANG_JA || 'ja');
+  if (typeof p.addTextFont === 'function') p.addTextFont(p.FONT_A || 'font_a');
+
+  // Store name (3×3)
+  p.addTextAlign(p.ALIGN_CENTER);
+  p.addTextSize(3, 3);
+  p.addTextStyle(false, false, true, p.COLOR_1);
+  p.addText((payload.storeName || 'STORE') + '\n');
+  p.addTextSize(1, 1);
+  p.addTextStyle(false, false, false, p.COLOR_1);
+
+  // Table number (2×1)
+  p.addTextSize(2, 1);
+  p.addText(`【 ${payload.tableNumber} 】\n`);
+  p.addTextSize(1, 1);
+  p.addText('\n');
+
+  // Top dashed separator (above the first section only)
+  p.addTextAlign(p.ALIGN_LEFT);
+  p.addText('-'.repeat(COL_WIDTH) + '\n');
+
+  const drawSection = (label: string, total: number, perPerson: number, remainder: number) => {
+    p.addTextAlign(p.ALIGN_CENTER);
+    p.addText(`【${label}】\n`);
+
+    p.addTextAlign(p.ALIGN_LEFT);
+    p.addText('-'.repeat(COL_WIDTH) + '\n');
+
+    p.addTextAlign(p.ALIGN_CENTER);
+    p.addTextSize(3, 3);
+    p.addTextStyle(false, false, true, p.COLOR_1);
+    p.addText(`${fmtPlain(total)}-\n`);
+    p.addTextSize(1, 1);
+    p.addTextStyle(false, false, false, p.COLOR_1);
+
+    p.addTextAlign(p.ALIGN_LEFT);
+    p.addText('-'.repeat(COL_WIDTH) + '\n');
+
+    p.addTextAlign(p.ALIGN_CENTER);
+    p.addText(`(お一人様 ${fmtPlain(perPerson)}円) (余り ${fmtPlain(remainder)}円)\n`);
+    p.addText('\n');
+  };
+
+  drawSection(
+    payload.currentLabel || '現在料金',
+    payload.currentTotal,
+    payload.currentPerPerson,
+    payload.currentRemainder,
+  );
+
+  drawSection(
+    payload.extensionLabel || '延長料金',
+    payload.extensionTotal,
+    payload.extensionPerPerson,
+    payload.extensionRemainder,
+  );
+
+  if (payload.footerNote?.trim()) {
+    p.addTextAlign(p.ALIGN_CENTER);
+    p.addText(payload.footerNote.trim() + '\n');
+  }
+
+  p.addFeedLine(3);
+  p.addCut(p.CUT_FEED);
+}
+
 function buildSimpleReceiptText(p: EposPrinterDevice, payload: ReceiptPayload): void {
   if (typeof p.addTextLang === 'function') p.addTextLang(p.LANG_JA || 'ja');
   if (typeof p.addTextFont === 'function') p.addTextFont(p.FONT_A || 'font_a');
@@ -369,6 +436,14 @@ export async function printReceiptViaEpos(ip: string, payload: ReceiptPayload): 
 
 export async function printFullReceiptViaEpos(ip: string, payload: FullReceiptPayload): Promise<void> {
   const result = await connectAndPrintWithBuilder(ip, (p) => buildFullReceiptText(p, payload));
+  if (!result.success) throw new Error(result.detail);
+}
+
+export async function printExtensionInfoReceiptViaEpos(
+  ip: string,
+  payload: ExtensionInfoReceiptPayload,
+): Promise<void> {
+  const result = await connectAndPrintWithBuilder(ip, (p) => buildExtensionInfoReceiptText(p, payload));
   if (!result.success) throw new Error(result.detail);
 }
 

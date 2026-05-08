@@ -1,4 +1,8 @@
-import type { ReceiptPayload, FullReceiptPayload } from '@/lib/printing/escpos-raster';
+import type {
+  ReceiptPayload,
+  FullReceiptPayload,
+  ExtensionInfoReceiptPayload,
+} from '@/lib/printing/escpos-raster';
 import { formatYen } from '@/lib/printing/escpos-raster';
 
 export async function fetchStoreName(): Promise<string> {
@@ -306,6 +310,112 @@ export function buildFullReceipt(args: BuildFullReceiptArgs): FullReceiptPayload
     startTime: startTimeStr,
     guestCount: guestLabel,
     nomineeNames: nomineeNames || undefined,
+  };
+}
+
+export type BuildExtensionInfoReceiptArgs = {
+  storeName: string;
+  tableNumber: string;
+  guestCount: string;
+  cartOrders: Array<{ id: number; total_price: number; status: string }>;
+  orderRequestStatus: Record<string | number, string>;
+  addCharges: Record<string, number>;
+  setExtensions: Array<{ count: number; timestamp?: number; price?: number; nomination_unit?: number }>;
+  nominations: Array<{ id?: number; cost?: number; type_id?: string }>;
+  additionalServices: Array<{ charge: number }>;
+  /** デフォルト 60 */
+  extensionMinutes?: number;
+};
+
+/**
+ * 「現在料金 / N分延長」レシートのペイロードを生成する。
+ *
+ * 「現在料金」: 注文合計画面と同じく (商品 + セッション + セット延長 + 指名 + 追加サービス) に
+ *               10% を上乗せした額。
+ * 「延長料金」: 同じ条件にもう 1 回セット延長を行ったと仮定したときの合計額。
+ *               (extension_price * 人数) と (各指名への加算 = nomination_unit) を加算してから 10% を上乗せ。
+ */
+export function buildExtensionInfoReceipt(
+  args: BuildExtensionInfoReceiptArgs
+): ExtensionInfoReceiptPayload {
+  const {
+    storeName,
+    tableNumber,
+    guestCount,
+    cartOrders,
+    orderRequestStatus,
+    addCharges,
+    setExtensions,
+    nominations,
+    additionalServices,
+    extensionMinutes = 60,
+  } = args;
+
+  const guest = Math.max(0, parseInt(String(guestCount || '0'), 10) || 0);
+  const setPrice = Number(addCharges['set_price'] || 0);
+  const extensionUnit = Number(addCharges['extension_price'] || 0);
+
+  const productTotal = cartOrders.reduce((sum, order) => {
+    const status = orderRequestStatus[order.id] || order.status;
+    if (status === 'accepted') {
+      const price = Number(order.total_price);
+      return sum + (Number.isFinite(price) ? price : 0);
+    }
+    return sum;
+  }, 0);
+
+  const sessionFee = setPrice * guest;
+
+  const setExtensionsTotal = setExtensions.reduce((sum, e) => {
+    const cnt = Number(e?.count) || 0;
+    const price = Number(
+      e?.price ?? (extensionUnit * cnt)
+    );
+    return sum + (Number.isFinite(price) ? price : 0);
+  }, 0);
+
+  const nominationTotal = nominations.reduce((sum, n) => sum + (Number((n as any).cost) || 0), 0);
+  const additionalTotal = additionalServices.reduce((sum, s) => sum + (Number(s.charge) || 0), 0);
+
+  const currentSubtotal = productTotal + sessionFee + setExtensionsTotal + nominationTotal + additionalTotal;
+  const currentTotal = Math.round(currentSubtotal * 1.1);
+
+  const projectedGuests = guest > 0 ? guest : Math.max(1, Number(setExtensions?.[setExtensions.length - 1]?.count) || 1);
+  const nextSetExtensionCost = extensionUnit * projectedGuests;
+
+  const savedNominationUnitRaw = Number((setExtensions?.[0] as any)?.nomination_unit);
+  const nominationUnit =
+    Number.isFinite(savedNominationUnitRaw) && savedNominationUnitRaw >= 0
+      ? savedNominationUnitRaw
+      : Number(addCharges['main']) || 0;
+
+  const eligibleNominations = nominations.filter((n) => {
+    const t = String((n as any).type_id || '');
+    return t === 'main' || t === 'inside' || t === 'together';
+  });
+  const nominationExtensionCost = nominationUnit * eligibleNominations.length;
+
+  const projectedSubtotal = currentSubtotal + nextSetExtensionCost + nominationExtensionCost;
+  const extensionTotal = Math.round(projectedSubtotal * 1.1);
+
+  const safeGuest = Math.max(1, guest);
+  const currentPerPerson = Math.floor(currentTotal / safeGuest);
+  const currentRemainder = currentTotal - currentPerPerson * safeGuest;
+  const extensionPerPerson = Math.floor(extensionTotal / safeGuest);
+  const extensionRemainder = extensionTotal - extensionPerPerson * safeGuest;
+
+  return {
+    storeName,
+    tableNumber,
+    currentLabel: '現在料金',
+    currentTotal,
+    currentPerPerson,
+    currentRemainder,
+    extensionLabel: `${extensionMinutes}分延長`,
+    extensionTotal,
+    extensionPerPerson,
+    extensionRemainder,
+    footerNote: 'サービスTAX込 指名延長料込',
   };
 }
 

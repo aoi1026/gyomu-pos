@@ -1,4 +1,4 @@
-import type { ReceiptPayload, FullReceiptPayload } from '@/lib/printing/escpos-raster';
+import type { ReceiptPayload, FullReceiptPayload, ExtensionInfoReceiptPayload } from '@/lib/printing/escpos-raster';
 import { formatYen } from '@/lib/printing/escpos-raster';
 
 function isIOS(): boolean {
@@ -91,6 +91,15 @@ const PRINT_STYLES = `
   .full-receipt .total-block { display: flex; justify-content: space-between; font-weight: bold; font-size: 16px; margin: 8px 0 4px; }
   .full-receipt .tax-detail { font-size: 9px; color: #333; text-align: center; margin-bottom: 8px; }
   .full-receipt .footer-info { text-align: center; font-size: 9px; color: #000; margin-top: 8px; padding-top: 6px; border-top: 1px dashed #ccc; }
+  .ext-info { padding: 4px 0; }
+  .ext-info .store-name { font-weight: bold; font-size: 32px; text-align: center; margin: 6px 0 10px; letter-spacing: 1px; }
+  .ext-info .table-num { font-size: 14px; text-align: center; margin-bottom: 14px; }
+  .ext-info .ext-dashed { border-top: 1px dashed #000; margin: 8px 0; }
+  .ext-info .ext-section-label { text-align: center; font-size: 12px; margin: 2px 0; }
+  .ext-info .ext-amount { text-align: center; font-size: 32px; font-weight: normal; margin: 6px 0; letter-spacing: 1px; }
+  .ext-info .ext-per { text-align: center; font-size: 11px; margin: 2px 0; }
+  .ext-info .ext-section { margin-bottom: 14px; }
+  .ext-info .ext-footer { text-align: center; font-size: 11px; margin-top: 10px; }
 `;
 
 function formatAmountEn(amount: number): string {
@@ -246,6 +255,56 @@ export function printReceiptViaOs(payloads: ReceiptPayload | ReceiptPayload[]): 
 export function printFullReceiptViaOs(payload: FullReceiptPayload): void {
   const html = fullReceiptToHtml(payload);
   doPrint(buildReceiptPageHtml(`<div class="paper">${html}</div>`, '領収書 印刷'));
+}
+
+function extensionInfoReceiptToHtml(p: ExtensionInfoReceiptPayload): string {
+  const sectionHtml = (label: string, total: number, perPerson: number, remainder: number) => `
+    <div class="ext-section">
+      <div class="ext-section-label">【${escapeHtml(label)}】</div>
+      <div class="ext-dashed"></div>
+      <div class="ext-amount">${formatYen(total)}-</div>
+      <div class="ext-dashed"></div>
+      <div class="ext-per">(お一人様 ${formatYen(perPerson)}) (余り ${formatYen(remainder)})</div>
+    </div>
+  `;
+
+  const footer = p.footerNote?.trim()
+    ? `<div class="ext-footer">${escapeHtml(p.footerNote.trim())}</div>`
+    : '';
+
+  return `
+    <div class="receipt ext-info">
+      <div class="store-name">${escapeHtml(p.storeName || 'STORE')}</div>
+      <div class="table-num">【 ${escapeHtml(p.tableNumber)} 】</div>
+      <div class="ext-dashed"></div>
+      ${sectionHtml(p.currentLabel || '現在料金', p.currentTotal, p.currentPerPerson, p.currentRemainder)}
+      ${sectionHtml(p.extensionLabel || '延長料金', p.extensionTotal, p.extensionPerPerson, p.extensionRemainder)}
+      ${footer}
+    </div>
+  `;
+}
+
+/**
+ * 延長料金レシート（現在料金 / 60分延長）をOSの印刷ダイアログで印刷します。
+ */
+export function printExtensionInfoReceiptViaOs(payload: ExtensionInfoReceiptPayload): void {
+  const html = extensionInfoReceiptToHtml(payload);
+  doPrint(buildReceiptPageHtml(`<div class="paper">${html}</div>`, '延長料金 印刷'));
+}
+
+/**
+ * 延長料金レシートをプレビューウィンドウで表示します。
+ */
+export function previewExtensionInfoReceiptInWindow(payload: ExtensionInfoReceiptPayload): void {
+  const html = extensionInfoReceiptToHtml(payload);
+  const fullHtml = buildReceiptPageHtml(`<div class="paper">${html}</div>`, '延長料金 プレビュー');
+  const w = window.open('', 'pos_os_preview_ext', 'width=420,height=680');
+  if (!w) {
+    throw new Error('ポップアップがブロックされました。ポップアップ許可後に再度お試しください。');
+  }
+  w.document.open();
+  w.document.write(fullHtml);
+  w.document.close();
 }
 
 /**

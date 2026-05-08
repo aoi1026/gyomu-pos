@@ -16,11 +16,12 @@ function detectIsIOS(): boolean {
     (/Macintosh/.test(navigator.userAgent) && typeof document !== 'undefined' && 'ontouchend' in document);
 }
 
-import type { ReceiptPayload, FullReceiptPayload } from '@/lib/printing/escpos-raster';
+import type { ReceiptPayload, FullReceiptPayload, ExtensionInfoReceiptPayload } from '@/lib/printing/escpos-raster';
 import {
   printReceiptViaEpos,
   printFullReceiptViaEpos,
   printReceiptsViaEpos,
+  printExtensionInfoReceiptViaEpos,
 } from '@/lib/printing/epos-print';
 
 export type PendingPrintJob = {
@@ -29,7 +30,11 @@ export type PendingPrintJob = {
   /** OS印刷フォールバック（Web Bluetooth非対応時に使用） */
   osFallback?: () => void;
   /** ePOS クライアント印刷用（iPad→プリンター直接 Wi-Fi）。設定時は data の代わりに使用 */
-  eposPayload?: ReceiptPayload | FullReceiptPayload | ReceiptPayload[];
+  eposPayload?:
+    | ReceiptPayload
+    | FullReceiptPayload
+    | ExtensionInfoReceiptPayload
+    | ReceiptPayload[];
 };
 
 interface PrintConfirmModalProps {
@@ -155,6 +160,8 @@ export default function PrintConfirmModal({
           await printReceiptsViaEpos(networkPrinterIp, p);
         } else if ('orderLines' in p) {
           await printFullReceiptViaEpos(networkPrinterIp, p);
+        } else if ('currentLabel' in p) {
+          await printExtensionInfoReceiptViaEpos(networkPrinterIp, p);
         } else {
           await printReceiptViaEpos(networkPrinterIp, p);
         }

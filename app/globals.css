@@ -79,6 +79,20 @@
   body {
     @apply bg-background text-foreground;
   }
+
+  /*
+   * iPad / iOS Safari: フォーム要素にフォーカスしたときの自動ズーム
+   * （font-size < 16px で発火）を抑止する。ズームが発生するとキーボード位置と
+   * 入力欄の位置がずれて操作しにくくなる。
+   */
+  @media (pointer: coarse) {
+    input,
+    textarea,
+    select,
+    [contenteditable] {
+      font-size: 16px;
+    }
+  }
 }
 
 @layer utilities {
