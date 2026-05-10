@@ -1,14 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/database';
+import { businessDayStartExpr, businessDayPlusExpr } from '@/lib/business-day-sql';
+import { getBusinessDayYmd } from '@/lib/business-day';
 
 export const dynamic = 'force-dynamic';
+
+// 業務日（朝6時 JST 起点）。$2 = 業務日 YYYY-MM-DD
+const BIZ_START = businessDayStartExpr('$2');
+const BIZ_END = businessDayPlusExpr('$2', 1);
 
 export async function GET(request: NextRequest) {
   const client = await pool.connect();
   try {
     const { searchParams } = new URL(request.url);
     const userId = Number(searchParams.get('user_id'));
-    const date = searchParams.get('date') || new Date().toISOString().split('T')[0];
+    const date = searchParams.get('date') || getBusinessDayYmd();
     if (!userId || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
       return NextResponse.json({ success: false, error: 'user_id and valid date are required' }, { status: 400 });
     }
@@ -21,8 +27,8 @@ export async function GET(request: NextRequest) {
         COUNT(*) FILTER (WHERE n.type_id = 'together')::int AS together_count
       FROM nomination n
       WHERE n.cast_id = $1
-        AND n.created_at >= $2::date
-        AND n.created_at < ($2::date + INTERVAL '1 day')
+        AND n.created_at >= ${BIZ_START}
+        AND n.created_at < ${BIZ_END}
       `,
       [userId, date]
     );
@@ -36,8 +42,8 @@ export async function GET(request: NextRequest) {
       WHERE so.cast_id = $1
         AND so.for_cast = 1
         AND so.status = 'accepted'
-        AND so.accepted_at >= $2::date
-        AND so.accepted_at < ($2::date + INTERVAL '1 day')
+        AND so.accepted_at >= ${BIZ_START}
+        AND so.accepted_at < ${BIZ_END}
         AND p.category_id IN (1, 2)
       `,
       [userId, date]
@@ -52,8 +58,8 @@ export async function GET(request: NextRequest) {
       WHERE so.cast_id = $1
         AND so.for_cast = 1
         AND so.status = 'accepted'
-        AND so.accepted_at >= $2::date
-        AND so.accepted_at < ($2::date + INTERVAL '1 day')
+        AND so.accepted_at >= ${BIZ_START}
+        AND so.accepted_at < ${BIZ_END}
         AND p.category_id = 3
       `,
       [userId, date]
@@ -69,8 +75,8 @@ export async function GET(request: NextRequest) {
       FROM salesorder so
       JOIN product p ON p.id = so.product_id
       WHERE so.cast_id = $1
-        AND so.accepted_at >= $2::date
-        AND so.accepted_at < ($2::date + INTERVAL '1 day')
+        AND so.accepted_at >= ${BIZ_START}
+        AND so.accepted_at < ${BIZ_END}
       GROUP BY p.id, p.name
       ORDER BY total_amount DESC, p.name
       `,

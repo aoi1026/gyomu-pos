@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/database';
+import { businessDateExpr } from '@/lib/business-day-sql';
 
 export const dynamic = 'force-dynamic';
 
@@ -90,7 +91,9 @@ export async function GET(request: NextRequest) {
         FROM sessions s
         WHERE s.table_id = $1
           AND s.end_at IS NOT NULL
-          AND s.end_at::date = $2::date
+          -- 業務日（朝6時 JST 起点）で比較。深夜営業の終了時刻が翌カレンダー日に
+          -- なっても同じ業務日として扱う。
+          AND ${businessDateExpr('s.end_at')} = $2::date
         ORDER BY s.end_at DESC, s.id DESC
       ),
       item_rows AS (

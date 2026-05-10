@@ -2,29 +2,42 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
 import { pool } from '@/lib/database';
+import { businessDayStartExpr, businessDateExpr } from '@/lib/business-day-sql';
+import { getBusinessMonth } from '@/lib/business-day';
 
 export async function GET(request: NextRequest) {
 	const client = await pool.connect();
 	try {
 		const { searchParams } = new URL(request.url);
-		const now = new Date();
-		const year = Number(searchParams.get('year') || now.getFullYear());
-		let month = Number(searchParams.get('month') || (now.getMonth() + 1));
+		// デフォルトの「現在月」は業務月（朝6時 JST 起点）。
+		const defaultBizMonth = getBusinessMonth();
+		const [defaultYear, defaultMonth] = defaultBizMonth.split('-').map((s) => parseInt(s, 10));
+		const year = Number(searchParams.get('year') || defaultYear);
+		let month = Number(searchParams.get('month') || defaultMonth);
 		if (Number.isNaN(year) || Number.isNaN(month) || month < 1 || month > 12) {
 			return NextResponse.json({ success: false, error: 'Invalid year or month' }, { status: 400 });
 		}
 
 		const monthStart = `${year}-${String(month).padStart(2, '0')}-01`;
+		const nextMonth = month === 12 ? 1 : month + 1;
+		const nextYear = month === 12 ? year + 1 : year;
+		const monthEnd = `${nextYear}-${String(nextMonth).padStart(2, '0')}-01`;
+
+		// 業務月 = [当月1日 06:00 JST, 翌月1日 06:00 JST)
+		// $1 = monthStart, $2 = monthEnd
+		const BIZ_MONTH_START = businessDayStartExpr('$1');
+		const BIZ_MONTH_END = businessDayStartExpr('$2');
+
 		const salesAgg = await client.query(
 			`
 			SELECT 
 				COALESCE(SUM(total_price), 0) AS total_sales,
 				COUNT(*)::int AS order_count
 			FROM salesorder
-			WHERE accepted_at >= $1::date
-			  AND accepted_at < ($1::date + INTERVAL '1 month')
+			WHERE accepted_at >= ${BIZ_MONTH_START}
+			  AND accepted_at < ${BIZ_MONTH_END}
 			`,
-			[monthStart]
+			[monthStart, monthEnd]
 		);
 
 		const sessionsAgg = await client.query(
@@ -34,10 +47,10 @@ export async function GET(request: NextRequest) {
 				COALESCE(AVG(cost), 0) AS avg_cost,
 				COALESCE(SUM(cost), 0) AS sessions_total_cost
 			FROM sessions
-			WHERE created_at >= $1::date
-			  AND created_at < ($1::date + INTERVAL '1 month')
+			WHERE created_at >= ${BIZ_MONTH_START}
+			  AND created_at < ${BIZ_MONTH_END}
 			`,
-			[monthStart]
+			[monthStart, monthEnd]
 		);
 
 		// カテゴリ別: 数量(sum total_price/unit_price), 売上合計(sum total_price)
@@ -52,12 +65,12 @@ export async function GET(request: NextRequest) {
 			LEFT JOIN product p ON p.category_id = c.id
 			LEFT JOIN salesorder so 
 			  ON so.product_id = p.id
-			 AND so.accepted_at >= $1::date
-			 AND so.accepted_at < ($1::date + INTERVAL '1 month')
+			 AND so.accepted_at >= ${BIZ_MONTH_START}
+			 AND so.accepted_at < ${BIZ_MONTH_END}
 			GROUP BY c.id, c.name
 			ORDER BY total_sales DESC, c.id
 			`,
-			[monthStart]
+			[monthStart, monthEnd]
 		);
 
 		// 製品別: 数量(sum total_price/unit_price), 売上合計(sum total_price)
@@ -71,31 +84,31 @@ export async function GET(request: NextRequest) {
 			FROM product p
 			LEFT JOIN salesorder so 
 			  ON so.product_id = p.id
-			 AND so.accepted_at >= $1::date
-			 AND so.accepted_at < ($1::date + INTERVAL '1 month')
+			 AND so.accepted_at >= ${BIZ_MONTH_START}
+			 AND so.accepted_at < ${BIZ_MONTH_END}
 			GROUP BY p.id, p.name
 			ORDER BY total_sales DESC, p.id
 			`,
-			[monthStart]
+			[monthStart, monthEnd]
 		);
 
-		// 日別売上: 月内各日ごとの合計
+		// 日別売上: 月内各業務日ごとの合計
+		// 受注のタイムスタンプを業務日に変換してから当月日付シリーズと結合する。
 		const dailyAgg = await client.query(
 			`
 			WITH days AS (
-			  SELECT generate_series($1::date, ($1::date + INTERVAL '1 month' - INTERVAL '1 day')::date, '1 day') AS day
+			  SELECT generate_series($1::date, ($2::date - INTERVAL '1 day')::date, '1 day')::date AS day
 			)
 			SELECT 
 			  d.day::date AS day,
 			  COALESCE(SUM(so.total_price), 0) AS total_sales
 			FROM days d
 			LEFT JOIN salesorder so
-			  ON so.accepted_at >= d.day
-			 AND so.accepted_at < (d.day + INTERVAL '1 day')
+			  ON ${businessDateExpr('so.accepted_at')} = d.day
 			GROUP BY d.day
 			ORDER BY d.day
 			`,
-			[monthStart]
+			[monthStart, monthEnd]
 		);
 
 		// キャスト別: 売上合計(sum total_price)
@@ -108,13 +121,13 @@ export async function GET(request: NextRequest) {
 			FROM "user" u
 			LEFT JOIN salesorder so
 			  ON so.cast_id = u.id
-			 AND so.accepted_at >= $1::date
-			 AND so.accepted_at < ($1::date + INTERVAL '1 month')
+			 AND so.accepted_at >= ${BIZ_MONTH_START}
+			 AND so.accepted_at < ${BIZ_MONTH_END}
 			WHERE u.role = 'cast'
 			GROUP BY u.id, u.name
 			ORDER BY total_sales DESC, u.id
 			`,
-			[monthStart]
+			[monthStart, monthEnd]
 		);
 
 		return NextResponse.json({

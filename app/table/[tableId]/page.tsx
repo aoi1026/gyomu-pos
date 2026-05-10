@@ -4229,8 +4229,8 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
                       セット延長
                     </CardTitle>
                   </CardHeader>
-                  <CardContent className="space-x-2 flex flex-col sm:flex-row">
-                    <div className="w-full sm:w-1/2 bg-white rounded-md p-2 sm:p-3 border border-purple-200 text-center relative mb-2 sm:mb-0">
+                  <CardContent className="flex flex-col gap-2 xl:flex-row xl:gap-3 xl:space-x-0">
+                    <div className="w-full xl:w-1/2 bg-white rounded-md p-2 sm:p-3 border border-purple-200 text-center relative">
                       <div className="mb-1">
                         <div className="flex items-start justify-between gap-2">
                           <div className="text-[11px] text-gray-500 text-left">
@@ -4362,7 +4362,7 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
                       )}
                     </div>
 
-                    <div className="w-full sm:w-1/2 flex flex-col space-y-2">
+                    <div className="w-full xl:w-1/2 flex flex-col space-y-2">
                       <div className="text-xs sm:text-sm text-gray-700">
                         <div>セット数: {localStorage.getItem('set_count') || 1}</div>
                         <div>人数: {session?.client || guestCount || 0}名</div>

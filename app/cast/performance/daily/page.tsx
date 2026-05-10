@@ -10,11 +10,12 @@ import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { ArrowLeft, Calendar, TrendingUp, FileText, Users } from 'lucide-react';
 import { getCurrentUser } from '@/lib/auth';
+import { getBusinessDayYmd } from '@/lib/business-day';
 
 export default function CastDailyPerformancePage() {
   const router = useRouter();
   const [user, setUser] = useState<any>(null);
-  const [selectedDate, setSelectedDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
+  const [selectedDate, setSelectedDate] = useState<string>(() => getBusinessDayYmd());
   const [isLoading, setIsLoading] = useState(true);
   const [data, setData] = useState<any>({ main_count: 0, inside_count: 0, together_count: 0, total_sales: 0, products: [] });
 

@@ -12,6 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { ArrowLeft, Clock, CreditCard, Users } from 'lucide-react';
 import { formatCurrency, formatNumber } from '@/lib/mock-data';
+import { getBusinessDayYmd } from '@/lib/business-day';
 
 function formatDateTime(dateString: string | null) {
   if (!dateString) return '-';
@@ -31,7 +32,7 @@ export default function DailyTableDetailPage({ params }: { params: Promise<{ tab
   const router = useRouter();
   const searchParams = useSearchParams();
   const resolvedParams = use(params);
-  const date = searchParams.get('date') || new Date().toISOString().split('T')[0];
+  const date = searchParams.get('date') || getBusinessDayYmd();
   const tableId = Number(resolvedParams.tableId);
 
   const [isLoading, setIsLoading] = useState(true);

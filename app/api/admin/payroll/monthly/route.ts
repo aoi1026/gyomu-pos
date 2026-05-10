@@ -1,9 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/database';
+import { businessDayStartExpr, businessDayPlusExpr } from '@/lib/business-day-sql';
 
 function ymStart(year: number, month: number) {
   return `${year}-${String(month).padStart(2, '0')}-01`;
 }
+
+// 業務日（朝6時 JST 境界）で範囲を絞る共通条件式
+//   $1 = rangeStart (業務日 YYYY-MM-DD)
+//   $2 = rangeEndExclusive (業務日 YYYY-MM-DD、排他的)
+//   業務日 D の時間範囲 = [D 06:00 JST, (D+1) 06:00 JST)
+const BIZ_RANGE_START = businessDayStartExpr('$1');
+const BIZ_RANGE_END = businessDayStartExpr('$2');
 
 function addDays(dateStr: string, days: number) {
   const d = new Date(`${dateStr}T00:00:00`);
@@ -121,7 +129,8 @@ export async function GET(request: NextRequest) {
             END
           ), 0) AS paid_hours
         FROM attendance a
-        WHERE DATE(a.clock_in) >= $1::date AND DATE(a.clock_in) < $2::date
+        -- 業務日（朝6時 JST 起点）で絞り込む。深夜営業を跨いでも同じ業務日に収まる。
+        WHERE a.clock_in >= ${BIZ_RANGE_START} AND a.clock_in < ${BIZ_RANGE_END}
         GROUP BY a.staff_id
       ),
       ext_events AS (
@@ -130,8 +139,8 @@ export async function GET(request: NextRequest) {
         FROM sessions s
         CROSS JOIN LATERAL jsonb_array_elements(COALESCE(s.set_extensions, '[]'::jsonb)) e
         WHERE (e->>'timestamp') IS NOT NULL
-          AND to_timestamp(((e->>'timestamp')::numeric)/1000) >= $1::date
-          AND to_timestamp(((e->>'timestamp')::numeric)/1000) < $2::date
+          AND to_timestamp(((e->>'timestamp')::numeric)/1000) >= ${BIZ_RANGE_START}
+          AND to_timestamp(((e->>'timestamp')::numeric)/1000) < ${BIZ_RANGE_END}
       ),
       nom AS (
         SELECT 
@@ -148,7 +157,7 @@ export async function GET(request: NextRequest) {
           WHERE ee.session_id = n.session_id
             AND ee.ts_ms > (EXTRACT(EPOCH FROM n.created_at) * 1000)::bigint
         ) ext_after ON TRUE
-        WHERE n.created_at >= $1::date AND n.created_at < $2::date
+        WHERE n.created_at >= ${BIZ_RANGE_START} AND n.created_at < ${BIZ_RANGE_END}
         GROUP BY n.cast_id
       )
       SELECT 
@@ -189,7 +198,8 @@ export async function GET(request: NextRequest) {
              COALESCE(SUM(so.castsalary_price), 0)::DECIMAL(12,2) AS sum_yen
            FROM salesorder so INNER JOIN product p ON p.id = so.product_id
            WHERE so.status = 'accepted' AND so.for_cast = 1 AND so.cast_id IS NOT NULL
-             AND DATE(so.accepted_at) >= $1::date AND DATE(so.accepted_at) < $2::date
+             -- 業務日（朝6時 JST 起点）
+             AND so.accepted_at >= ${BIZ_RANGE_START} AND so.accepted_at < ${BIZ_RANGE_END}
            GROUP BY so.cast_id, p.category_id`,
           [rangeStart, rangeEndExclusive]
         ),
@@ -315,7 +325,8 @@ export async function GET(request: NextRequest) {
              COALESCE(SUM(so.castsalary_price), 0)::DECIMAL(12,2) AS sum_yen
            FROM salesorder so INNER JOIN product p ON p.id = so.product_id
            WHERE so.status = 'accepted' AND so.for_cast = 1 AND so.cast_id IS NOT NULL
-             AND DATE(so.accepted_at) >= $1::date AND DATE(so.accepted_at) < $2::date
+             -- 業務日（朝6時 JST 起点）
+             AND so.accepted_at >= ${BIZ_RANGE_START} AND so.accepted_at < ${BIZ_RANGE_END}
            GROUP BY so.cast_id, p.category_id`,
           [rangeStart, rangeEndExclusive]
         ).catch(() => ({ rows: [] })),
@@ -336,7 +347,8 @@ export async function GET(request: NextRequest) {
              ), 0)::DECIMAL(12,2) AS base_pay
            FROM attendance a
            INNER JOIN "user" u ON u.id = a.staff_id
-           WHERE DATE(a.clock_in) >= $1::date AND DATE(a.clock_in) < $2::date
+           -- 業務日（朝6時 JST 起点）
+           WHERE a.clock_in >= ${BIZ_RANGE_START} AND a.clock_in < ${BIZ_RANGE_END}
            GROUP BY a.staff_id`,
           [rangeStart, rangeEndExclusive]
         ).catch(() => ({ rows: [] })),

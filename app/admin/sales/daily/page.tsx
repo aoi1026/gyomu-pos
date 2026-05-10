@@ -21,6 +21,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { formatCurrency, formatDate, formatNumber } from '@/lib/mock-data';
 import { useNotificationContext } from '@/lib/notification-context';
 import { SalesChart } from '@/components/admin/SalesChart';
+import { getBusinessDayYmd } from '@/lib/business-day';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -30,7 +31,7 @@ import {
 
 function DailySalesPageContent() {
   const searchParams = useSearchParams();
-  const [selectedDate, setSelectedDate] = useState<string>(() => searchParams.get('date') || new Date().toISOString().split('T')[0]);
+  const [selectedDate, setSelectedDate] = useState<string>(() => searchParams.get('date') || getBusinessDayYmd());
   const [salesData, setSalesData] = useState<any>(null);
   const [tableSales, setTableSales] = useState<any[]>([]);
   const [castSales, setCastSales] = useState<any[]>([]);
@@ -49,7 +50,7 @@ function DailySalesPageContent() {
   const [isAddDeductOpen, setIsAddDeductOpen] = useState(false);
   const [editingDeductId, setEditingDeductId] = useState<number | null>(null);
   const [deductForm, setDeductForm] = useState<{ date: string; value: string; reason: string; other: string }>({
-    date: new Date().toISOString().split('T')[0],
+    date: getBusinessDayYmd(),
     value: '',
     reason: '',
     other: '',
@@ -84,7 +85,7 @@ function DailySalesPageContent() {
   const openAddDeduct = () => {
     setEditingDeductId(null);
     setDeductForm({
-      date: selectedDate || new Date().toISOString().split('T')[0],
+      date: selectedDate || getBusinessDayYmd(),
       value: '',
       reason: '',
       other: '',
@@ -95,7 +96,7 @@ function DailySalesPageContent() {
   const openEditDeduct = (d: any) => {
     setEditingDeductId(Number(d.id));
     setDeductForm({
-      date: String(d.date ?? selectedDate ?? new Date().toISOString().split('T')[0]),
+      date: String(d.date ?? selectedDate ?? getBusinessDayYmd()),
       value: String(d.value ?? ''),
       reason: String(d.reason ?? ''),
       other: String(d.other ?? ''),
@@ -441,7 +442,7 @@ function DailySalesPageContent() {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => setSelectedDate(new Date().toISOString().split('T')[0])}
+                      onClick={() => setSelectedDate(getBusinessDayYmd())}
                     >
                       本日
                     </Button>

@@ -2354,24 +2354,24 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
   if (!tableId) return null;
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-      <div className="relative w-full h-full max-w-[95vw] max-h-[95vh] bg-white rounded-lg shadow-2xl overflow-hidden flex flex-col">
+    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-2 sm:p-4">
+      <div className="relative w-full h-full max-w-[98vw] sm:max-w-[95vw] max-h-[98vh] sm:max-h-[95vh] bg-white rounded-lg shadow-2xl overflow-hidden flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between bg-gradient-to-r from-blue-600 to-purple-600 text-white px-6 py-4">
-          <div>
-            <h2 className="text-xl font-bold">テーブル {tableId} - 管理者ビュー</h2>
-            <p className="text-sm text-blue-100">セッション情報と注文状況を表示</p>
+        <div className="flex items-center justify-between bg-gradient-to-r from-blue-600 to-purple-600 text-white px-3 sm:px-6 py-3 sm:py-4 gap-2">
+          <div className="min-w-0">
+            <h2 className="text-base sm:text-xl font-bold truncate">テーブル {tableId} - 管理者ビュー</h2>
+            <p className="text-xs sm:text-sm text-blue-100 truncate">セッション情報と注文状況を表示</p>
           </div>
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center space-x-1 sm:space-x-2 shrink-0">
             {session && (
               <Button
                 variant="outline"
                 size="sm"
                 onClick={endSession}
-                className="bg-white/10 hover:bg-white/20 text-white border-white/30"
+                className="bg-white/10 hover:bg-white/20 text-white border-white/30 px-2 sm:px-3"
               >
-                <LogOut className="w-4 h-4 mr-2" />
-                セッション終了
+                <LogOut className="w-4 h-4 sm:mr-2" />
+                <span className="hidden sm:inline">セッション終了</span>
               </Button>
             )}
             <Button
@@ -2386,7 +2386,7 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto px-12 py-6">
+        <div className="flex-1 overflow-y-auto px-3 sm:px-6 lg:px-8 xl:px-12 py-4 sm:py-6">
           {loading ? (
             <div className="flex items-center justify-center h-full">
               <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
@@ -2397,9 +2397,9 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
             </div>
           ) : (
             <div className="max-w-7xl mx-auto">
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+              <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 sm:gap-5">
               {/* 左側: タブコンテンツ（注文・指名・サービス） */}
-              <div className="lg:col-span-2 space-y-4">
+              <div className="lg:col-span-3 space-y-4">
                 {/* タブ */}
                 <Tabs value={leftMode} onValueChange={(value) => setLeftMode(value as 'order' | 'nomination' | 'service')}>
                   <TabsList className="grid w-full grid-cols-3">
@@ -2925,17 +2925,17 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
               </div>
 
               {/* 右側: セット延長と注文合計（常に表示） */}
-              <div className="space-y-6">
+              <div className="lg:col-span-2 space-y-4 sm:space-y-6">
                 {/* セット延長 */}
                 <Card className="bg-gradient-to-r from-purple-50 to-pink-50 border-purple-200">
-                  <CardHeader className="pb-3">
+                  <CardHeader className="pb-2 sm:pb-3">
                     <CardTitle className="flex items-center text-sm font-semibold text-purple-800">
                       <Clock className="w-4 h-4 mr-2" />
                       セット延長
                     </CardTitle>
                   </CardHeader>
-                  <CardContent className="space-x-2 flex">
-                    <div className="w-1/2 bg-white rounded-md p-3 border border-purple-200 text-center">
+                  <CardContent className="flex flex-col xl:flex-row gap-2 xl:gap-3">
+                    <div className="w-full xl:w-1/2 bg-white rounded-md p-2 sm:p-3 border border-purple-200 text-center">
                       <div className="mb-1">
                         <div className="flex items-start justify-between gap-2">
                           <div className="text-[11px] text-gray-500">
@@ -3060,7 +3060,7 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
                         </>
                       )}
                     </div>
-                    <div className="w-1/2 flex flex-col space-y-2">
+                    <div className="w-full xl:w-1/2 flex flex-col space-y-2">
                       <div className="text-sm text-gray-700">
                         <div>セット数: {session.set_count}</div>
                         <div>人数: {session.client}名</div>
@@ -3070,44 +3070,44 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
                           onClick={handleSetJoin}
                           size="sm"
                           variant="outline"
-                          className="h-9 border-blue-300 text-blue-700 hover:bg-blue-50"
+                          className="h-9 border-blue-300 text-blue-700 hover:bg-blue-50 px-1"
                         >
-                          <Users className="w-4 h-4 mr-1" />
-                          <span className="text-xs font-semibold">セット追加</span>
+                          <Users className="w-3 h-3 sm:w-4 sm:h-4 mr-1 shrink-0" />
+                          <span className="text-[11px] sm:text-xs font-semibold whitespace-nowrap">セット追加</span>
                         </Button>
                         <Button
                           onClick={handleSetExtension}
                           size="sm"
-                          className="h-9 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
+                          className="h-9 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 px-1"
                         >
-                          <Clock className="w-4 h-4 mr-1" />
-                          <span className="text-xs font-semibold">セット延長</span>
+                          <Clock className="w-3 h-3 sm:w-4 sm:h-4 mr-1 shrink-0" />
+                          <span className="text-[11px] sm:text-xs font-semibold whitespace-nowrap">セット延長</span>
                         </Button>
                         <Button
                           onClick={handleCancelSet}
                           size="sm"
                           disabled={setExtensionCountdown < 3600 || setExtensions.length === 0}
                           variant="outline"
-                          className="h-9 border-red-300 text-red-600 hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="h-9 border-red-300 text-red-600 hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed px-1"
                         >
-                          <X className="w-4 h-4 mr-1" />
-                          <span className="text-xs font-semibold">1セット<br />キャンセル</span>
+                          <X className="w-3 h-3 sm:w-4 sm:h-4 mr-1 shrink-0" />
+                          <span className="text-[11px] sm:text-xs font-semibold leading-tight whitespace-nowrap">1セット<br />キャンセル</span>
                         </Button>
                         <Button
                           onClick={handlePauseResume}
                           size="sm"
                           variant={session?.is_paused ? "default" : "outline"}
-                          className={session?.is_paused ? "h-9 bg-green-600 hover:bg-green-700 text-white" : "h-9 border-purple-300 text-purple-700 hover:bg-purple-50"}
+                          className={session?.is_paused ? "h-9 bg-green-600 hover:bg-green-700 text-white px-1" : "h-9 border-purple-300 text-purple-700 hover:bg-purple-50 px-1"}
                         >
                           {session?.is_paused ? (
                             <>
-                              <Play className="w-4 h-4 mr-1" />
-                              <span className="text-xs font-semibold">再開</span>
+                              <Play className="w-3 h-3 sm:w-4 sm:h-4 mr-1 shrink-0" />
+                              <span className="text-[11px] sm:text-xs font-semibold whitespace-nowrap">再開</span>
                             </>
                           ) : (
                             <>
-                              <Pause className="w-4 h-4 mr-1" />
-                              <span className="text-xs font-semibold">停止</span>
+                              <Pause className="w-3 h-3 sm:w-4 sm:h-4 mr-1 shrink-0" />
+                              <span className="text-[11px] sm:text-xs font-semibold whitespace-nowrap">停止</span>
                             </>
                           )}
                         </Button>
@@ -3119,22 +3119,22 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
 
                 {/* 注文合計 */}
                 <Card>
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="flex items-center">
-                      <DollarSign className="w-5 h-5 mr-2" />
+                  <CardHeader className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-2 space-y-0 pb-2">
+                    <CardTitle className="flex items-center whitespace-nowrap">
+                      <DollarSign className="w-5 h-5 mr-2 shrink-0" />
                       注文合計
                     </CardTitle>
-                    <div className="flex justify-end gap-1 flex-col">
-                      <div>
+                    <div className="flex flex-wrap items-center justify-end gap-1">
                       <Button
                         variant="outline"
                         size="sm"
                         onClick={handlePrintExtensionInfoReceipt}
-                        className="h-8 gap-1"
+                        className="h-8 gap-1 px-2"
                         title="現在料金 / 60分延長料金レシートを印刷"
                       >
-                        <Timer className="w-4 h-4" />
-                        <span className="hidden sm:inline">延長料金印刷</span>
+                        <Timer className="w-4 h-4 shrink-0" />
+                        <span className="hidden 2xl:inline">延長料金印刷</span>
+                        <span className="2xl:hidden text-xs">延長</span>
                       </Button>
                       <Button
                         variant="outline"
@@ -3145,16 +3145,16 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
                       >
                         <FileText className="w-4 h-4" />
                       </Button>
-                      </div>
-                      <div>
                       <Button
                         variant="outline"
                         size="sm"
                         onClick={handlePrintReceipt}
-                        className="h-8 gap-1"
+                        className="h-8 gap-1 px-2"
+                        title="領収書印刷"
                       >
-                        <Printer className="w-4 h-4" />
-                        <span className="hidden sm:inline">領収書印刷</span>
+                        <Printer className="w-4 h-4 shrink-0" />
+                        <span className="hidden 2xl:inline">領収書印刷</span>
+                        <span className="2xl:hidden text-xs">領収</span>
                       </Button>
                       <Button
                         variant="outline"
@@ -3165,7 +3165,6 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
                       >
                         <FileText className="w-4 h-4" />
                       </Button>
-                      </div>
                     </div>
                   </CardHeader>
                   <CardContent className="h-[460px] overflow-y-auto pr-2 space-y-4">

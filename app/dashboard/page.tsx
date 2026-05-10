@@ -32,6 +32,7 @@ import {
 import { formatCurrency, formatDateTime, mockAttendance, mockBottles } from '@/lib/mock-data';
 import { getCurrentBackRate, formatBackRate } from '@/lib/cast-back-system';
 import { useNotificationContext } from '@/lib/notification-context';
+import { getBusinessDayYmd } from '@/lib/business-day';
 import RealTimeTableStatus from '@/components/admin/RealTimeTableStatus';
 import BluetoothPrinterButton from '@/components/admin/BluetoothPrinterButton';
 
@@ -399,8 +400,8 @@ export default function Dashboard() {
       loadUnreadNotificationCount();
       loadStoreName();
       loadActiveClientCount();
-      // 本日KPIを日次売上APIから取得
-      const today = new Date().toISOString().split('T')[0];
+      // 本日KPIを日次売上APIから取得（業務日：朝6時 JST 起点）
+      const today = getBusinessDayYmd();
       fetch(`/api/admin/sales/daily?date=${today}`)
         .then((res) => res.json())
         .then((result) => {

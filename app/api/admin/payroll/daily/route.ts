@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/database';
+import { businessDateExpr, businessDayStartExpr } from '@/lib/business-day-sql';
 
 function addDays(dateStr: string, days: number) {
   const d = new Date(`${dateStr}T00:00:00`);
@@ -15,6 +16,17 @@ function paidQuarterHours(hours: number): number {
   if (!Number.isFinite(hours) || hours <= 0) return 0;
   return Math.floor(hours * 4) / 4;
 }
+
+// 業務日（朝6時 JST 境界）対応の SQL 断片
+//   - $1 = rangeStart (業務日 YYYY-MM-DD)
+//   - $2 = rangeEndExclusive (業務日 YYYY-MM-DD、排他的)
+const BIZ_RANGE_START = businessDayStartExpr('$1');
+const BIZ_RANGE_END = businessDayStartExpr('$2');
+// timestamptz → 業務日 (DATE) 変換式
+const BIZ_DATE_OF_CLOCK_IN = businessDateExpr('a.clock_in');
+const BIZ_DATE_OF_NOMINATION = businessDateExpr('n.created_at');
+const BIZ_DATE_OF_SO_ACCEPTED = businessDateExpr('so.accepted_at');
+const BIZ_DATE_OF_EXT = businessDateExpr('to_timestamp(((e->>\'timestamp\')::numeric)/1000)');
 
 export async function GET(request: NextRequest) {
   let client;
@@ -72,16 +84,18 @@ export async function GET(request: NextRequest) {
       WITH date_series AS (
         SELECT generate_series($1::date, ($2::date - interval '1 day')::date, interval '1 day')::date AS date
       ),
+      -- 業務日（朝6時 JST 境界）でグループ化・絞り込みを行う。
+      -- これにより深夜営業を跨いだ売上・出勤・指名が正しく同じ業務日に集計される。
       ext_events AS (
         SELECT
           s.id AS session_id,
           (e->>'timestamp')::bigint AS ts_ms,
-          (to_timestamp(((e->>'timestamp')::numeric)/1000))::date AS ext_date
+          ${BIZ_DATE_OF_EXT} AS ext_date
         FROM sessions s
         CROSS JOIN LATERAL jsonb_array_elements(COALESCE(s.set_extensions, '[]'::jsonb)) e
         WHERE (e->>'timestamp') IS NOT NULL
-          AND (to_timestamp(((e->>'timestamp')::numeric)/1000))::date >= $1::date
-          AND (to_timestamp(((e->>'timestamp')::numeric)/1000))::date < $2::date
+          AND to_timestamp(((e->>'timestamp')::numeric)/1000) >= ${BIZ_RANGE_START}
+          AND to_timestamp(((e->>'timestamp')::numeric)/1000) < ${BIZ_RANGE_END}
       ),
       main_ext_by_date AS (
         SELECT ee.ext_date AS date, COUNT(DISTINCT (ee.session_id, ee.ts_ms))::int AS cnt
@@ -105,7 +119,7 @@ export async function GET(request: NextRequest) {
       ),
       att AS (
         SELECT
-          DATE(a.clock_in) AS date,
+          ${BIZ_DATE_OF_CLOCK_IN} AS date,
           COALESCE(SUM(
             CASE
               WHEN a.clock_out IS NULL THEN EXTRACT(EPOCH FROM (NOW() - a.clock_in)) / 3600.0
@@ -120,29 +134,29 @@ export async function GET(request: NextRequest) {
           ), 0) AS paid_hours
         FROM attendance a
         WHERE a.staff_id = $3::int
-          AND DATE(a.clock_in) >= $1::date AND DATE(a.clock_in) < $2::date
-        GROUP BY DATE(a.clock_in)
+          AND a.clock_in >= ${BIZ_RANGE_START} AND a.clock_in < ${BIZ_RANGE_END}
+        GROUP BY ${BIZ_DATE_OF_CLOCK_IN}
       ),
       nom_main AS (
-        SELECT DATE(n.created_at) AS date, COUNT(*)::int AS cnt, COALESCE(SUM(n.cost_cast), 0) AS sum_fee
+        SELECT ${BIZ_DATE_OF_NOMINATION} AS date, COUNT(*)::int AS cnt, COALESCE(SUM(n.cost_cast), 0) AS sum_fee
         FROM nomination n
         WHERE n.cast_id = $3::int AND n.type_id = 'main'
-          AND DATE(n.created_at) >= $1::date AND DATE(n.created_at) < $2::date
-        GROUP BY DATE(n.created_at)
+          AND n.created_at >= ${BIZ_RANGE_START} AND n.created_at < ${BIZ_RANGE_END}
+        GROUP BY ${BIZ_DATE_OF_NOMINATION}
       ),
       nom_inside AS (
-        SELECT DATE(n.created_at) AS date, COUNT(*)::int AS cnt, COALESCE(SUM(n.cost_cast), 0) AS sum_fee
+        SELECT ${BIZ_DATE_OF_NOMINATION} AS date, COUNT(*)::int AS cnt, COALESCE(SUM(n.cost_cast), 0) AS sum_fee
         FROM nomination n
         WHERE n.cast_id = $3::int AND n.type_id = 'inside'
-          AND DATE(n.created_at) >= $1::date AND DATE(n.created_at) < $2::date
-        GROUP BY DATE(n.created_at)
+          AND n.created_at >= ${BIZ_RANGE_START} AND n.created_at < ${BIZ_RANGE_END}
+        GROUP BY ${BIZ_DATE_OF_NOMINATION}
       ),
       nom_together AS (
-        SELECT DATE(n.created_at) AS date, COUNT(*)::int AS cnt, COALESCE(SUM(n.cost_cast), 0) AS sum_fee
+        SELECT ${BIZ_DATE_OF_NOMINATION} AS date, COUNT(*)::int AS cnt, COALESCE(SUM(n.cost_cast), 0) AS sum_fee
         FROM nomination n
         WHERE n.cast_id = $3::int AND n.type_id = 'together'
-          AND DATE(n.created_at) >= $1::date AND DATE(n.created_at) < $2::date
-        GROUP BY DATE(n.created_at)
+          AND n.created_at >= ${BIZ_RANGE_START} AND n.created_at < ${BIZ_RANGE_END}
+        GROUP BY ${BIZ_DATE_OF_NOMINATION}
       ),
       cast_info AS (
         SELECT id AS user_id, hourly_price
@@ -173,10 +187,11 @@ export async function GET(request: NextRequest) {
 
     const result = await client.query(sql, [startParam, rangeEndExclusive, userId]);
 
-    // 日別カテゴリ別 amount 合計・castsalary_price 合計（検索日付条件に合致する salesorder）
+    // 日別カテゴリ別 amount 合計・castsalary_price 合計
+    // （業務日：朝6時 JST 境界で集計）
     const catBackRes = await client.query(
       `
-      SELECT DATE(so.accepted_at) AS date, p.category_id,
+      SELECT ${BIZ_DATE_OF_SO_ACCEPTED} AS date, p.category_id,
         COALESCE(SUM(so.amount), 0)::INT AS sum_amount,
         COALESCE(SUM(so.castsalary_price), 0)::DECIMAL(12,2) AS sum_yen
       FROM salesorder so
@@ -184,9 +199,9 @@ export async function GET(request: NextRequest) {
       WHERE so.cast_id = $3::int
         AND so.status = 'accepted'
         AND so.for_cast = 1
-        AND DATE(so.accepted_at) >= $1::date
-        AND DATE(so.accepted_at) < $2::date
-      GROUP BY DATE(so.accepted_at), p.category_id
+        AND so.accepted_at >= ${BIZ_RANGE_START}
+        AND so.accepted_at < ${BIZ_RANGE_END}
+      GROUP BY ${BIZ_DATE_OF_SO_ACCEPTED}, p.category_id
       `,
       [startParam, rangeEndExclusive, userId]
     );
@@ -414,16 +429,17 @@ export async function PUT(request: NextRequest) {
       WITH date_series AS (
         SELECT $1::date AS date
       ),
+      -- 業務日（朝6時 JST 境界）でのフィルタ
       ext_events AS (
         SELECT
           s.id AS session_id,
           (e->>'timestamp')::bigint AS ts_ms,
-          (to_timestamp(((e->>'timestamp')::numeric)/1000))::date AS ext_date
+          ${BIZ_DATE_OF_EXT} AS ext_date
         FROM sessions s
         CROSS JOIN LATERAL jsonb_array_elements(COALESCE(s.set_extensions, '[]'::jsonb)) e
         WHERE (e->>'timestamp') IS NOT NULL
-          AND (to_timestamp(((e->>'timestamp')::numeric)/1000))::date >= $1::date
-          AND (to_timestamp(((e->>'timestamp')::numeric)/1000))::date < $2::date
+          AND to_timestamp(((e->>'timestamp')::numeric)/1000) >= ${BIZ_RANGE_START}
+          AND to_timestamp(((e->>'timestamp')::numeric)/1000) < ${BIZ_RANGE_END}
       ),
       main_ext_by_date AS (
         SELECT ee.ext_date AS date, COUNT(DISTINCT (ee.session_id, ee.ts_ms))::int AS cnt
@@ -446,32 +462,32 @@ export async function PUT(request: NextRequest) {
         GROUP BY ee.ext_date
       ),
       att AS (
-        SELECT DATE(a.created_at) AS date, COALESCE(SUM(a.total_work_hours), 0) AS hours
+        SELECT ${businessDateExpr('a.created_at')} AS date, COALESCE(SUM(a.total_work_hours), 0) AS hours
         FROM attendance a
         WHERE a.staff_id = $3::int
-          AND DATE(a.created_at) >= $1::date AND DATE(a.created_at) < $2::date
-        GROUP BY DATE(a.created_at)
+          AND a.created_at >= ${BIZ_RANGE_START} AND a.created_at < ${BIZ_RANGE_END}
+        GROUP BY ${businessDateExpr('a.created_at')}
       ),
       nom_main AS (
-        SELECT DATE(n.created_at) AS date, COUNT(*)::int AS cnt
+        SELECT ${BIZ_DATE_OF_NOMINATION} AS date, COUNT(*)::int AS cnt
         FROM nomination n
         WHERE n.cast_id = $3::int AND n.type_id = 'main'
-          AND DATE(n.created_at) >= $1::date AND DATE(n.created_at) < $2::date
-        GROUP BY DATE(n.created_at)
+          AND n.created_at >= ${BIZ_RANGE_START} AND n.created_at < ${BIZ_RANGE_END}
+        GROUP BY ${BIZ_DATE_OF_NOMINATION}
       ),
       nom_inside AS (
-        SELECT DATE(n.created_at) AS date, COUNT(*)::int AS cnt
+        SELECT ${BIZ_DATE_OF_NOMINATION} AS date, COUNT(*)::int AS cnt
         FROM nomination n
         WHERE n.cast_id = $3::int AND n.type_id = 'inside'
-          AND DATE(n.created_at) >= $1::date AND DATE(n.created_at) < $2::date
-        GROUP BY DATE(n.created_at)
+          AND n.created_at >= ${BIZ_RANGE_START} AND n.created_at < ${BIZ_RANGE_END}
+        GROUP BY ${BIZ_DATE_OF_NOMINATION}
       ),
       nom_together AS (
-        SELECT DATE(n.created_at) AS date, COUNT(*)::int AS cnt
+        SELECT ${BIZ_DATE_OF_NOMINATION} AS date, COUNT(*)::int AS cnt
         FROM nomination n
         WHERE n.cast_id = $3::int AND n.type_id = 'together'
-          AND DATE(n.created_at) >= $1::date AND DATE(n.created_at) < $2::date
-        GROUP BY DATE(n.created_at)
+          AND n.created_at >= ${BIZ_RANGE_START} AND n.created_at < ${BIZ_RANGE_END}
+        GROUP BY ${BIZ_DATE_OF_NOMINATION}
       ),
       cast_info AS (
         SELECT id AS user_id, hourly_price
@@ -528,7 +544,9 @@ export async function PUT(request: NextRequest) {
        FROM salesorder so
        INNER JOIN product p ON p.id = so.product_id
        WHERE so.cast_id = $1::int AND so.status = 'accepted' AND so.for_cast = 1
-         AND DATE(so.accepted_at) >= $2::date AND DATE(so.accepted_at) < $3::date
+         -- 業務日（朝6時 JST 境界）。$2 = dateParam, $3 = rangeEndExclusive
+         AND so.accepted_at >= ${businessDayStartExpr('$2')}
+         AND so.accepted_at < ${businessDayStartExpr('$3')}
        GROUP BY p.category_id`,
       [userId, dateParam, rangeEndExclusive]
     );

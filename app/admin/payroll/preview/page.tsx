@@ -19,6 +19,7 @@ import {
 } from '@/lib/mock-data';
 import { useNotificationContext } from '@/lib/notification-context';
 import { usePrinter } from '@/lib/printer-context';
+import { getBusinessDayYmd, getBusinessMonth } from '@/lib/business-day';
 import { buildReceiptTextEscPos } from '@/lib/printing/escpos-text';
 import { printReceiptViaOs } from '@/lib/printing/os-print';
 import type { ReceiptPayload } from '@/lib/printing/escpos-raster';
@@ -45,15 +46,19 @@ function applyPayrollRounding(amount: number, unit: PayrollRoundingUnit, mode: P
 export default function PayrollPreviewPage() {
   const [payrollRun, setPayrollRun] = useState<PayrollRun | null>(null);
   const [payrollItems, setPayrollItems] = useState<PayrollItem[]>([]);
-  const now = new Date();
-  const [selectedYear, setSelectedYear] = useState<number>(now.getFullYear());
-  const [selectedMonth, setSelectedMonth] = useState<number>(now.getMonth() + 1);
-  const [periodStart, setPeriodStart] = useState<string>(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`);
+  // 業務日（朝6時 JST 起点）に基づく現在年月を初期値とする。
+  // 深夜営業の0:00〜5:59 JST に開いても、まだ前日扱いの「営業日」が選ばれる。
+  const businessNowYmd = getBusinessDayYmd();
+  const businessNowMonth = getBusinessMonth();
+  const [defaultBizYear, defaultBizMonth] = businessNowMonth.split('-').map((s) => parseInt(s, 10));
+  const [selectedYear, setSelectedYear] = useState<number>(defaultBizYear);
+  const [selectedMonth, setSelectedMonth] = useState<number>(defaultBizMonth);
+  const [periodStart, setPeriodStart] = useState<string>(`${defaultBizYear}-${String(defaultBizMonth).padStart(2, '0')}-01`);
   const [periodEnd, setPeriodEnd] = useState<string>(() => {
-    const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+    const lastDay = new Date(defaultBizYear, defaultBizMonth, 0).getDate();
+    return `${defaultBizYear}-${String(defaultBizMonth).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
   });
-  const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
+  const todayStr = useMemo(() => businessNowYmd, [businessNowYmd]);
   const [dateMode, setDateMode] = useState<'month' | 'range' | 'date'>('month');
   const [singleDate, setSingleDate] = useState<string>(todayStr);
   const [isCalculating, setIsCalculating] = useState(false);

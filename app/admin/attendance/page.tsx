@@ -21,6 +21,7 @@ import PayrollDailyCastReadOnlyTable, {
   PayrollRoundingMode,
   PayrollRoundingUnit,
 } from '@/components/admin/PayrollDailyCastReadOnlyTable';
+import { getBusinessDayYmd } from '@/lib/business-day';
 
 interface Cast {
   id: number;
@@ -48,12 +49,30 @@ interface ActiveAttendance {
   clock_in: string;
 }
 
-/** ローカル日付 YYYY-MM-DD */
+/** ローカル日付 YYYY-MM-DD（カレンダー日付。実時刻のタイムスタンプ生成用） */
 function getLocalYmd(d = new Date()): string {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${day}`;
+}
+
+/**
+ * ユーザが入力した「時:分」を、現在の業務日に属する妥当なタイムスタンプに解決する。
+ *
+ * - 例：朝5時 JST に「23:00」と入力された場合、ユーザの意図は「昨夜23時」なので
+ *   昨日の日付を採用する。
+ * - 入力結果が現在時刻より未来になる場合は1日前にずらす。
+ * - これによりカレンダー日付ではなく業務日（朝6時境界）に沿った打刻ができる。
+ */
+function buildClockTimeForBusinessDay(hour: number, minute: number): Date {
+  const now = new Date();
+  let candidate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hour, minute, 0, 0);
+  if (candidate.getTime() > now.getTime() + 60 * 1000) {
+    // 1分の許容幅を見て、それでも未来なら昨日の同時刻として解釈
+    candidate = new Date(candidate.getTime() - 24 * 60 * 60 * 1000);
+  }
+  return candidate;
 }
 
 /** 出勤時刻のデフォルト: 現在時刻（そのまま） */
@@ -94,8 +113,8 @@ export default function AdminAttendancePage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [clockOutHour, setClockOutHour] = useState<string>('');
   const [clockOutMinute, setClockOutMinute] = useState<string>('');
-  /** キャスト別売上（給与プレビュー日付モードと同じ集計）の対象日 */
-  const [salesReportDate, setSalesReportDate] = useState<string>(() => getLocalYmd());
+  /** キャスト別売上（給与プレビュー日付モードと同じ集計）の対象日（業務日：朝6時JST 基準） */
+  const [salesReportDate, setSalesReportDate] = useState<string>(() => getBusinessDayYmd());
   const [historyEditRecord, setHistoryEditRecord] = useState<AttendanceRecord | null>(null);
   const [isHistoryEditModalOpen, setIsHistoryEditModalOpen] = useState(false);
   const [historyEditClockIn, setHistoryEditClockIn] = useState('');
@@ -146,10 +165,14 @@ export default function AdminAttendancePage() {
     }
   };
 
-  /** shift テーブルから本日（ローカル日付）出勤予定のキャストID一覧 */
+  /**
+   * shift テーブルから「本日（業務日：朝6時JST境界）」出勤予定のキャストID一覧。
+   * 深夜0時を跨いでも同じ業務日が維持されるため、出勤しているキャストが
+   * 翌日扱いになって消えてしまう不具合を防ぐ。
+   */
   const loadTodayShiftCastIds = async () => {
     try {
-      const ymd = getLocalYmd();
+      const ymd = getBusinessDayYmd();
       const response = await fetch(`/api/shifts?date=${encodeURIComponent(ymd)}`, { cache: 'no-store' });
       const result = await response.json();
       if (result.success && Array.isArray(result.data)) {
@@ -333,9 +356,9 @@ export default function AdminAttendancePage() {
 
     setIsSubmitting(true);
     try {
-      const ymd = getLocalYmd();
-      const [y, mo, d] = ymd.split('-').map((v) => parseInt(v, 10));
-      const clockInLocal = new Date(y, mo - 1, d, hour, minute, 0, 0);
+      // 入力された時:分を、業務日（朝6時JST境界）を考慮して妥当なタイムスタンプに解決する。
+      // 例：朝5時に「23:00」が入力された場合は、昨夜23時として扱う。
+      const clockInLocal = buildClockTimeForBusinessDay(hour, minute);
       const clockInTime = clockInLocal.toISOString();
 
       const response = await fetch('/api/attendance', {
@@ -389,12 +412,6 @@ export default function AdminAttendancePage() {
 
     setIsSubmitting(true);
     try {
-      // 現在の日付を取得
-      const now = new Date();
-      const year = now.getFullYear();
-      const month = String(now.getMonth() + 1).padStart(2, '0');
-      const day = String(now.getDate()).padStart(2, '0');
-      
       // 入力された時・分を使用
       const hour = parseInt(clockOutHour);
       const minute = parseInt(clockOutMinute);
@@ -405,8 +422,10 @@ export default function AdminAttendancePage() {
         return;
       }
 
-      const clockOutTimeStr = `${year}-${month}-${day}T${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:00`;
-      const clockOutTime = new Date(clockOutTimeStr).toISOString();
+      // 業務日（朝6時JST境界）を考慮して妥当なタイムスタンプを構築する。
+      // 例：朝5時に「23:00」が入力された場合は、昨夜23時として扱う。
+      const clockOutLocal = buildClockTimeForBusinessDay(hour, minute);
+      const clockOutTime = clockOutLocal.toISOString();
       const clockInTime = new Date(activeAttendance.clock_in);
       const diffMs = new Date(clockOutTime).getTime() - clockInTime.getTime();
       const diffHours = diffMs / (1000 * 60 * 60);

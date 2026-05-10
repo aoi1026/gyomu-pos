@@ -2,15 +2,24 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
 import { pool } from '@/lib/database';
+import { businessDateExpr, businessDayStartExpr, businessDayPlusExpr } from '@/lib/business-day-sql';
+import { getBusinessDayYmd } from '@/lib/business-day';
+
+// 業務日（朝6時 JST 境界）。$1 = 業務日 YYYY-MM-DD。
+//   開始 = $1 06:00 JST
+//   終端 = ($1 + 1 日) 06:00 JST （排他的）
+const BIZ_DAY_START = businessDayStartExpr('$1');
+const BIZ_DAY_END = businessDayPlusExpr('$1', 1);
 
 export async function GET(request: NextRequest) {
 	const client = await pool.connect();
 	try {
 		const { searchParams } = new URL(request.url);
 		const dateParam = searchParams.get('date');
+		// デフォルト「今日」は業務日（朝6時 JST 起点）。深夜営業帯でも当日扱い。
 		const date = dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam)
 			? dateParam
-			: new Date().toISOString().split('T')[0];
+			: getBusinessDayYmd();
 
 		// 旧DB向けの最低限の保険（決済履歴）
 		await client.query(`
@@ -31,8 +40,8 @@ export async function GET(request: NextRequest) {
 				COALESCE(SUM(total_price), 0) AS total_sales,
 				COUNT(*)::int AS order_count
 			FROM salesorder
-			WHERE accepted_at >= $1::date
-			  AND accepted_at < ($1::date + INTERVAL '1 day')
+			WHERE accepted_at >= ${BIZ_DAY_START}
+			  AND accepted_at < ${BIZ_DAY_END}
 			`,
 			[date]
 		);
@@ -44,13 +53,13 @@ export async function GET(request: NextRequest) {
 				COALESCE(AVG(cost), 0) AS avg_cost,
 				COALESCE(SUM(cost), 0) AS sessions_total_cost
 			FROM sessions
-			WHERE created_at >= $1::date
-			  AND created_at < ($1::date + INTERVAL '1 day')
+			WHERE created_at >= ${BIZ_DAY_START}
+			  AND created_at < ${BIZ_DAY_END}
 			`,
 			[date]
 		);
 
-		// session_paymentsテーブルから本日のamount合計を取得
+		// session_paymentsテーブルから本日のamount合計を取得（業務日基準）
 		const sessionPaymentsAgg = await client.query(
 			`
 			SELECT 
@@ -58,8 +67,8 @@ export async function GET(request: NextRequest) {
 				COALESCE(SUM(CASE WHEN pay_type IN (0, 2) THEN amount ELSE 0 END), 0) AS card_payments,
 				COALESCE(SUM(CASE WHEN pay_type = 1 THEN amount ELSE 0 END), 0) AS cash_payments
 			FROM session_payments
-			WHERE created_at >= $1::date
-			  AND created_at < ($1::date + INTERVAL '1 day')
+			WHERE created_at >= ${BIZ_DAY_START}
+			  AND created_at < ${BIZ_DAY_END}
 			`,
 			[date]
 		);
@@ -73,8 +82,7 @@ export async function GET(request: NextRequest) {
 			`
 		);
 
-		// 本日出勤したキャストの性別別人数を取得
-		// userテーブルにgenderカラムが存在するか確認
+		// 本日出勤したキャストの性別別人数を取得（業務日基準）
 		await client.query(`
 			ALTER TABLE "user" ADD COLUMN IF NOT EXISTS gender VARCHAR(10)
 		`);
@@ -86,14 +94,14 @@ export async function GET(request: NextRequest) {
 				COALESCE(COUNT(DISTINCT CASE WHEN u.gender = 'female' THEN a.staff_id END), 0)::int AS female_count
 			FROM attendance a
 			INNER JOIN "user" u ON u.id = a.staff_id
-			WHERE DATE(a.clock_in) = $1::date
+			WHERE ${businessDateExpr('a.clock_in')} = $1::date
 			  AND a.status = 'saved'
 			  AND u.role = 'cast'
 			`,
 			[date]
 		);
 
-		// 月間残高総額（該当月の1日から現在までの粗利益の合計）を計算
+		// 月間残高総額（該当業務月の1日から指定業務日までの粗利益の合計）
 		const firstDayOfMonth = date.substring(0, 7) + '-01';
 		
 		// deductテーブルの存在確認と作成
@@ -109,13 +117,14 @@ export async function GET(request: NextRequest) {
 			)
 		`);
 
+		// $1 = firstDayOfMonth, $2 = date 。業務日 [$1 00:00..$2+1 06:00 JST]
 		const monthlyPaymentsResult = await client.query(
 			`
 			SELECT 
 				COALESCE(SUM(amount), 0) AS monthly_total_payments
 			FROM session_payments
-			WHERE created_at >= $1::date
-			  AND created_at <= $2::date
+			WHERE created_at >= ${businessDayStartExpr('$1')}
+			  AND created_at <  ${businessDayPlusExpr('$2', 1)}
 			`,
 			[firstDayOfMonth, date]
 		);
@@ -146,14 +155,14 @@ export async function GET(request: NextRequest) {
 		const monthly_total_deducts = Number(monthlyDeductsResult.rows[0]?.monthly_total_deducts || 0);
 		const monthly_gross_profit = monthly_total_payments - monthly_total_deducts;
 
-		// テーブル別売上集計
+		// テーブル別売上集計（業務日基準）
 		const tableSalesResult = await client.query(
 			`
 			WITH sess AS (
 				SELECT id, table_id, cost
 				FROM sessions
-				WHERE created_at >= $1::date
-				  AND created_at < ($1::date + INTERVAL '1 day')
+				WHERE created_at >= ${BIZ_DAY_START}
+				  AND created_at < ${BIZ_DAY_END}
 			),
 			pay AS (
 				SELECT sp.session_id, COALESCE(SUM(sp.amount), 0) AS pay_total
@@ -183,7 +192,7 @@ export async function GET(request: NextRequest) {
 			[date]
 		);
 
-		// キャスト別売上集計（role が cast のみ）
+		// キャスト別売上集計（業務日基準, role が cast のみ）
 		const castSalesResult = await client.query(
 			`
 			SELECT 
@@ -193,8 +202,8 @@ export async function GET(request: NextRequest) {
 			FROM "user" u
 			LEFT JOIN salesorder so
 			  ON so.cast_id = u.id
-			 AND so.accepted_at >= $1::date
-			 AND so.accepted_at < ($1::date + INTERVAL '1 day')
+			 AND so.accepted_at >= ${BIZ_DAY_START}
+			 AND so.accepted_at < ${BIZ_DAY_END}
 			WHERE u.role = 'cast'
 			GROUP BY u.id, u.name
 			ORDER BY u.id
@@ -202,7 +211,7 @@ export async function GET(request: NextRequest) {
 			[date]
 		);
 
-		// 製品別売上（数量: total_price / unit_price の合計）
+		// 製品別売上（業務日基準, 数量: total_price / unit_price の合計）
 		const productSalesResult = await client.query(
 			`
 			SELECT 
@@ -213,25 +222,25 @@ export async function GET(request: NextRequest) {
 			FROM product p
 			LEFT JOIN salesorder so
 			  ON so.product_id = p.id
-			 AND so.accepted_at >= $1::date
-			 AND so.accepted_at < ($1::date + INTERVAL '1 day')
+			 AND so.accepted_at >= ${BIZ_DAY_START}
+			 AND so.accepted_at < ${BIZ_DAY_END}
 			GROUP BY p.id, p.name
 			ORDER BY total_sales DESC, p.id
 			`,
 			[date]
 		);
 
-		// 時間別売上集計（1時間ごと）
+		// 時間別売上集計（業務日基準, 1時間ごと, JST の時刻で集計）
 		const hourlySalesResult = await client.query(
 			`
 			SELECT 
-				EXTRACT(HOUR FROM so.accepted_at)::int AS hour,
+				EXTRACT(HOUR FROM (so.accepted_at AT TIME ZONE 'Asia/Tokyo'))::int AS hour,
 				COALESCE(SUM(so.total_price), 0) AS total_sales,
 				COUNT(*)::int AS order_count
 			FROM salesorder so
-			WHERE so.accepted_at >= $1::date
-			  AND so.accepted_at < ($1::date + INTERVAL '1 day')
-			GROUP BY EXTRACT(HOUR FROM so.accepted_at)
+			WHERE so.accepted_at >= ${BIZ_DAY_START}
+			  AND so.accepted_at < ${BIZ_DAY_END}
+			GROUP BY EXTRACT(HOUR FROM (so.accepted_at AT TIME ZONE 'Asia/Tokyo'))
 			ORDER BY hour
 			`,
 			[date]
