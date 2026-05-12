@@ -4385,7 +4385,7 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
                             >
                               <option value={5}>5分</option>
                               <option value={10}>10分</option>
-                              <option value={15}>15分</option>
+                              {/* <option value={15}>15分</option> */}
                             </select>
                           </div>
                         </div>

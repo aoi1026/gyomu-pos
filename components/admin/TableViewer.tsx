@@ -3097,7 +3097,7 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
                             >
                               <option value={5}>5分</option>
                               <option value={10}>10分</option>
-                              <option value={15}>15分</option>
+                              {/* <option value={15}>15分</option> */}
                             </select>
                           </div>
                         </div>
