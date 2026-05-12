@@ -36,7 +36,12 @@ import StripeProvider from '@/components/providers/StripeProvider';
 import StripePaymentForm from '@/components/payment/StripePaymentForm';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from '@/components/ui/table';
-
+import {
+  normalizeSessionTimeStep,
+  parseHHMM,
+  setLocalTimeFromHHMMSnapped,
+  shiftLocalStartByStep,
+} from '@/lib/session-set-time';
 
 export default function TableDashboard({ params }: { params: Promise<{ tableId: string }> }) {
   const [tableId, setTableId] = useState<string | null>(null);
@@ -132,6 +137,8 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
   const [songRooms, setSongRooms] = useState<Array<{ id: number; name: string; status: number; other: string | null }>>([]);
   const [selectedSongRoomId, setSelectedSongRoomId] = useState<string>('');
   const [timeAdjustStepMin, setTimeAdjustStepMin] = useState<5 | 10 | 15>(5);
+  const [startTimeDraft, setStartTimeDraft] = useState<string | null>(null);
+  const [endTimeDraft, setEndTimeDraft] = useState<string | null>(null);
   const [additionalServices, setAdditionalServices] = useState<Array<{
     id?: number;
     type: 'bottle_keep' | 'vip_room' | 'karaoke';
@@ -196,7 +203,7 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
         const res = await fetch('/api/project-variables?name=session_time_adjust_step_min', { cache: 'no-store' });
         const j = await res.json();
         const n = Number(j?.data?.value);
-        if (!cancelled && (n === 5 || n === 10 || n === 15)) setTimeAdjustStepMin(n);
+        if (!cancelled && Number.isFinite(n)) setTimeAdjustStepMin(normalizeSessionTimeStep(n));
       } catch {
         // ignore (default 5)
       }
@@ -2378,7 +2385,10 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
   const formatHHMM = (d: Date) =>
     d.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
 
-  const shiftStartEndByMinutes = async (deltaMinutes: number) => {
+  const toTimeInputValue = (d: Date) =>
+    `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
+
+  const patchStartTimeKeepingRemaining = async (nextCreated: Date) => {
     if (!session || !session.is_paused) {
       error('エラー', '停止中のみ時間を調整できます');
       return;
@@ -2388,11 +2398,10 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
       return;
     }
     try {
-      const baseCreated = new Date(session.created_at).getTime();
-      const basePausedAt = new Date(session.paused_at).getTime();
-      const deltaMs = deltaMinutes * 60 * 1000;
-      const nextCreatedAt = new Date(baseCreated + deltaMs).toISOString();
-      const nextPausedAt = new Date(basePausedAt + deltaMs).toISOString();
+      const deltaMs = nextCreated.getTime() - new Date(session.created_at).getTime();
+      if (deltaMs === 0) return;
+      const nextCreatedAt = nextCreated.toISOString();
+      const nextPausedAt = new Date(new Date(session.paused_at).getTime() + deltaMs).toISOString();
 
       const response = await fetch(`/api/sessions/${session.id}`, {
         method: 'PATCH',
@@ -2415,6 +2424,43 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
       console.error('時間調整エラー:', err);
       error('エラー', err instanceof Error ? err.message : '時間の調整に失敗しました');
     }
+  };
+
+  const shiftStartEndByStep = async (direction: 1 | -1) => {
+    if (!session?.created_at) return;
+    const nextCreated = shiftLocalStartByStep(new Date(session.created_at), timeAdjustStepMin, direction);
+    await patchStartTimeKeepingRemaining(nextCreated);
+  };
+
+  const applyStartTimeFromInput = async (raw: string) => {
+    if (!session?.created_at) return;
+    const parsed = parseHHMM(raw);
+    if (!parsed) {
+      error('エラー', '開始時刻は HH:mm 形式で入力してください');
+      return;
+    }
+    const nextCreated = setLocalTimeFromHHMMSnapped(
+      new Date(session.created_at),
+      parsed.h,
+      parsed.m,
+      timeAdjustStepMin
+    );
+    await patchStartTimeKeepingRemaining(nextCreated);
+  };
+
+  const applyEndTimeFromInput = async (raw: string) => {
+    if (!session?.created_at) return;
+    const parsed = parseHHMM(raw);
+    if (!parsed) {
+      error('エラー', '終了時刻は HH:mm 形式で入力してください');
+      return;
+    }
+    const setCount = session.set_count || 1;
+    const oldCreated = new Date(session.created_at);
+    const oldEnd = new Date(oldCreated.getTime() + setCount * 3600 * 1000);
+    const nextEnd = setLocalTimeFromHHMMSnapped(oldEnd, parsed.h, parsed.m, timeAdjustStepMin);
+    const nextCreated = new Date(oldCreated.getTime() + (nextEnd.getTime() - oldEnd.getTime()));
+    await patchStartTimeKeepingRemaining(nextCreated);
   };
 
   // 停止/再開処理
@@ -4234,22 +4280,93 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
                       <div className="mb-1">
                         <div className="flex items-start justify-between gap-2">
                           <div className="text-[11px] text-gray-500 text-left">
-                            <div>開始 {session?.created_at ? formatHHMM(new Date(session.created_at)) : '--:--'}</div>
-                            <div>
-                              終了{' '}
-                              {session?.created_at
-                                ? formatHHMM(new Date(new Date(session.created_at).getTime() + (session.set_count || 1) * 3600 * 1000))
-                                : '--:--'}
-                            </div>
+                            {session?.is_paused && session.created_at && session.paused_at ? (
+                              <div className="grid grid-cols-1 gap-1.5 mt-0.5">
+                                <div className="flex items-center gap-1">
+                                  <span className="shrink-0 w-7">開始</span>
+                                  <Input
+                                    type="time"
+                                    step={timeAdjustStepMin * 60}
+                                    className="h-7 text-[11px] px-1 flex-1 min-w-0"
+                                    value={startTimeDraft ?? toTimeInputValue(new Date(session.created_at))}
+                                    onFocus={() => setStartTimeDraft(toTimeInputValue(new Date(session.created_at)))}
+                                    onChange={(e) => setStartTimeDraft(e.target.value)}
+                                    onBlur={() => {
+                                      const d = startTimeDraft;
+                                      setStartTimeDraft(null);
+                                      if (d === null || !session.created_at) return;
+                                      const orig = toTimeInputValue(new Date(session.created_at));
+                                      if (d === orig) return;
+                                      void applyStartTimeFromInput(d);
+                                    }}
+                                  />
+                                </div>
+                                <div className="flex items-center gap-1">
+                                  <span className="shrink-0 w-7">終了</span>
+                                  <Input
+                                    type="time"
+                                    step={timeAdjustStepMin * 60}
+                                    className="h-7 text-[11px] px-1 flex-1 min-w-0"
+                                    value={
+                                      endTimeDraft ??
+                                      toTimeInputValue(
+                                        new Date(
+                                          new Date(session.created_at).getTime() +
+                                            (session.set_count || 1) * 3600 * 1000
+                                        )
+                                      )
+                                    }
+                                    onFocus={() =>
+                                      setEndTimeDraft(
+                                        toTimeInputValue(
+                                          new Date(
+                                            new Date(session.created_at).getTime() +
+                                              (session.set_count || 1) * 3600 * 1000
+                                          )
+                                        )
+                                      )
+                                    }
+                                    onChange={(e) => setEndTimeDraft(e.target.value)}
+                                    onBlur={() => {
+                                      const d = endTimeDraft;
+                                      setEndTimeDraft(null);
+                                      if (d === null || !session.created_at) return;
+                                      const orig = toTimeInputValue(
+                                        new Date(
+                                          new Date(session.created_at).getTime() +
+                                            (session.set_count || 1) * 3600 * 1000
+                                        )
+                                      );
+                                      if (d === orig) return;
+                                      void applyEndTimeFromInput(d);
+                                    }}
+                                  />
+                                </div>
+                              </div>
+                            ) : (
+                              <>
+                                <div>開始 {session?.created_at ? formatHHMM(new Date(session.created_at)) : '--:--'}</div>
+                                <div>
+                                  終了{' '}
+                                  {session?.created_at
+                                    ? formatHHMM(
+                                        new Date(
+                                          new Date(session.created_at).getTime() +
+                                            (session.set_count || 1) * 3600 * 1000
+                                        )
+                                      )
+                                    : '--:--'}
+                                </div>
+                              </>
+                            )}
                           </div>
                           <div className="flex items-center gap-1">
                             <select
                               className="h-7 rounded border border-gray-200 bg-white px-2 text-[11px]"
                               value={timeAdjustStepMin}
                               onChange={async (e) => {
-                                const n = Number(e.target.value);
-                                if (n !== 5 && n !== 10 && n !== 15) return;
-                                setTimeAdjustStepMin(n as any);
+                                const n = normalizeSessionTimeStep(Number(e.target.value));
+                                setTimeAdjustStepMin(n);
                                 try {
                                   await fetch('/api/project-variables', {
                                     method: 'PATCH',
@@ -4278,7 +4395,7 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
                             size="sm"
                             variant="outline"
                             className="h-9 text-sm font-semibold"
-                            onClick={() => void shiftStartEndByMinutes(-timeAdjustStepMin)}
+                            onClick={() => void shiftStartEndByStep(-1)}
                             disabled={!session?.is_paused}
                             title="開始/終了を前に（停止中のみ）"
                           >
@@ -4290,7 +4407,7 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
                             size="sm"
                             variant="outline"
                             className="h-9 text-sm font-semibold"
-                            onClick={() => void shiftStartEndByMinutes(timeAdjustStepMin)}
+                            onClick={() => void shiftStartEndByStep(1)}
                             disabled={!session?.is_paused}
                             title="開始/終了を後に（停止中のみ）"
                           >
