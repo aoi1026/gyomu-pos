@@ -290,7 +290,8 @@ export async function GET(request: NextRequest) {
       const insideExtCnt = Number(r.inside_nomination_extension_count || 0);
       const togetherCnt = Number(r.together_nomination_count || 0);
 
-      const mainBack = (charges.main || 0) * mainRate * mainCnt;
+      const mainBack =
+        (charges.main || 0) * mainRate * (mainCnt + togetherCnt);
       const mainExtBack = (charges.main || 0) * mainRate * mainExtCnt;
       const insideBack = (charges.inside || 0) * insideRate * insideCnt;
       const insideExtBack = (charges.inside || 0) * insideRate * insideExtCnt;
@@ -533,7 +534,8 @@ export async function PUT(request: NextRequest) {
     const insideCnt = Number(row.inside_nomination_count || 0);
     const insideExtCnt = Number(row.inside_nomination_extension_count || 0);
     const togetherCnt = Number(row.together_nomination_count || 0);
-    const mainBack = (charges.main || 0) * mainRate * mainCnt;
+    const mainBack =
+      (charges.main || 0) * mainRate * (mainCnt + togetherCnt);
     const mainExtBack = (charges.main || 0) * mainRate * mainExtCnt;
     const insideBack = (charges.inside || 0) * insideRate * insideCnt;
     const insideExtBack = (charges.inside || 0) * insideRate * insideExtCnt;

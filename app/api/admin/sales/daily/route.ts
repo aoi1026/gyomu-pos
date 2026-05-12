@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
 import { pool } from '@/lib/database';
-import { businessDateExpr, businessDayStartExpr, businessDayPlusExpr } from '@/lib/business-day-sql';
+import { businessDayStartExpr, businessDayPlusExpr } from '@/lib/business-day-sql';
 import { getBusinessDayYmd } from '@/lib/business-day';
 
 // 業務日（朝6時 JST 境界）。$1 = 業務日 YYYY-MM-DD。
@@ -73,30 +73,25 @@ export async function GET(request: NextRequest) {
 			[date]
 		);
 
-		// キャスト人数を取得
-		const castCountResult = await client.query(
-			`
-			SELECT COUNT(*)::int AS cast_count
-			FROM "user"
-			WHERE role = 'cast'
-			`
-		);
-
-		// 本日出勤したキャストの性別別人数を取得（業務日基準）
+		// 性別カラム（勤務人員の男女集計用）
 		await client.query(`
 			ALTER TABLE "user" ADD COLUMN IF NOT EXISTS gender VARCHAR(10)
 		`);
 
-		const attendanceGenderResult = await client.query(
+		// 業務日（他集計と同じ 06:00 JST 〜翌 06:00）に出勤した人数
+		// - cast_count: 勤怠 status=saved のキャスト（role=cast）のユニーク人数
+		// - male/female: 同じ勤怠の出勤者全体から性別が male / female のユニーク人数
+		const attendanceStatsResult = await client.query(
 			`
-			SELECT 
+			SELECT
+				COALESCE(COUNT(DISTINCT CASE WHEN u.role = 'cast' THEN a.staff_id END), 0)::int AS cast_count,
 				COALESCE(COUNT(DISTINCT CASE WHEN u.gender = 'male' THEN a.staff_id END), 0)::int AS male_count,
 				COALESCE(COUNT(DISTINCT CASE WHEN u.gender = 'female' THEN a.staff_id END), 0)::int AS female_count
 			FROM attendance a
 			INNER JOIN "user" u ON u.id = a.staff_id
-			WHERE ${businessDateExpr('a.clock_in')} = $1::date
+			WHERE a.clock_in >= ${BIZ_DAY_START}
+			  AND a.clock_in < ${BIZ_DAY_END}
 			  AND a.status = 'saved'
-			  AND u.role = 'cast'
 			`,
 			[date]
 		);
@@ -148,9 +143,9 @@ export async function GET(request: NextRequest) {
 		const total_payments = Number(sessionPaymentsAgg.rows[0]?.total_payments || 0);
 		const card_payments = Number(sessionPaymentsAgg.rows[0]?.card_payments || 0);
 		const cash_payments = Number(sessionPaymentsAgg.rows[0]?.cash_payments || 0);
-		const cast_count = Number(castCountResult.rows[0]?.cast_count || 0);
-		const male_attendance_count = Number(attendanceGenderResult.rows[0]?.male_count || 0);
-		const female_attendance_count = Number(attendanceGenderResult.rows[0]?.female_count || 0);
+		const cast_count = Number(attendanceStatsResult.rows[0]?.cast_count || 0);
+		const male_attendance_count = Number(attendanceStatsResult.rows[0]?.male_count || 0);
+		const female_attendance_count = Number(attendanceStatsResult.rows[0]?.female_count || 0);
 		const monthly_total_payments = Number(monthlyPaymentsResult.rows[0]?.monthly_total_payments || 0);
 		const monthly_total_deducts = Number(monthlyDeductsResult.rows[0]?.monthly_total_deducts || 0);
 		const monthly_gross_profit = monthly_total_payments - monthly_total_deducts;

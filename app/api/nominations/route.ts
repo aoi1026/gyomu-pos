@@ -204,7 +204,9 @@ export async function POST(request: NextRequest) {
     if (typeId === 'main') {
       rankCostInit = setFeeTotal + mainFee + extensionTotal + mainFeeForExtensions + castOrderTotal;
     } else if (typeId === 'together') {
-      rankCostInit = setFeeTotal + togetherFee + extensionTotal + mainFeeForExtensions + castOrderTotal;
+      // 同伴指名もランキング・売上ベースには初回から本指名料を含める（クライアント要望）
+      rankCostInit =
+        setFeeTotal + togetherFee + mainFee + extensionTotal + mainFeeForExtensions + castOrderTotal;
     } else {
       rankCostInit = 0;
     }
@@ -216,15 +218,36 @@ export async function POST(request: NextRequest) {
       [castId]
     );
     const rates = rateRes.rows[0] || {};
-    // inside でも tomain_nomination=1 の場合は main 扱い（ただしPOST時は常に0）
-    const effectiveTypeId = typeId;
-    const ratePct =
-      effectiveTypeId === 'main'
-        ? Number(rates.main_nomination ?? 0)
-        : effectiveTypeId === 'inside'
-          ? Number(rates.inside_nomination ?? 0)
-          : Number(rates.together_nomination ?? 0);
-    const castShare = costValue > 0 ? (costValue * (Number.isFinite(ratePct) ? ratePct : 0)) / 100 : 0;
+    const mainRatePct = Number(rates.main_nomination ?? 0);
+    const insideRatePct = Number(rates.inside_nomination ?? 0);
+    const togetherRatePct = Number(rates.together_nomination ?? 0);
+
+    let castShare = 0;
+    /** salary テーブルへの振り分け（同伴の初回は同伴分＋本指名分を別列に載せる） */
+    let addMainFee = 0;
+    let addInsideFee = 0;
+    let addTogetherFee = 0;
+
+    if (typeId === 'together') {
+      const billedTogether = costValue > 0 ? costValue : togetherFee;
+      const togetherShare =
+        (billedTogether * (Number.isFinite(togetherRatePct) ? togetherRatePct : 0)) / 100;
+      const mainShare = (mainFee * (Number.isFinite(mainRatePct) ? mainRatePct : 0)) / 100;
+      castShare = togetherShare + mainShare;
+      addTogetherFee = togetherShare;
+      addMainFee = mainShare;
+    } else {
+      const ratePct =
+        typeId === 'main'
+          ? mainRatePct
+          : insideRatePct;
+      castShare =
+        costValue > 0
+          ? (costValue * (Number.isFinite(ratePct) ? ratePct : 0)) / 100
+          : 0;
+      addMainFee = typeId === 'main' ? castShare : 0;
+      addInsideFee = typeId === 'inside' ? castShare : 0;
+    }
 
     const result = await client.query(
       `
@@ -257,11 +280,6 @@ export async function POST(request: NextRequest) {
     const addMain = typeId === 'main' ? 1 : 0;
     const addInside = typeId === 'inside' ? 1 : 0;
     const addTogether = typeId === 'together' ? 1 : 0;
-
-    // cost_cast に加算した増分（castShare）を、salaryの指名料取り分にも反映
-    const addMainFee = typeId === 'main' ? castShare : 0;
-    const addInsideFee = typeId === 'inside' ? castShare : 0;
-    const addTogetherFee = typeId === 'together' ? castShare : 0;
 
     if (Number.isFinite(year) && Number.isFinite(month)) {
       await client.query(

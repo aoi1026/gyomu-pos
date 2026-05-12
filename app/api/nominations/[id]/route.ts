@@ -60,12 +60,13 @@ export async function PATCH(
           [current.cast_id]
         );
         const rates = rateRes.rows[0] || {};
+        // 同伴指名の cost 増減は延長等で「本指名料相当」→ 本指名率を適用
         const ratePct =
           effectiveTypeId === 'main'
             ? Number(rates.main_nomination ?? 0)
             : effectiveTypeId === 'inside'
               ? Number(rates.inside_nomination ?? 0)
-              : Number(rates.together_nomination ?? 0);
+              : Number(rates.main_nomination ?? 0);
         castShareAdd = (costAdd * (Number.isFinite(ratePct) ? ratePct : 0)) / 100;
       }
     }
@@ -123,9 +124,10 @@ export async function PATCH(
       const month = Number(current.month);
       const castId = Number(current.cast_id);
 
-      const addMainFee = effectiveTypeId === 'main' ? castShareAdd : 0;
+      const addMainFee =
+        effectiveTypeId === 'main' || effectiveTypeId === 'together' ? castShareAdd : 0;
       const addInsideFee = effectiveTypeId === 'inside' ? castShareAdd : 0;
-      const addTogetherFee = effectiveTypeId === 'together' ? castShareAdd : 0;
+      const addTogetherFee = 0;
 
       if (Number.isFinite(year) && Number.isFinite(month) && Number.isFinite(castId) && castId > 0) {
         await client.query(

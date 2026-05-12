@@ -295,11 +295,12 @@ export default function RealTimeTableStatus({ open, onClose }: RealTimeTableStat
     }
   };
 
-  // 終了時間を計算する関数
+  // 終了時間を計算する関数（TableViewer セット延長欄の「終了」と同一式）
   const calculateEndTime = (session: SessionData): Date => {
     const sessionStart = new Date(session.created_at).getTime();
-    // 「終了予定」は開始 + 60分で固定表示（延長や停止時間は反映しない）
-    return new Date(sessionStart + 60 * 60 * 1000);
+    const setCount = session.set_count || 1;
+    const setDuration = 3600; // 1セット = 3600秒
+    return new Date(sessionStart + setCount * setDuration * 1000);
   };
 
   const filteredTables = tables.filter(table => {

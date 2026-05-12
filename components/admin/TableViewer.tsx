@@ -2355,7 +2355,7 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
 
   return (
     <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-2 sm:p-4">
-      <div className="relative w-full h-full max-w-[98vw] sm:max-w-[95vw] max-h-[98vh] sm:max-h-[95vh] bg-white rounded-lg shadow-2xl overflow-hidden flex flex-col">
+      <div className="relative flex h-full max-h-[98vh] min-h-0 w-full max-w-[98vw] flex-col overflow-hidden rounded-lg bg-white shadow-2xl sm:max-h-[95vh] sm:max-w-[95vw]">
         {/* Header */}
         <div className="flex items-center justify-between bg-gradient-to-r from-blue-600 to-purple-600 text-white px-3 sm:px-6 py-3 sm:py-4 gap-2">
           <div className="min-w-0">
@@ -2385,8 +2385,8 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
           </div>
         </div>
 
-        {/* Content */}
-        <div className="flex-1 overflow-y-auto px-3 sm:px-6 lg:px-8 xl:px-12 py-4 sm:py-6">
+        {/* Content（min-h-0: 子の flex / スクロール高さ制約を正しく伝える） */}
+        <div className="flex-1 min-h-0 overflow-y-auto px-3 sm:px-6 lg:px-8 xl:px-12 py-4 sm:py-6">
           {loading ? (
             <div className="flex items-center justify-center h-full">
               <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
@@ -2396,12 +2396,12 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
               <p>このテーブルにはアクティブなセッションがありません</p>
             </div>
           ) : (
-            <div className="max-w-7xl mx-auto">
-              <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 sm:gap-5">
+            <div className="max-w-7xl mx-auto min-h-0">
+              <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 sm:gap-5 min-h-0">
               {/* 左側: タブコンテンツ（注文・指名・サービス） */}
-              <div className="lg:col-span-3 space-y-4">
+              <div className="lg:col-span-3 space-y-4 min-h-0 flex flex-col">
                 {/* タブ */}
-                <Tabs value={leftMode} onValueChange={(value) => setLeftMode(value as 'order' | 'nomination' | 'service')}>
+                <Tabs value={leftMode} onValueChange={(value) => setLeftMode(value as 'order' | 'nomination' | 'service')} className="flex min-h-0 w-full flex-col">
                   <TabsList className="grid w-full grid-cols-3">
                     <TabsTrigger value="order">注文</TabsTrigger>
                     <TabsTrigger value="nomination">指名</TabsTrigger>
@@ -2409,87 +2409,94 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
                   </TabsList>
 
                   {/* 注文タブ */}
-                  <TabsContent value="order" className="space-y-4 mt-4">
-                    <div className={isTimeExpired ? 'pointer-events-none opacity-50' : ''}>
-                      {/* カテゴリタブ（スクロール時に固定 / 連続した平行四辺形） */}
-                      <div className="sticky top-0 bg-gradient-to-br from-purple-50 via-pink-50 to-blue-50 pt-2 pb-2 z-30 mb-4">
-                        <div className="pl-2 sm:pl-5 flex items-center overflow-x-auto">
-                          {[
-                            { id: 'all', name: 'すべて' },
-                            { id: '4', name: 'セット' },
-                            ...menuCategories.filter((c) => c.id !== 4).map((c) => ({ id: String(c.id), name: c.name })),
-                          ].map((tab, idx) => {
-                            const active = selectedCategoryId === tab.id;
-                            return (
-                              <button
-                                key={tab.id}
-                                type="button"
-                                onClick={() => setSelectedCategoryId(tab.id)}
-                                className={[
-                                  'relative h-8 sm:h-10 px-3 sm:px-5 text-xs sm:text-sm font-semibold select-none whitespace-nowrap',
-                                  'skew-x-12',
-                                  idx === 0 ? '' : '-ml-2 sm:-ml-3',
-                                  active
-                                    ? 'bg-purple-600 text-white shadow-md z-20'
-                                    : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50 z-10',
-                                  'rounded-none',
-                                ].join(' ')}
-                              >
-                                <span className="inline-block -skew-x-12">
-                                  {tab.name}
-                                </span>
-                              </button>
-                            );
-                          })}
+                  <TabsContent value="order" className="mt-4 flex min-h-0 flex-1 flex-col outline-none">
+                    <div
+                      className={`flex min-h-0 flex-1 flex-col ${isTimeExpired ? 'pointer-events-none opacity-50' : ''}`}
+                    >
+                      {/*
+                        カテゴリ + 商品を同一の縦スクロールにまとめ、カテゴリのみ sticky。
+                        Radix ScrollArea と外側の overflow を併用すると iPad で sticky がずれ、
+                        商品がタブの下に食い込む原因になる。
+                      */}
+                      <div className="flex max-h-[min(70dvh,calc(100dvh-14rem))] min-h-[220px] flex-1 flex-col overflow-hidden rounded-lg border border-purple-100/70 bg-white/50 sm:max-h-[min(72dvh,calc(100dvh-13rem))] lg:max-h-[calc(100dvh-11rem)]">
+                        <div className="min-h-0 flex-1 touch-pan-y overflow-x-hidden overflow-y-auto overscroll-y-contain">
+                          <div className="sticky top-0 z-40 border-b border-gray-200/90 bg-gradient-to-br from-purple-50 via-pink-50 to-blue-50 pt-2 pb-2 shadow-sm">
+                            <div className="flex items-center overflow-x-auto overflow-y-hidden pl-2 sm:pl-5">
+                              {[
+                                { id: 'all', name: 'すべて' },
+                                { id: '4', name: 'セット' },
+                                ...menuCategories.filter((c) => c.id !== 4).map((c) => ({ id: String(c.id), name: c.name })),
+                              ].map((tab, idx) => {
+                                const active = selectedCategoryId === tab.id;
+                                return (
+                                  <button
+                                    key={tab.id}
+                                    type="button"
+                                    onClick={() => setSelectedCategoryId(tab.id)}
+                                    className={[
+                                      'relative h-8 select-none whitespace-nowrap px-3 text-xs font-semibold sm:h-10 sm:px-5 sm:text-sm',
+                                      'skew-x-12',
+                                      idx === 0 ? '' : '-ml-2 sm:-ml-3',
+                                      active
+                                        ? 'z-20 bg-purple-600 text-white shadow-md'
+                                        : 'z-10 border border-gray-200 bg-white text-gray-700 hover:bg-gray-50',
+                                      'rounded-none',
+                                    ].join(' ')}
+                                  >
+                                    <span className="inline-block -skew-x-12">{tab.name}</span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2 p-2 pb-8 sm:grid-cols-3 sm:gap-3 sm:p-3 lg:grid-cols-4">
+                            {(() => {
+                              const items = selectedCategoryId === 'all'
+                                ? menuItems
+                                : selectedCategoryId === '4'
+                                  ? menuItems.filter((it: any) => Number(it.category_id) === 4)
+                                  : menuItems.filter((it: any) => Number(it.category_id) === Number(selectedCategoryId));
+                              if (!items || items.length === 0) {
+                                return (
+                                  <div className="col-span-2 py-10 text-center text-sm text-gray-500 sm:col-span-3 lg:col-span-4">
+                                    該当する商品がありません
+                                  </div>
+                                );
+                              }
+                              return items.map((item: any) => (
+                                <button
+                                  key={item.id}
+                                  type="button"
+                                  onClick={() => {
+                                    if (!isOrderingDisabled && !isTimeExpired) addToCart(item);
+                                  }}
+                                  className={`overflow-hidden rounded-lg border bg-white text-left shadow-sm transition-shadow hover:shadow-md ${isOrderingDisabled ? 'cursor-not-allowed opacity-50' : 'hover:bg-gray-50'}`}
+                                  disabled={isOrderingDisabled}
+                                >
+                                  <div className="relative aspect-square bg-gray-100">
+                                    {item.image ? (
+                                      <img src={item.image} alt={item.name} className="h-full w-full object-cover" />
+                                    ) : (
+                                      <div className="flex h-full w-full items-center justify-center text-gray-400">
+                                        <Package className="h-8 w-8" />
+                                      </div>
+                                    )}
+                                    <div className="absolute bottom-1 right-1 rounded bg-black/70 px-1.5 py-0.5 text-[9px] text-white sm:px-2 sm:py-1 sm:text-[11px]">
+                                      {formatCurrency(item.sale_price)}
+                                    </div>
+                                  </div>
+                                  <div className="p-1 sm:p-1.5">
+                                    <div className="line-clamp-2 text-[11px] font-semibold leading-tight sm:text-[13px]">{item.name}</div>
+                                    <div className="mt-0.5 text-[9px] text-gray-500 sm:mt-1 sm:text-[11px]">
+                                      SKU: {item.sku ? item.sku : '-'}
+                                    </div>
+                                  </div>
+                                </button>
+                              ));
+                            })()}
+                          </div>
                         </div>
                       </div>
-
-                      <ScrollArea className="h-[calc(100vh-300px)] pr-2">
-                        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-3">
-                          {(() => {
-                            const items = selectedCategoryId === 'all'
-                              ? menuItems
-                              : selectedCategoryId === '4'
-                              ? menuItems.filter((it: any) => Number(it.category_id) === 4)
-                              : menuItems.filter((it: any) => Number(it.category_id) === Number(selectedCategoryId));
-                            if (!items || items.length === 0) {
-                              return (
-                                <div className="col-span-2 sm:col-span-3 lg:col-span-4 text-center text-sm text-gray-500 py-10">
-                                  該当する商品がありません
-                                </div>
-                              );
-                            }
-                            return items.map((item: any) => (
-                              <button
-                                key={item.id}
-                                type="button"
-                                onClick={() => { if (!isOrderingDisabled && !isTimeExpired) addToCart(item); }}
-                                className={`text-left rounded-lg border bg-white overflow-hidden shadow-sm hover:shadow-md transition-shadow ${isOrderingDisabled ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50'}`}
-                                disabled={isOrderingDisabled}
-                              >
-                                <div className="relative aspect-square bg-gray-100">
-                                  {item.image ? (
-                                    <img src={item.image} alt={item.name} className="w-full h-full object-cover" />
-                                  ) : (
-                                    <div className="w-full h-full flex items-center justify-center text-gray-400">
-                                      <Package className="w-8 h-8" />
-                                    </div>
-                                  )}
-                                  <div className="absolute right-1 bottom-1 bg-black/70 text-white text-[9px] sm:text-[11px] px-1.5 sm:px-2 py-0.5 sm:py-1 rounded">
-                                    {formatCurrency(item.sale_price)}
-                                  </div>
-                                </div>
-                                <div className="p-1 sm:p-1.5">
-                                  <div className="text-[11px] sm:text-[13px] font-semibold leading-tight line-clamp-2">{item.name}</div>
-                                  <div className="text-[9px] sm:text-[11px] text-gray-500 mt-0.5 sm:mt-1">
-                                    SKU: {item.sku ? item.sku : '-'}
-                                  </div>
-                                </div>
-                              </button>
-                            ));
-                          })()}
-                        </div>
-                      </ScrollArea>
 
                       {/* 左下：注文カートボタン（押すと横からモーダル表示） */}
                       <div className="fixed left-2 sm:left-16 bottom-[100px] sm:bottom-[100px] z-40">
