@@ -393,9 +393,9 @@ export default function OrderMonitoringPage() {
               <Label htmlFor="order-approval-toggle" className="text-sm font-medium cursor-pointer">
                 注文承認（手動）
               </Label>
-              <p className="text-[11px] text-gray-500 max-w-[220px] leading-snug">
+              {/* <p className="text-[11px] text-gray-500 max-w-[220px] leading-snug">
                 オフにすると商品・サービス注文が自動的に受付済みになります（ガールズバー向け）
-              </p>
+              </p> */}
             </div>
             <Switch
               id="order-approval-toggle"
