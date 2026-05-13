@@ -55,7 +55,26 @@ function SalarySettingsContent() {
   const [showDeleteCategoryModal, setShowDeleteCategoryModal] = useState(false);
   const [categoryToDelete, setCategoryToDelete] = useState<{ id: number; name: string } | null>(null);
   const [isDeletingCategory, setIsDeletingCategory] = useState(false);
-  
+
+  /** 出勤日数に関係なく：日別（1～7）×全カテゴリー一括 */
+  const [bulkAttendayByDay, setBulkAttendayByDay] = useState<Record<number, string>>({
+    1: '',
+    2: '',
+    3: '',
+    4: '',
+    5: '',
+    6: '',
+    7: '',
+  });
+  const [isBulkSavingAttenday, setIsBulkSavingAttenday] = useState(false);
+  /** 日別モーダル：全曜日へ同額コピー用 */
+  const [uniformModalAmount, setUniformModalAmount] = useState('');
+
+  /** キャストバック率：列ごと全キャストへ */
+  const [bulkCastBackCategoryId, setBulkCastBackCategoryId] = useState<string>('');
+  const [bulkCastBackPercent, setBulkCastBackPercent] = useState('');
+  const [isBulkSavingCastBack, setIsBulkSavingCastBack] = useState(false);
+
   // 100%給与反映
   const [fullReflectCategories, setFullReflectCategories] = useState<Array<{ id: number; name: string }>>([]);
   const [showFullReflectAddModal, setShowFullReflectAddModal] = useState(false);
@@ -223,6 +242,7 @@ function SalarySettingsContent() {
   const handleOpenAddModal = () => {
     setSelectedCategory(null);
     setDayAmounts({});
+    setUniformModalAmount('');
     setEditingAttendayCategory(null);
     setShowAddModal(true);
   };
@@ -239,6 +259,7 @@ function SalarySettingsContent() {
     }
     setSelectedCategory(category.category_id);
     setDayAmounts(amounts);
+    setUniformModalAmount('');
     setEditingAttendayCategory(category);
     setShowAddModal(true);
   };
@@ -304,6 +325,114 @@ function SalarySettingsContent() {
       setMessage({ type: 'error', text: '更新に失敗しました' });
     } finally {
       setIsUpdatingCategory(false);
+    }
+  };
+
+  const handleBulkApplyAttendayAll = async () => {
+    if (attendayData.length === 0) {
+      setMessage({ type: 'error', text: '適用するカテゴリーがありません' });
+      return;
+    }
+
+    const dayAmounts: { day: number; amount: number }[] = [];
+    for (let day = 1; day <= 7; day++) {
+      const raw = (bulkAttendayByDay[day] ?? '').trim();
+      if (raw === '') continue;
+      const amount = parseFloat(raw);
+      if (!Number.isFinite(amount) || amount < 0) {
+        setMessage({ type: 'error', text: `${day}日の金額が無効です（0以上の数値を入力してください）` });
+        return;
+      }
+      dayAmounts.push({ day, amount });
+    }
+
+    if (dayAmounts.length === 0) {
+      setMessage({ type: 'error', text: '反映する日の金額を1つ以上入力してください' });
+      return;
+    }
+
+    setIsBulkSavingAttenday(true);
+    setMessage(null);
+    try {
+      const tasks: Promise<Response>[] = [];
+      for (const { day, amount } of dayAmounts) {
+        for (const row of attendayData) {
+          tasks.push(
+            fetch('/api/salary-attenday', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                category_id: row.category_id,
+                attenday_number: day,
+                value: amount,
+              }),
+            })
+          );
+        }
+      }
+      const responses = await Promise.all(tasks);
+      const failed = responses.filter((r) => !r.ok);
+      if (failed.length > 0) {
+        throw new Error('一部の保存に失敗しました');
+      }
+
+      const cleared: Record<number, string> = { ...bulkAttendayByDay };
+      for (const { day } of dayAmounts) {
+        cleared[day] = '';
+      }
+      setBulkAttendayByDay(cleared);
+
+      const dayLabel = dayAmounts.map(({ day, amount }) => `${day}日:¥${amount.toLocaleString()}`).join('、');
+      setMessage({
+        type: 'success',
+        text: `全${attendayData.length}カテゴリーへ反映しました（${dayLabel}）`,
+      });
+      loadAttendayData();
+    } catch (e) {
+      console.error(e);
+      setMessage({ type: 'error', text: '一括反映に失敗しました' });
+    } finally {
+      setIsBulkSavingAttenday(false);
+    }
+  };
+
+  const handleBulkApplyCastBackColumn = async () => {
+    const catId = parseInt(bulkCastBackCategoryId, 10);
+    if (!Number.isFinite(catId)) {
+      setMessage({ type: 'error', text: 'カテゴリーを選択してください' });
+      return;
+    }
+    const pct = parseFloat(bulkCastBackPercent);
+    if (!Number.isFinite(pct) || pct < 0 || pct >= 100) {
+      setMessage({ type: 'error', text: 'バック率は0以上100未満（%）で入力してください' });
+      return;
+    }
+    const value = Math.min(0.999, Math.max(0, pct / 100));
+
+    setIsBulkSavingCastBack(true);
+    setMessage(null);
+    try {
+      const response = await fetch('/api/salary-category', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          category_id: catId,
+          value,
+        }),
+      });
+      const result = await response.json();
+      if (result.success) {
+        setMessage({ type: 'success', text: '全キャストへキャストバック率を反映しました' });
+        setBulkCastBackPercent('');
+        loadBackRateData();
+      } else {
+        setMessage({ type: 'error', text: result.error || '一括反映に失敗しました' });
+      }
+    } catch (error) {
+      console.error(error);
+      setMessage({ type: 'error', text: '一括反映に失敗しました' });
+    } finally {
+      setIsBulkSavingCastBack(false);
     }
   };
 
@@ -895,6 +1024,43 @@ function SalarySettingsContent() {
                         データ追加
                       </Button>
                     </div>
+                    <div className="mt-4 rounded-lg border border-dashed border-blue-200 bg-blue-50/50 p-3 sm:p-4 space-y-3">
+                      <p className="text-sm font-medium text-gray-800">一括反映（出勤日1～7ごとに、追加済みの全カテゴリーへ適用）</p>
+                      <p className="text-xs text-gray-600">
+                        金額を入れた日だけが更新されます（空欄の日は変更しません）。「一括適用」でまとめて保存します。
+                      </p>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-2 sm:gap-3">
+                        {([1, 2, 3, 4, 5, 6, 7] as const).map((day) => (
+                          <div key={day} className="space-y-1">
+                            <Label htmlFor={`bulk-attenday-day-${day}`} className="text-xs whitespace-nowrap">
+                              {day}日（円）
+                            </Label>
+                            <Input
+                              id={`bulk-attenday-day-${day}`}
+                              type="number"
+                              min={0}
+                              step={0.01}
+                              placeholder="—"
+                              value={bulkAttendayByDay[day] ?? ''}
+                              onChange={(e) =>
+                                setBulkAttendayByDay((prev) => ({ ...prev, [day]: e.target.value }))
+                              }
+                              className="h-9 sm:h-10 text-sm"
+                            />
+                          </div>
+                        ))}
+                      </div>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        className="h-9 sm:h-10 w-full sm:w-auto shrink-0"
+                        disabled={isBulkSavingAttenday || attendayData.length === 0}
+                        onClick={() => void handleBulkApplyAttendayAll()}
+                      >
+                        <RefreshCw className={`w-4 h-4 mr-2 ${isBulkSavingAttenday ? 'animate-spin' : ''}`} />
+                        {isBulkSavingAttenday ? '反映中...' : '一括適用'}
+                      </Button>
+                    </div>
                   </CardHeader>
                   <CardContent>
                     {isLoadingAttenday ? (
@@ -1031,6 +1197,54 @@ function SalarySettingsContent() {
                         <Plus className="w-4 h-4 mr-2" />
                         データ追加
                       </Button>
+                    </div>
+                    <div className="mt-4 rounded-lg border border-dashed border-emerald-200 bg-emerald-50/50 p-3 sm:p-4 space-y-2">
+                      <p className="text-sm font-medium text-gray-800">一括反映（選択した製品カテゴリーの列を全キャスト同率に）</p>
+                      <p className="text-xs text-gray-600">0以上100未満のパーセントで指定します（例: 15 → 15%）。</p>
+                      <div className="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-end gap-2">
+                        <div className="space-y-1 min-w-[160px] flex-1">
+                          <Label className="text-xs">カテゴリー</Label>
+                          <Select
+                            value={bulkCastBackCategoryId || undefined}
+                            onValueChange={(v) => setBulkCastBackCategoryId(v)}
+                          >
+                            <SelectTrigger className="h-9 sm:h-10">
+                              <SelectValue placeholder="選択" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {backRateCategories.map((cat) => (
+                                <SelectItem key={cat.id} value={String(cat.id)}>
+                                  {cat.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-1 w-full sm:w-28">
+                          <Label htmlFor="bulk-cast-back-pct" className="text-xs">バック率（%）</Label>
+                          <Input
+                            id="bulk-cast-back-pct"
+                            type="number"
+                            min={0}
+                            max={99.99}
+                            step={0.1}
+                            placeholder="15"
+                            value={bulkCastBackPercent}
+                            onChange={(e) => setBulkCastBackPercent(e.target.value)}
+                            className="h-9 sm:h-10"
+                          />
+                        </div>
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          className="h-9 sm:h-10 w-full sm:w-auto shrink-0 bg-emerald-700 text-white hover:bg-emerald-800"
+                          disabled={isBulkSavingCastBack || backRateCategories.length === 0}
+                          onClick={() => void handleBulkApplyCastBackColumn()}
+                        >
+                          <RefreshCw className={`w-4 h-4 mr-2 ${isBulkSavingCastBack ? 'animate-spin' : ''}`} />
+                          {isBulkSavingCastBack ? '反映中...' : '全キャストへ適用'}
+                        </Button>
+                      </div>
                     </div>
                   </CardHeader>
                   <CardContent>
@@ -1347,6 +1561,37 @@ function SalarySettingsContent() {
 
             <div className="space-y-3 sm:space-y-4">
               <Label className="text-sm sm:text-base font-medium">日別金額（1～7日）</Label>
+              <div className="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-end gap-2 p-3 rounded-md bg-gray-50 border border-gray-100">
+                <div className="space-y-1 flex-1 min-w-[140px]">
+                  <Label htmlFor="uniform-modal-amt" className="text-xs text-gray-600">全曜日に同じ金額（円）</Label>
+                  <Input
+                    id="uniform-modal-amt"
+                    type="number"
+                    min={0}
+                    step={0.01}
+                    placeholder="一括入力"
+                    value={uniformModalAmount}
+                    onChange={(e) => setUniformModalAmount(e.target.value)}
+                    className="h-9"
+                  />
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-9 w-full sm:w-auto shrink-0"
+                  onClick={() => {
+                    const v = parseFloat(uniformModalAmount);
+                    if (!Number.isFinite(v) || v < 0) {
+                      setMessage({ type: 'error', text: '0以上の金額を入力してください' });
+                      return;
+                    }
+                    setDayAmounts({ 1: v, 2: v, 3: v, 4: v, 5: v, 6: v, 7: v });
+                    setMessage({ type: 'success', text: '1～7日に同額を反映しました（保存は「保存」ボタンで確定）' });
+                  }}
+                >
+                  1～7日に反映
+                </Button>
+              </div>
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 sm:gap-4">
                 {[1, 2, 3, 4, 5, 6, 7].map((day) => (
                   <div key={day} className="space-y-2">

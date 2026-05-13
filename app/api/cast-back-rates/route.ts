@@ -92,3 +92,79 @@ export async function PUT(request: NextRequest) {
 		client.release();
 	}
 }
+
+/** 全キャストへ指名バック率（および任意で時給）を一括設定 */
+export async function PATCH(request: NextRequest) {
+	const client = await pool.connect();
+	try {
+		await ensureBackRateColumns(client);
+		const body = await request.json();
+		const { mainNomination, insideNomination, togetherNomination, hourlyPrice, applyToAllCasts } = body;
+
+		if (!applyToAllCasts) {
+			return NextResponse.json({ success: false, error: 'applyToAllCasts が必要です' }, { status: 400 });
+		}
+
+		const assertPct = (label: string, v: unknown): number => {
+			const n = Number(v);
+			if (!Number.isFinite(n) || n < 0 || n > 100) {
+				throw new Error(`${label}は0〜100の範囲で指定してください`);
+			}
+			return n;
+		};
+
+		const updates: string[] = [];
+		const params: any[] = [];
+		let p = 1;
+
+		try {
+			if (mainNomination !== undefined && mainNomination !== null) {
+				updates.push(`main_nomination = $${p++}`);
+				params.push(assertPct('本指名料率', mainNomination));
+			}
+			if (insideNomination !== undefined && insideNomination !== null) {
+				updates.push(`inside_nomination = $${p++}`);
+				params.push(assertPct('場内指名料率', insideNomination));
+			}
+			if (togetherNomination !== undefined && togetherNomination !== null) {
+				updates.push(`together_nomination = $${p++}`);
+				params.push(assertPct('同伴料率', togetherNomination));
+			}
+			if (hourlyPrice !== undefined && hourlyPrice !== null) {
+				const hp = Number(hourlyPrice);
+				if (!Number.isFinite(hp) || hp < 0) {
+					return NextResponse.json({ success: false, error: '時給は0以上の数値を指定してください' }, { status: 400 });
+				}
+				updates.push(`hourly_price = $${p++}`);
+				params.push(hp);
+			}
+		} catch (e) {
+			return NextResponse.json(
+				{ success: false, error: e instanceof Error ? e.message : '入力が無効です' },
+				{ status: 400 }
+			);
+		}
+
+		if (updates.length === 0) {
+			return NextResponse.json(
+				{ success: false, error: '本指名・場内・同伴のいずれか、または時給を指定してください' },
+				{ status: 400 }
+			);
+		}
+
+		updates.push('updated_at = CURRENT_TIMESTAMP');
+		const query = `UPDATE "user" SET ${updates.join(', ')} WHERE role = 'cast'`;
+		const result = await client.query(query, params);
+
+		return NextResponse.json({
+			success: true,
+			message: `全キャスト（${result.rowCount ?? 0}件）の設定を更新しました`,
+			updated: result.rowCount ?? 0,
+		});
+	} catch (error) {
+		console.error('バック率一括更新エラー:', error);
+		return NextResponse.json({ success: false, error: 'バック率の一括更新に失敗しました' }, { status: 500 });
+	} finally {
+		client.release();
+	}
+}

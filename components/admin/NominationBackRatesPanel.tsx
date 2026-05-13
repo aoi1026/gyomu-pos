@@ -44,6 +44,10 @@ export default function NominationBackRatesPanel() {
     hourly_price: 0,
   });
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
+  const [bulkMain, setBulkMain] = useState('');
+  const [bulkInside, setBulkInside] = useState('');
+  const [bulkTogether, setBulkTogether] = useState('');
+  const [isBulkSaving, setIsBulkSaving] = useState(false);
 
   const { success, error } = useNotificationContext();
 
@@ -143,6 +147,60 @@ export default function NominationBackRatesPanel() {
     }
   };
 
+  const handleBulkApply = async () => {
+    const payload: Record<string, unknown> = { applyToAllCasts: true };
+    const errs: string[] = [];
+    const mainTrim = bulkMain.trim();
+    const insideTrim = bulkInside.trim();
+    const togetherTrim = bulkTogether.trim();
+    if (!mainTrim && !insideTrim && !togetherTrim) {
+      error('エラー', '本指名・場内指名・同伴のいずれかを入力してください');
+      return;
+    }
+    if (mainTrim) {
+      const n = parseFloat(mainTrim);
+      if (!Number.isFinite(n) || n < 0 || n > 100) errs.push('本指名料率は0〜100です');
+      else payload.mainNomination = n;
+    }
+    if (insideTrim) {
+      const n = parseFloat(insideTrim);
+      if (!Number.isFinite(n) || n < 0 || n > 100) errs.push('場内指名料率は0〜100です');
+      else payload.insideNomination = n;
+    }
+    if (togetherTrim) {
+      const n = parseFloat(togetherTrim);
+      if (!Number.isFinite(n) || n < 0 || n > 100) errs.push('同伴料率は0〜100です');
+      else payload.togetherNomination = n;
+    }
+    if (errs.length) {
+      error('エラー', errs[0]);
+      return;
+    }
+
+    setIsBulkSaving(true);
+    try {
+      const response = await fetch('/api/cast-back-rates', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const result = await response.json();
+      if (result.success) {
+        success('一括反映完了', result.message || '全キャストの指名バック率を更新しました');
+        setBulkMain('');
+        setBulkInside('');
+        setBulkTogether('');
+        await loadCasts();
+      } else {
+        error('エラー', result.error || '一括反映に失敗しました');
+      }
+    } catch {
+      error('エラー', '一括反映に失敗しました');
+    } finally {
+      setIsBulkSaving(false);
+    }
+  };
+
   return (
     <>
       <Card>
@@ -153,7 +211,32 @@ export default function NominationBackRatesPanel() {
           </CardTitle>
           <CardDescription>各キャストの現在有効な「指名バック率」を表示しています</CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-6">
+          <div className="rounded-lg border border-dashed border-purple-200 bg-purple-50/50 p-4 space-y-3">
+            <h3 className="text-sm font-semibold text-purple-900">全キャストに一括反映</h3>
+            <p className="text-xs text-gray-600">
+              入力した項目だけが上書きされます（空欄の項目は変更しません）
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="space-y-1">
+                <Label htmlFor="bulk-main">本指名料 (%)</Label>
+                <Input id="bulk-main" type="number" min={0} max={100} step={0.01} placeholder="未変更" value={bulkMain} onChange={(e) => setBulkMain(e.target.value)} />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="bulk-inside">場内指名料 (%)</Label>
+                <Input id="bulk-inside" type="number" min={0} max={100} step={0.01} placeholder="未変更" value={bulkInside} onChange={(e) => setBulkInside(e.target.value)} />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="bulk-together">同伴料 (%)</Label>
+                <Input id="bulk-together" type="number" min={0} max={100} step={0.01} placeholder="未変更" value={bulkTogether} onChange={(e) => setBulkTogether(e.target.value)} />
+              </div>
+            </div>
+            <Button type="button" onClick={() => void handleBulkApply()} disabled={isBulkSaving} className="bg-purple-700 hover:bg-purple-800">
+              <Save className="w-4 h-4 mr-2" />
+              {isBulkSaving ? '保存中...' : '全キャストへ適用'}
+            </Button>
+          </div>
+
           {isLoading ? (
             <div className="py-8 flex items-center justify-center">
               <div className="w-8 h-8 border-2 border-purple-600 border-t-transparent rounded-full animate-spin" />
