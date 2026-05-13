@@ -527,7 +527,11 @@ export default function RealTimeTableStatus({ open, onClose }: RealTimeTableStat
       </Dialog>
 
       {/* Embedded Table Viewer */}
-      <TableViewer tableId={viewingTableId} onClose={handleCloseViewer} />
+      <TableViewer
+        tableId={viewingTableId}
+        onClose={handleCloseViewer}
+        onSessionMovedToTable={(newId) => setViewingTableId(newId)}
+      />
 
       {/* セッション開始モーダル */}
       <Dialog open={showStartSessionDialog} onOpenChange={setShowStartSessionDialog}>

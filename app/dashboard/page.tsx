@@ -25,6 +25,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
   Wine, Users, BarChart3, Clock, CreditCard, Settings,
   Shield, TrendingUp, Calendar, DollarSign,
   FileText, AlertCircle, Star, Bell, Crown, Table, Database, Download, Upload, CheckCircle, DoorOpen
@@ -57,6 +64,8 @@ export default function Dashboard() {
   const [storePhoneInput, setStorePhoneInput] = useState<string>('');
   const [receiptGreetingInput, setReceiptGreetingInput] = useState<string>('');
   const [storeIdInput, setStoreIdInput] = useState<string>('');
+  /** お客様請求の切り上げ単位（円）。0=なし */
+  const [customerBillRoundUpInput, setCustomerBillRoundUpInput] = useState<string>('0');
   const [showBackupDialog, setShowBackupDialog] = useState(false);
   const [showRestoreDialog, setShowRestoreDialog] = useState(false);
   const [showLogoutDialog, setShowLogoutDialog] = useState(false);
@@ -243,23 +252,32 @@ export default function Dashboard() {
 
   const loadStoreInfoForDialog = async () => {
     try {
-      const [nameRes, addrRes, telRes, greetingRes, storeIdRes] = await Promise.all([
+      const [nameRes, addrRes, telRes, greetingRes, storeIdRes, billRoundRes] = await Promise.all([
         fetch('/api/project-variables?name=store_name'),
         fetch('/api/project-variables?name=store_address'),
         fetch('/api/project-variables?name=store_tel'),
         fetch('/api/project-variables?name=receipt_greeting'),
         fetch('/api/project-variables?name=store_id'),
+        fetch('/api/project-variables?name=customer_bill_round_up_to_yen'),
       ]);
       const nameJson = await nameRes.json();
       const addrJson = await addrRes.json();
       const telJson = await telRes.json();
       const greetingJson = await greetingRes.json();
       const storeIdJson = await storeIdRes.json();
+      const billRoundJson = await billRoundRes.json();
       if (nameJson?.success && nameJson?.data?.value) setStoreNameInput(String(nameJson.data.value));
       if (addrJson?.success && addrJson?.data?.value) setStoreAddressInput(String(addrJson.data.value));
       if (telJson?.success && telJson?.data?.value) setStorePhoneInput(String(telJson.data.value));
       if (greetingJson?.success && greetingJson?.data?.value != null) setReceiptGreetingInput(String(greetingJson.data.value));
       if (storeIdJson?.success && storeIdJson?.data?.value != null) setStoreIdInput(String(storeIdJson.data.value));
+      if (billRoundJson?.success && billRoundJson?.data?.value != null && billRoundJson?.data?.value !== '') {
+        const v = Math.max(0, parseInt(String(billRoundJson.data.value), 10) || 0);
+        const allowed = new Set([0, 10, 50, 100]);
+        setCustomerBillRoundUpInput(String(allowed.has(v) ? v : 0));
+      } else {
+        setCustomerBillRoundUpInput('0');
+      }
     } catch (err) {
       console.error('店舗情報取得エラー:', err);
     }
@@ -298,6 +316,14 @@ export default function Dashboard() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ name: 'store_id', value: storeIdInput.trim() }),
         }),
+        fetch('/api/project-variables', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: 'customer_bill_round_up_to_yen',
+            value: String(Math.max(0, parseInt(customerBillRoundUpInput, 10) || 0)),
+          }),
+        }),
       ];
       const results = await Promise.all(updates.map((r) => r.then((res) => res.json())));
       if (results.every((r) => r.success)) {
@@ -308,6 +334,7 @@ export default function Dashboard() {
         setStorePhoneInput('');
         setReceiptGreetingInput('');
         setStoreIdInput('');
+        setCustomerBillRoundUpInput('0');
         success('店舗情報を更新しました', '店舗情報が正常に更新されました');
       } else {
         error('エラー', results.find((r) => !r.success)?.error || '店舗情報の更新に失敗しました');
@@ -1119,7 +1146,7 @@ export default function Dashboard() {
               店舗情報追加
             </DialogTitle>
             <DialogDescription>
-              店舗名・住所・電話番号を設定します（印刷時のレシートにも反映されます）
+              店舗名・住所・電話番号・請求端数を設定します（印刷時のレシートにも反映されます）
             </DialogDescription>
           </DialogHeader>
 
@@ -1169,6 +1196,23 @@ export default function Dashboard() {
               />
             </div>
             <div className="space-y-2">
+              <Label htmlFor="customer-bill-round">お客様請求の端数（テーブル・管理画面の注文合計）</Label>
+              <Select value={customerBillRoundUpInput} onValueChange={setCustomerBillRoundUpInput}>
+                <SelectTrigger id="customer-bill-round" className="w-full">
+                  <SelectValue placeholder="単位を選択" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="0">切り上げなし（従来どおり）</SelectItem>
+                  <SelectItem value="10">10円単位で切り上げ</SelectItem>
+                  <SelectItem value="50">50円単位で切り上げ</SelectItem>
+                  <SelectItem value="100">100円単位で切り上げ</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                各行の金額・小計・サービス手数料(10%)・合計に適用されます（明細1行ごとに切り上げた後に小計を求めます）。
+              </p>
+            </div>
+            <div className="space-y-2">
               <Label htmlFor="store-id">店舗ID（領収書最下部）</Label>
               <Input
                 id="store-id"
@@ -1190,6 +1234,7 @@ export default function Dashboard() {
                   setStorePhoneInput('');
                   setReceiptGreetingInput('');
                   setStoreIdInput('');
+                  setCustomerBillRoundUpInput('0');
                 }}
               >
                 キャンセル

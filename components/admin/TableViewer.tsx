@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useRef } from 'react';
-import { X, Clock, ShoppingCart, Utensils, Users, DollarSign, CheckCircle, Bell, Trash2, CreditCard, Wine, Plus, Minus, Edit2, Save, XCircle, LogOut, Pause, Play, Package, Coffee, Printer, FileText, Timer } from 'lucide-react';
+import { X, Clock, ShoppingCart, Utensils, Users, DollarSign, CheckCircle, Bell, Trash2, CreditCard, Wine, Plus, Minus, Edit2, Save, XCircle, LogOut, Pause, Play, Package, Coffee, Printer, FileText, Timer, ArrowRightLeft } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -32,6 +32,13 @@ import { buildFullReceiptTextEscPos, buildExtensionInfoReceiptTextEscPos } from 
 import { removeLatestExtensionRoomSurcharges } from '@/lib/remove-latest-extension-room-surcharges';
 import { perNominationExtensionCharge, extensionUnitPrice as nominationExtensionUnitFromEntry } from '@/lib/nomination-extension-fee';
 import { nominationOrderLineTotal } from '@/lib/nomination-order-line-total';
+import {
+  collectOrderBillRawLines,
+  computeCustomerBillTotals,
+  customerBillLineDisplayAmount,
+  customerBillPaymentAmount,
+  parseCustomerBillRoundUpUnit,
+} from '@/lib/customer-bill-rounding';
 import { getCastRealtimeSubtitle } from '@/lib/cast-realtime-subtitle';
 import type { FullReceiptPayload, ExtensionInfoReceiptPayload } from '@/lib/printing/escpos-raster';
 import {
@@ -49,6 +56,8 @@ import {
 interface TableViewerProps {
   tableId: number | null;
   onClose: () => void;
+  /** セッションのテーブル移動が完了したとき（親の表示中テーブルIDを更新する） */
+  onSessionMovedToTable?: (newTableId: number) => void;
 }
 
 interface SessionData {
@@ -94,11 +103,14 @@ interface Nomination {
   created_at: string;
 }
 
-export default function TableViewer({ tableId, onClose }: TableViewerProps) {
+export default function TableViewer({ tableId, onClose, onSessionMovedToTable }: TableViewerProps) {
   const { success, error, confirm } = useNotificationContext();
   const printer = usePrinter();
   const [session, setSession] = useState<SessionData | null>(null);
   const [tableData, setTableData] = useState<any>(null);
+  const [allTablesForMove, setAllTablesForMove] = useState<Array<{ id: number; name: string; capacity: number | null }>>([]);
+  const [tableIdsBlockedForMove, setTableIdsBlockedForMove] = useState<Set<number>>(new Set());
+  const [isMovingTable, setIsMovingTable] = useState(false);
   const [cartOrders, setCartOrders] = useState<CartOrder[]>([]);
   const [serviceOrders, setServiceOrders] = useState<ServiceOrder[]>([]);
   const [nominations, setNominations] = useState<Nomination[]>([]);
@@ -355,6 +367,7 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
   const [songRooms, setSongRooms] = useState<Array<{ id: number; name: string; status: number; other: string | null }>>([]);
   const [selectedSongRoomId, setSelectedSongRoomId] = useState<string>('');
   const [timeAdjustStepMin, setTimeAdjustStepMin] = useState<5 | 10 | 15>(5);
+  const [customerBillRoundUpYen, setCustomerBillRoundUpYen] = useState(0);
   const [startTimeDraft, setStartTimeDraft] = useState<string | null>(null);
   const [endTimeDraft, setEndTimeDraft] = useState<string | null>(null);
 
@@ -397,6 +410,22 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
         if (!cancelled && Number.isFinite(n)) setTimeAdjustStepMin(normalizeSessionTimeStep(n));
       } catch {
         // ignore (default 5)
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/project-variables?name=customer_bill_round_up_to_yen', { cache: 'no-store' });
+        const j = await res.json();
+        if (!cancelled) setCustomerBillRoundUpYen(parseCustomerBillRoundUpUnit(j?.data?.value));
+      } catch {
+        if (!cancelled) setCustomerBillRoundUpYen(0);
       }
     })();
     return () => {
@@ -449,6 +478,13 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
       const result = await response.json();
       
       if (result.success && result.tables) {
+        setAllTablesForMove(
+          (result.tables as Array<{ id: number; name: string; capacity: number | null }>).map((t) => ({
+            id: t.id,
+            name: t.name,
+            capacity: t.capacity ?? null,
+          }))
+        );
         const table = result.tables.find((t: any) => t.id === tableId);
         if (table) {
           setTableData(table);
@@ -1087,13 +1123,33 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
     return () => clearInterval(checkSessionInterval);
   }, [session?.id, tableId]);
 
-  // 指名料金の合計を計算（注文合計・明細右列と同じ式）
-  const calculateNominationCharges = (): number => {
-    return nominations.reduce(
-      (sum, n) => sum + nominationOrderLineTotal(n, setExtensions, addCharges),
-      0
-    );
-  };
+  // テーブル移動: 他席占用（同一セッション以外のアクティブセッション）
+  useEffect(() => {
+    if (!session?.id) {
+      setTableIdsBlockedForMove(new Set());
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/sessions');
+        const j = await res.json();
+        if (cancelled || !j.success || !j.data) return;
+        const blocked = new Set<number>();
+        for (const s of j.data as Array<{ status: number; id: number; table_id: number }>) {
+          if (s.status === 1 && s.id !== session.id) {
+            blocked.add(s.table_id);
+          }
+        }
+        setTableIdsBlockedForMove(blocked);
+      } catch {
+        if (!cancelled) setTableIdsBlockedForMove(new Set());
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [session?.id]);
 
   // キャストリストを取得
   const loadCasts = async (opts?: { silent?: boolean }) => {
@@ -2251,7 +2307,8 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
 
   const calculatePaymentAmount = () => {
     const total = calculateTotal();
-    return Math.round(total * 1.1);
+    const ru = getManualTotal() !== null ? 0 : customerBillRoundUpYen;
+    return customerBillPaymentAmount(total, ru);
   };
 
   // 注文合計を計算（テーブルページと同じロジック）
@@ -2261,54 +2318,20 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
     if (currentManualTotal !== null) {
       return currentManualTotal;
     }
-    
-    let subtotal = 0;
-    const setPrice = addCharges['set_price'] || 0;
-    const extensionUnit = addCharges['extension_price'] || 0;
-    
-    // 商品の合計（承認済みのみ）
-    if (cartOrders && cartOrders.length > 0) {
-      const productTotal = cartOrders.reduce((sum, order) => {
-        const status = orderRequestStatus[order.id] || order.status;
-        if (status === 'accepted') {
-          const price = Number(order.total_price);
-          const validPrice = isNaN(price) ? 0 : price;
-          return sum + validPrice;
-        }
-        return sum;
-      }, 0);
-      subtotal += productTotal;
-    }
-    
-    // セッション開始時の料金
-    if (guestCount && guestCount.trim() !== '') {
-      const initialGuestCount = parseInt(guestCount);
-      if (!isNaN(initialGuestCount) && initialGuestCount > 0) {
-        subtotal += setPrice * initialGuestCount;
-      }
-    }
-    
-    // セット延長料金
-    setExtensions.forEach(extension => {
-      if (extension.count > 0) {
-        const ext = Number(extension.price ?? (extensionUnit * extension.count));
-        subtotal += Number.isFinite(ext) ? ext : 0;
-      }
+
+    const rawLines = collectOrderBillRawLines({
+      cartOrders,
+      orderRequestStatus,
+      guestCount,
+      setPrice: addCharges['set_price'] || 0,
+      setExtensions,
+      extensionUnit: addCharges['extension_price'] || 0,
+      nominations,
+      nominationLineTotal: (n) => nominationOrderLineTotal(n, setExtensions, addCharges),
+      additionalServices,
     });
-    
-    // 指名料金の合計
-    subtotal += calculateNominationCharges();
-    
-    // 追加サービス料金の合計
-    additionalServices.forEach(service => {
-      subtotal += service.charge;
-    });
-    
-    // サービス手数料（10%）
-    const serviceFee = Math.round(subtotal * 0.1);
-    
-    // 合計 = 小計 + サービス手数料
-    return subtotal + serviceFee;
+    const { total } = computeCustomerBillTotals(rawLines, customerBillRoundUpYen);
+    return total;
   };
 
   // 合計値の編集を開始
@@ -2348,53 +2371,59 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
 
   // 自動計算された合計値を取得（手動設定値の表示用）
   const getAutoCalculatedTotal = () => {
-    let subtotal = 0;
-    const setPrice = addCharges['set_price'] || 0;
-    const extensionUnit = addCharges['extension_price'] || 0;
-    
-    // 商品の合計（承認済みのみ）
-    if (cartOrders && cartOrders.length > 0) {
-      const productTotal = cartOrders.reduce((sum, order) => {
-        const status = orderRequestStatus[order.id] || order.status;
-        if (status === 'accepted') {
-          const price = Number(order.total_price);
-          const validPrice = isNaN(price) ? 0 : price;
-          return sum + validPrice;
+    const rawLines = collectOrderBillRawLines({
+      cartOrders,
+      orderRequestStatus,
+      guestCount,
+      setPrice: addCharges['set_price'] || 0,
+      setExtensions,
+      extensionUnit: addCharges['extension_price'] || 0,
+      nominations,
+      nominationLineTotal: (n) => nominationOrderLineTotal(n, setExtensions, addCharges),
+      additionalServices,
+    });
+    const { total } = computeCustomerBillTotals(rawLines, customerBillRoundUpYen);
+    return total;
+  };
+
+  const handleAdminMoveTable = (value: string) => {
+    if (!session?.id || !tableId) return;
+    const newId = parseInt(value, 10);
+    if (!Number.isFinite(newId) || newId === tableId) return;
+    const destName = allTablesForMove.find((t) => t.id === newId)?.name || `テーブル${newId}`;
+    confirm(
+      'テーブル移動',
+      `このセッションを「${destName}」へ移動します。注文・指名・呼び出しなどの紐づくデータもすべて移動先テーブル ID に更新されます。よろしいですか？`,
+      async () => {
+        setIsMovingTable(true);
+        try {
+          const res = await fetch(`/api/sessions/${session.id}/move-table`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ table_id: newId }),
+          });
+          const j = await res.json();
+          if (!j.success) {
+            error('エラー', j.error || 'テーブル移動に失敗しました');
+            return;
+          }
+          success('テーブル移動', `「${destName}」へ移動しました`);
+          setManualTotals((prev) => {
+            const v = prev[tableId];
+            if (v == null) return prev;
+            const next = { ...prev };
+            delete next[tableId];
+            next[newId] = v;
+            return next;
+          });
+          onSessionMovedToTable?.(newId);
+        } catch {
+          error('エラー', 'テーブル移動に失敗しました');
+        } finally {
+          setIsMovingTable(false);
         }
-        return sum;
-      }, 0);
-      subtotal += productTotal;
-    }
-    
-    // セッション開始時の料金
-    if (guestCount && guestCount.trim() !== '') {
-      const initialGuestCount = parseInt(guestCount);
-      if (!isNaN(initialGuestCount) && initialGuestCount > 0) {
-        subtotal += setPrice * initialGuestCount;
       }
-    }
-    
-    // セット延長料金
-    setExtensions.forEach(extension => {
-      if (extension.count > 0) {
-        const ext = Number(extension.price ?? (extensionUnit * extension.count));
-        subtotal += Number.isFinite(ext) ? ext : 0;
-      }
-    });
-    
-    // 指名料金の合計
-    subtotal += calculateNominationCharges();
-    
-    // 追加サービス料金の合計
-    additionalServices.forEach(service => {
-      subtotal += service.charge;
-    });
-    
-    // サービス手数料（10%）
-    const serviceFee = Math.round(subtotal * 0.1);
-    
-    // 合計 = 小計 + サービス手数料
-    return subtotal + serviceFee;
+    );
   };
 
   const nominationBadgeStyle: Record<'main' | 'inside' | 'together', string> = {
@@ -2403,6 +2432,9 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
     together: 'bg-rose-50 text-rose-700 border-rose-200'
   };
 
+  /** 手動合計時は明細・小計を素の金額表示（合計は手動値） */
+  const orderBillRoundUnitForDisplay = getManualTotal() !== null ? 0 : customerBillRoundUpYen;
+
   if (!tableId) return null;
 
   return (
@@ -2410,9 +2442,39 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
       <div className="relative flex h-full max-h-[98vh] min-h-0 w-full max-w-[98vw] flex-col overflow-hidden rounded-lg bg-white shadow-2xl sm:max-h-[95vh] sm:max-w-[95vw]">
         {/* Header */}
         <div className="flex items-center justify-between bg-gradient-to-r from-blue-600 to-purple-600 text-white px-3 sm:px-6 py-3 sm:py-4 gap-2">
-          <div className="min-w-0">
-            <h2 className="text-base sm:text-xl font-bold truncate">テーブル {tableId} - 管理者ビュー</h2>
-            <p className="text-xs sm:text-sm text-blue-100 truncate">セッション情報と注文状況を表示</p>
+          <div className="min-w-0 flex-1 flex flex-row flex-nowrap items-center gap-2 sm:gap-3 md:gap-4">
+            <div className="min-w-0 flex-1 overflow-hidden">
+              <h2 className="text-base sm:text-xl font-bold truncate">テーブル {tableData?.name ?? tableId} - 管理者ビュー</h2>
+              <p className="text-xs sm:text-sm text-blue-100 truncate">セッション情報と注文状況を表示</p>
+            </div>
+            {session && allTablesForMove.length > 0 && (
+              <div className="flex items-center gap-2 shrink-0 self-center">
+                <ArrowRightLeft className="w-4 h-4 shrink-0 text-blue-100 hidden sm:inline" aria-hidden />
+                <span className="text-xs text-blue-100 whitespace-nowrap hidden min-[400px]:inline">席移動</span>
+                <Select
+                  value={String(tableId)}
+                  onValueChange={handleAdminMoveTable}
+                  disabled={isMovingTable}
+                >
+                  <SelectTrigger className="h-8 w-[140px] sm:w-[200px] max-w-[38vw] bg-white/15 border-white/30 text-white text-xs [&_svg]:text-white">
+                    <SelectValue placeholder="テーブルを選択" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {allTablesForMove.map((t) => (
+                      <SelectItem
+                        key={t.id}
+                        value={String(t.id)}
+                        disabled={tableIdsBlockedForMove.has(t.id)}
+                      >
+                        {t.name}
+                        {t.capacity != null ? `（${t.capacity}名）` : ''}
+                        {tableIdsBlockedForMove.has(t.id) ? ' — 使用中' : ''}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
           </div>
           <div className="flex items-center space-x-1 sm:space-x-2 shrink-0">
             {session && (
@@ -3344,7 +3406,7 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
                                       <div className="text-gray-700 truncate">{order.product_name}</div>
                                       <div className="text-gray-400 text-xs mt-0.5">{breakdown}</div>
                                     </div>
-                                    <span className="flex-shrink-0">{formatCurrency(total)}</span>
+                                    <span className="flex-shrink-0">{formatCurrency(customerBillLineDisplayAmount(total, orderBillRoundUnitForDisplay))}</span>
                                   </div>
                                 );
                               })}
@@ -3366,7 +3428,7 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
                                   <div>セッション料金</div>
                                   <div className="text-gray-400 text-xs mt-0.5">¥{unitPrice.toLocaleString()} × {cnt}名</div>
                                 </div>
-                                <span className="flex-shrink-0">{formatCurrency(unitPrice * cnt)}</span>
+                                <span className="flex-shrink-0">{formatCurrency(customerBillLineDisplayAmount(unitPrice * cnt, orderBillRoundUnitForDisplay))}</span>
                               </div>
                             );
                           }
@@ -3384,7 +3446,7 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
                               <div>セット延長 ({index + 1}回目)</div>
                               <div className="text-gray-400 text-xs mt-0.5">¥{extensionUnit.toLocaleString()} × {extension.count}名</div>
                             </div>
-                            <span className="flex-shrink-0">{formatCurrency(total)}</span>
+                            <span className="flex-shrink-0">{formatCurrency(customerBillLineDisplayAmount(total, orderBillRoundUnitForDisplay))}</span>
                           </div>
                         );
                       })}
@@ -3474,14 +3536,13 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
                                     <div className="text-gray-400 text-xs mt-0.5">{breakdownText}</div>
                                   )}
                                 </div>
-                                <span className="flex-shrink-0">{formatCurrency(lineTotal)}</span>
+                                <span className="flex-shrink-0">{formatCurrency(customerBillLineDisplayAmount(lineTotal, orderBillRoundUnitForDisplay))}</span>
                               </div>
                             );
                           })}
                         </div>
                       )}
-                      
-                      {/* 追加サービス料金の明細 */}
+
                       {additionalServices.length > 0 && (
                         <div className="border-t pt-2 space-y-1">
                           <div className="text-xs font-semibold text-gray-600 mb-1">追加サービス</div>
@@ -3571,66 +3632,37 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
                                     <div className="text-gray-400 text-xs mt-0.5">{row.breakdown}</div>
                                   )}
                                 </div>
-                                <span className="flex-shrink-0">{formatCurrency(row.charge)}</span>
+                                <span className="flex-shrink-0">{formatCurrency(customerBillLineDisplayAmount(row.charge, orderBillRoundUnitForDisplay))}</span>
                               </div>
                             ));
                           })()}
                         </div>
                       )}
-                      
+
                       {/* 小計とサービス手数料 */}
                       {(() => {
-                        let subtotal = 0;
-                        
-                        // 商品の合計
-                        if (cartOrders && cartOrders.length > 0) {
-                          const productTotal = cartOrders.reduce((sum, order) => {
-                            const status = orderRequestStatus[order.id] || order.status;
-                            if (status === 'accepted') {
-                              const price = Number(order.total_price);
-                              const validPrice = isNaN(price) ? 0 : price;
-                              return sum + validPrice;
-                            }
-                            return sum;
-                          }, 0);
-                          subtotal += productTotal;
-                        }
-                        
-                        const setPrice = addCharges['set_price'] || 0;
-                        const extensionUnit = addCharges['extension_price'] || 0;
+                        const rawLines = collectOrderBillRawLines({
+                          cartOrders,
+                          orderRequestStatus,
+                          guestCount,
+                          setPrice: addCharges['set_price'] || 0,
+                          setExtensions,
+                          extensionUnit: addCharges['extension_price'] || 0,
+                          nominations,
+                          nominationLineTotal: (n) => nominationOrderLineTotal(n, setExtensions, addCharges),
+                          additionalServices,
+                        });
+                        const { subtotalRaw, subtotalBilled, serviceFee } = computeCustomerBillTotals(
+                          rawLines,
+                          orderBillRoundUnitForDisplay
+                        );
 
-                        // セッション開始時の料金
-                        if (guestCount && guestCount.trim() !== '') {
-                          const initialGuestCount = parseInt(guestCount);
-                          if (!isNaN(initialGuestCount) && initialGuestCount > 0) {
-                            subtotal += setPrice * initialGuestCount;
-                          }
-                        }
-                        
-                        // セット延長料金
-                        setExtensions.forEach(extension => {
-                          if (extension.count > 0) {
-                            const ext = Number(extension.price ?? (extensionUnit * extension.count));
-                            subtotal += Number.isFinite(ext) ? ext : 0;
-                          }
-                        });
-                        
-                        // 指名料金の合計
-                        subtotal += calculateNominationCharges();
-                        
-                        // 追加サービス料金の合計
-                        additionalServices.forEach(service => {
-                          subtotal += service.charge;
-                        });
-                        
-                        const serviceFee = Math.round(subtotal * 0.1);
-                        
-                        if (subtotal > 0) {
+                        if (subtotalRaw > 0) {
                           return (
                             <>
                               <div className="border-t pt-2 flex justify-between text-sm">
                                 <span>小計</span>
-                                <span>{formatCurrency(subtotal)}</span>
+                                <span>{formatCurrency(subtotalBilled)}</span>
                               </div>
                               <div className="flex justify-between text-sm">
                                 <span>サービス手数料 (10%)</span>

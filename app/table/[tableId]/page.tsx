@@ -19,7 +19,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import {
   Wine, Users, ShoppingCart, DollarSign, Clock, Package,
-  ArrowLeft, Plus, Minus, Trash2, CheckCircle,
+  ArrowLeft, ArrowRightLeft, Plus, Minus, Trash2, CheckCircle,
   AlertCircle, User, CreditCard, X, Bell, Utensils, Coffee, XCircle, AlertTriangle, Pause, Play, Edit2, Save
 } from 'lucide-react';
 import { getCurrentTable, TableAuth, startTableSession, endTableSession } from '@/lib/table-auth';
@@ -31,6 +31,13 @@ import { useNotificationContext } from '@/lib/notification-context';
 import { removeLatestExtensionRoomSurcharges } from '@/lib/remove-latest-extension-room-surcharges';
 import { perNominationExtensionCharge, extensionUnitPrice as nominationExtensionUnitFromEntry } from '@/lib/nomination-extension-fee';
 import { nominationOrderLineTotal } from '@/lib/nomination-order-line-total';
+import {
+  collectOrderBillRawLines,
+  computeCustomerBillTotals,
+  customerBillLineDisplayAmount,
+  customerBillPaymentAmount,
+  parseCustomerBillRoundUpUnit,
+} from '@/lib/customer-bill-rounding';
 import { getCastRealtimeSubtitle } from '@/lib/cast-realtime-subtitle';
 import StripeProvider from '@/components/providers/StripeProvider';
 import StripePaymentForm from '@/components/payment/StripePaymentForm';
@@ -137,6 +144,8 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
   const [songRooms, setSongRooms] = useState<Array<{ id: number; name: string; status: number; other: string | null }>>([]);
   const [selectedSongRoomId, setSelectedSongRoomId] = useState<string>('');
   const [timeAdjustStepMin, setTimeAdjustStepMin] = useState<5 | 10 | 15>(5);
+  /** 0 = 端数処理なし。10 など = 請求明細・小計・手数料・合計をその単位で切り上げ */
+  const [customerBillRoundUpYen, setCustomerBillRoundUpYen] = useState(0);
   const [startTimeDraft, setStartTimeDraft] = useState<string | null>(null);
   const [endTimeDraft, setEndTimeDraft] = useState<string | null>(null);
   const [additionalServices, setAdditionalServices] = useState<Array<{
@@ -147,6 +156,12 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
     timestamp: number;
     note?: string;
   }>>([]);
+
+  const [tablesListForMove, setTablesListForMove] = useState<
+    Array<{ id: number; name: string; capacity: number | null; other?: string | null }>
+  >([]);
+  const [tableIdsBlockedForMove, setTableIdsBlockedForMove] = useState<Set<number>>(new Set());
+  const [isMovingTable, setIsMovingTable] = useState(false);
 
   // 支払い完了後に商品の追加をロックするフラグ
   const hasAcceptedOrders = cartOrders.some(order => {
@@ -206,6 +221,22 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
         if (!cancelled && Number.isFinite(n)) setTimeAdjustStepMin(normalizeSessionTimeStep(n));
       } catch {
         // ignore (default 5)
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/project-variables?name=customer_bill_round_up_to_yen', { cache: 'no-store' });
+        const j = await res.json();
+        if (!cancelled) setCustomerBillRoundUpYen(parseCustomerBillRoundUpUnit(j?.data?.value));
+      } catch {
+        if (!cancelled) setCustomerBillRoundUpYen(0);
       }
     })();
     return () => {
@@ -705,7 +736,56 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
 
   // セッション情報を取得
   const [session, setSession] = useState<{ id: number; created_at: string; set_count: number; client?: number; set_extensions?: Array<{ count: number; timestamp: number }>; is_paused?: boolean; paused_at?: string; paused_elapsed?: number } | null>(null);
-  
+
+  // 席移動: テーブル一覧と他席の占有状況
+  useEffect(() => {
+    if (!isSessionActive || !session?.id || !tableId) {
+      setTablesListForMove([]);
+      setTableIdsBlockedForMove(new Set());
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const [tRes, sRes] = await Promise.all([fetch('/api/tables'), fetch('/api/sessions')]);
+        const tJson = await tRes.json();
+        const sJson = await sRes.json();
+        if (cancelled) return;
+        if (tJson.success && tJson.tables) {
+          setTablesListForMove(
+            tJson.tables.map(
+              (t: { id: number; name: string; capacity?: number | null; other?: string | null }) => ({
+                id: t.id,
+                name: t.name,
+                capacity: t.capacity ?? null,
+                other: t.other ?? null,
+              })
+            )
+          );
+        } else {
+          setTablesListForMove([]);
+        }
+        const blocked = new Set<number>();
+        if (sJson.success && sJson.data) {
+          for (const s of sJson.data as Array<{ status: number; id: number; table_id: number }>) {
+            if (s.status === 1 && s.id !== session.id) {
+              blocked.add(s.table_id);
+            }
+          }
+        }
+        setTableIdsBlockedForMove(blocked);
+      } catch {
+        if (!cancelled) {
+          setTablesListForMove([]);
+          setTableIdsBlockedForMove(new Set());
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isSessionActive, session?.id, tableId]);
+
   // セッション開始通知を一度だけ表示するためのフラグ（セッションIDごと）
   const sessionStartNotifiedRef = useRef<{ [sessionId: number]: boolean }>({});
   // セッション終了時のリダイレクトを制御するフラグ
@@ -1918,67 +1998,117 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
     );
   };
 
-  const calculateTotal = () => {
-    let subtotal = 0;
-    const setPrice = addCharges['set_price'] || 0;
-    const extensionPrice = addCharges['extension_price'] || 0;
-
-    // 商品の合計
-    if (cartOrders && cartOrders.length > 0) {
-      const productTotal = cartOrders.reduce((sum, order) => {
-        // 承認された商品のみを合計に含める
-        const status = orderRequestStatus[order.id] || order.status;
-        if (status === 'accepted') {
-          const price = Number(order.total_price);
-          const validPrice = isNaN(price) ? 0 : price;
-          return sum + validPrice;
+  const persistTableAuthForMove = (
+    newTableIdStr: string,
+    tableInfo: { name: string; capacity: number | null; other?: string | null }
+  ) => {
+    if (typeof window === 'undefined') return;
+    const area =
+      tableInfo.other && String(tableInfo.other).trim() !== ''
+        ? String(tableInfo.other)
+        : 'メインフロア';
+    const base: TableAuth = {
+      table_id: newTableIdStr,
+      table_label: tableInfo.name,
+      area,
+      capacity: tableInfo.capacity,
+      status: 'occupied',
+      login_time: new Date().toISOString(),
+    };
+    const existing = localStorage.getItem('table_auth');
+    if (existing) {
+      try {
+        const parsed = JSON.parse(existing) as Record<string, unknown>;
+        if (parsed.role === 'table') {
+          localStorage.setItem('table_auth', JSON.stringify({ ...parsed, ...base, role: 'table' }));
+          return;
         }
-        return sum;
-      }, 0);
-      subtotal += productTotal;
-    }
-
-    // セッション開始時の料金（add_charges の set_price.value × 人数）
-    if (guestCount && guestCount.trim() !== '') {
-      const initialGuestCount = parseInt(guestCount);
-      if (!isNaN(initialGuestCount) && initialGuestCount > 0) {
-        subtotal += setPrice * initialGuestCount;
+      } catch {
+        /* fallthrough */
       }
     }
+    const cur = getCurrentTable();
+    if (cur) {
+      localStorage.setItem('table_auth', JSON.stringify({ ...cur, ...base }));
+    } else {
+      localStorage.setItem('table_auth', JSON.stringify(base));
+    }
+  };
 
-    // セット延長料金（add_charges の extension_price.value × 延長時人数）
-    setExtensions.forEach(extension => {
-      if (extension.count > 0) {
-        // 既存データ互換: priceが入っていればそれを優先（合計）、無ければ単価×人数で計算
-        subtotal += (extension.price ?? (extensionPrice * extension.count));
+  const handleCustomerMoveTable = (value: string) => {
+    if (!session?.id || !tableId || !tableAuth) return;
+    const newId = parseInt(value, 10);
+    const curId = parseInt(String(tableId), 10);
+    if (!Number.isFinite(newId) || newId === curId) return;
+    const dest = tablesListForMove.find((t) => t.id === newId);
+    const destName = dest?.name || `テーブル${newId}`;
+    confirm(
+      'テーブル（席）の移動',
+      `「${destName}」へ席を移動します。注文や指名のデータはそのまま継続します。よろしいですか？`,
+      async () => {
+        setIsMovingTable(true);
+        try {
+          const res = await fetch(`/api/sessions/${session.id}/move-table`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ table_id: newId }),
+          });
+          const j = await res.json();
+          if (!j.success) {
+            error('エラー', j.error || '移動に失敗しました');
+            return;
+          }
+          if (dest) {
+            persistTableAuthForMove(String(newId), dest);
+          } else {
+            persistTableAuthForMove(String(newId), { name: destName, capacity: null });
+          }
+          setTableAuth((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  table_id: String(newId),
+                  table_label: destName,
+                  area:
+                    dest?.other && String(dest.other).trim() !== ''
+                      ? String(dest.other)
+                      : prev.area,
+                  capacity: dest?.capacity ?? prev.capacity,
+                }
+              : prev
+          );
+          success('移動完了', `「${destName}」へ切り替えます`);
+          router.replace(`/table/${newId}`);
+        } catch {
+          error('エラー', '移動に失敗しました');
+        } finally {
+          setIsMovingTable(false);
+        }
       }
+    );
+  };
+
+  const calculateTotal = () => {
+    const rawLines = collectOrderBillRawLines({
+      cartOrders,
+      orderRequestStatus,
+      guestCount,
+      setPrice: addCharges['set_price'] || 0,
+      setExtensions,
+      extensionUnit: addCharges['extension_price'] || 0,
+      nominations,
+      nominationLineTotal: (n) => nominationOrderLineTotal(n, setExtensions, addCharges),
+      additionalServices,
     });
-
-    // 指名料金（明細と同じ式：初期指名料 ＋ 固定延長単価×延長回数。旧データは cost からの逆算で整合）
-    nominations.forEach(nomination => {
-      subtotal += nominationOrderLineTotal(nomination, setExtensions, addCharges);
-    });
-
-    // 追加サービス料金の合計
-    additionalServices.forEach(service => {
-      subtotal += service.charge;
-    });
-
-    // サービス手数料（10%）を追加
-    const serviceFee = Math.round(subtotal * 0.1);
-    const total = subtotal + serviceFee;
-
-    // ローカルストレージに保存
+    const { total } = computeCustomerBillTotals(rawLines, customerBillRoundUpYen);
     localStorage.setItem('fullcost', total.toString());
-
     return total;
   };
 
   // 支払い金額を計算（合計の1.1倍 = 10%追加）
   const calculatePaymentAmount = () => {
     const total = calculateTotal();
-    const paymentAmount = Math.round(total * 1.1);
-    return paymentAmount;
+    return customerBillPaymentAmount(total, customerBillRoundUpYen);
   };
 
   const calculateCastBack = () => {
@@ -3623,11 +3753,41 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
                 <ArrowLeft className="w-4 h-4 mr-2" />
                 戻る
               </Button>
-              <div className="flex sm:flex-row sm:items-center gap-16  space-y-1 justify-between sm:space-y-0 sm:space-x-3">
-                <h1 className="text-lg sm:text-xl font-bold text-gray-900">{tableAuth.table_label}</h1>
-                <p className="text-xs sm:text-sm text-gray-500">
-                  {tableAuth.area} • {tableAuth.capacity}名
-                </p>
+              <div className="flex flex-row flex-nowrap items-center gap-3 sm:gap-4 md:gap-6 flex-1 min-w-0">
+                <div className="min-w-0 flex-1 overflow-hidden">
+                  <h1 className="text-lg sm:text-xl font-bold text-gray-900 truncate">{tableAuth.table_label}</h1>
+                  <p className="text-xs sm:text-sm text-gray-500 truncate">
+                    {tableAuth.area} • {tableAuth.capacity}名
+                  </p>
+                </div>
+                {isSessionActive && session && tablesListForMove.length > 0 && (
+                  <div className="flex items-center gap-2 shrink-0 self-center">
+                    <ArrowRightLeft className="w-4 h-4 text-gray-400 shrink-0 hidden sm:block" aria-hidden />
+                    <span className="text-xs text-gray-500 whitespace-nowrap hidden sm:inline">席移動</span>
+                    <Select
+                      value={tableId ? String(tableId) : undefined}
+                      onValueChange={handleCustomerMoveTable}
+                      disabled={isMovingTable || isPaymentCompleted}
+                    >
+                      <SelectTrigger className="h-9 w-[160px] sm:w-[190px] max-w-[42vw] text-xs">
+                        <SelectValue placeholder="テーブルを選択" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {tablesListForMove.map((t) => (
+                          <SelectItem
+                            key={t.id}
+                            value={String(t.id)}
+                            disabled={tableIdsBlockedForMove.has(t.id)}
+                          >
+                            {t.name}
+                            {t.capacity != null ? `（${t.capacity}名）` : ''}
+                            {tableIdsBlockedForMove.has(t.id) ? ' — 使用中' : ''}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
               </div>
 
             </div>
@@ -4609,7 +4769,7 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
                                       <div className="text-gray-700 truncate">{order.product_name}</div>
                                       <div className="text-gray-400 text-[10px] sm:text-xs mt-0.5">{breakdown}</div>
                                     </div>
-                                    <span className="flex-shrink-0">{formatCurrency(total)}</span>
+                                    <span className="flex-shrink-0">{formatCurrency(customerBillLineDisplayAmount(total, customerBillRoundUpYen))}</span>
                                   </div>
                                 );
                               })}
@@ -4631,7 +4791,7 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
                                   <div>セッション料金</div>
                                   <div className="text-gray-400 text-[10px] sm:text-xs mt-0.5">¥{unitPrice.toLocaleString()} × {cnt}名</div>
                                 </div>
-                                <span className="flex-shrink-0">{formatCurrency(unitPrice * cnt)}</span>
+                                <span className="flex-shrink-0">{formatCurrency(customerBillLineDisplayAmount(unitPrice * cnt, customerBillRoundUpYen))}</span>
                               </div>
                             );
                           }
@@ -4649,7 +4809,7 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
                               <div>セット延長 ({index + 1}回目)</div>
                               <div className="text-gray-400 text-[10px] sm:text-xs mt-0.5">¥{extensionUnit.toLocaleString()} × {extension.count}名</div>
                             </div>
-                            <span className="flex-shrink-0">{formatCurrency(total)}</span>
+                            <span className="flex-shrink-0">{formatCurrency(customerBillLineDisplayAmount(total, customerBillRoundUpYen))}</span>
                           </div>
                         );
                       })}
@@ -4739,7 +4899,7 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
                                     <div className="text-gray-400 text-[10px] sm:text-xs mt-0.5">{breakdownText}</div>
                                   )}
                                 </div>
-                                <span className="flex-shrink-0">{formatCurrency(lineTotal)}</span>
+                                <span className="flex-shrink-0">{formatCurrency(customerBillLineDisplayAmount(lineTotal, customerBillRoundUpYen))}</span>
                               </div>
                             );
                           })}
@@ -4843,7 +5003,7 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
                                     </div>
                                   )}
                                 </div>
-                                <span className="flex-shrink-0">{formatCurrency(row.charge)}</span>
+                                <span className="flex-shrink-0">{formatCurrency(customerBillLineDisplayAmount(row.charge, customerBillRoundUpYen))}</span>
                               </div>
                             ));
                           })()}
@@ -4852,59 +5012,28 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
 
                       {/* 小計とサービス手数料 */}
                       {(() => {
-                        let subtotal = 0;
-
-                        // 商品の合計
-                        if (cartOrders && cartOrders.length > 0) {
-                          const productTotal = cartOrders.reduce((sum, order) => {
-                            const status = orderRequestStatus[order.id] || order.status;
-                            if (status === 'accepted') {
-                              const price = Number(order.total_price);
-                              const validPrice = isNaN(price) ? 0 : price;
-                              return sum + validPrice;
-                            }
-                            return sum;
-                          }, 0);
-                          subtotal += productTotal;
-                        }
-
-                        // セッション開始時の料金
-                        if (guestCount && guestCount.trim() !== '') {
-                          const initialGuestCount = parseInt(guestCount);
-                          if (!isNaN(initialGuestCount) && initialGuestCount > 0) {
-                            subtotal += (addCharges['set_price'] || 0) * initialGuestCount;
-                          }
-                        }
-
-                        // セット延長料金
-                        setExtensions.forEach(extension => {
-                          if (extension.count > 0) {
-                            subtotal += (extension.price ?? ((addCharges['extension_price'] || 0) * extension.count));
-                          }
+                        const rawLines = collectOrderBillRawLines({
+                          cartOrders,
+                          orderRequestStatus,
+                          guestCount,
+                          setPrice: addCharges['set_price'] || 0,
+                          setExtensions,
+                          extensionUnit: addCharges['extension_price'] || 0,
+                          nominations,
+                          nominationLineTotal: (n) => nominationOrderLineTotal(n, setExtensions, addCharges),
+                          additionalServices,
                         });
+                        const { subtotalRaw, subtotalBilled, serviceFee } = computeCustomerBillTotals(
+                          rawLines,
+                          customerBillRoundUpYen
+                        );
 
-                        // 指名料金（明細と同じ計算式の合計）
-                        nominations.forEach(nomination => {
-                          subtotal += nominationOrderLineTotal(
-                            nomination,
-                            setExtensions,
-                            addCharges
-                          );
-                        });
-
-                        // 追加サービス料金の合計
-                        additionalServices.forEach(service => {
-                          subtotal += service.charge;
-                        });
-
-                        const serviceFee = Math.round(subtotal * 0.1);
-
-                        if (subtotal > 0) {
+                        if (subtotalRaw > 0) {
                           return (
                             <>
                               <div className="border-t pt-2 flex justify-between text-xs sm:text-sm">
                                 <span>小計</span>
-                                <span>{formatCurrency(subtotal)}</span>
+                                <span>{formatCurrency(subtotalBilled)}</span>
                               </div>
                               <div className="flex justify-between text-xs sm:text-sm">
                                 <span>サービス手数料 (10%)</span>
