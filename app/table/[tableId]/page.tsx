@@ -1402,9 +1402,15 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
         setIsForCast(false);
         loadCartOrders(); // カートを更新
 
-        // 即座に送信済みステータスに設定
+        // 即座に UI ステータス（承認不要なら受付済み）
         if (result.data && result.data.id) {
-          setOrderRequestStatus(prev => ({ ...prev, [result.data.id]: 'sent' }));
+          const st =
+            result.data.status === 'accepted'
+              ? 'accepted'
+              : result.data.status === 'rejected'
+                ? 'rejected'
+                : 'sent';
+          setOrderRequestStatus(prev => ({ ...prev, [result.data.id]: st }));
         }
 
         // 管理者に通知を送信
@@ -1568,9 +1574,10 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
 
           setServiceOrders(prev => [...prev, newServiceOrder]);
 
-          // ステータスをpendingに設定（管理者の承認待ち）
+          // 管理者承認待ち or 自動受付済み
           if (result.data.id) {
-            setServiceRequestStatus(prev => ({ ...prev, [result.data.id]: 'pending' }));
+            const st = result.data.status === 'accepted' ? 'accepted' : 'pending';
+            setServiceRequestStatus(prev => ({ ...prev, [result.data.id]: st }));
           }
         }
 

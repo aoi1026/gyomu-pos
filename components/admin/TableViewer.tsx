@@ -859,7 +859,13 @@ export default function TableViewer({ tableId, onClose }: TableViewerProps) {
         
         // 即座に送信済みステータスに設定
         if (result.data && result.data.id) {
-          setOrderRequestStatus(prev => ({ ...prev, [result.data.id]: 'sent' }));
+          const st =
+            result.data.status === 'accepted'
+              ? 'accepted'
+              : result.data.status === 'rejected'
+                ? 'rejected'
+                : 'sent';
+          setOrderRequestStatus(prev => ({ ...prev, [result.data.id]: st }));
         }
 
         // 管理者に通知を送信

@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
@@ -58,8 +60,60 @@ export default function OrderMonitoringPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [pendingCount, setPendingCount] = useState(0);
   const [servicePendingCount, setServicePendingCount] = useState(0);
+  const [orderApprovalRequired, setOrderApprovalRequired] = useState(true);
+  const [orderApprovalLoading, setOrderApprovalLoading] = useState(true);
+  const [orderApprovalSaving, setOrderApprovalSaving] = useState(false);
   const { success, error } = useNotificationContext();
   const router = useRouter();
+
+  const parseProjectBoolApproval = (raw: string | null | undefined): boolean => {
+    if (raw == null || raw === '') return true;
+    const s = String(raw).trim().toLowerCase();
+    if (s === 'false' || s === '0' || s === 'off' || s === 'no') return false;
+    return true;
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/project-variables?name=order_approval_required', { cache: 'no-store' });
+        const j = await res.json();
+        const v = j?.success ? j?.data?.value : null;
+        if (!cancelled) setOrderApprovalRequired(parseProjectBoolApproval(v));
+      } catch {
+        if (!cancelled) setOrderApprovalRequired(true);
+      } finally {
+        if (!cancelled) setOrderApprovalLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const persistOrderApproval = async (required: boolean) => {
+    setOrderApprovalSaving(true);
+    try {
+      const res = await fetch('/api/project-variables', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: 'order_approval_required',
+          value: required ? 'true' : 'false',
+          other: 'テーブル注文を管理者が手動承認するか（false=自動承認）',
+        }),
+      });
+      const j = await res.json();
+      if (!j.success) throw new Error(j.error || '設定の保存に失敗しました');
+      setOrderApprovalRequired(required);
+      success('設定を保存しました', required ? '注文は管理者の承認が必要です' : '注文は自動的に受付済みになります');
+    } catch (e) {
+      error('エラー', e instanceof Error ? e.message : '設定の保存に失敗しました');
+    } finally {
+      setOrderApprovalSaving(false);
+    }
+  };
 
   useEffect(() => {
     loadSalesOrders();
@@ -333,7 +387,23 @@ export default function OrderMonitoringPage() {
             <p className="text-gray-600">テーブルからの注文リクエストを管理します</p>
           </div>
         </div>
-        <div className="flex items-center space-x-4">
+        <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:space-x-4">
+          <div className="flex items-center gap-3 rounded-lg border border-gray-200 bg-white px-3 py-2 shadow-sm">
+            <div className="text-left min-w-0">
+              <Label htmlFor="order-approval-toggle" className="text-sm font-medium cursor-pointer">
+                注文承認（手動）
+              </Label>
+              <p className="text-[11px] text-gray-500 max-w-[220px] leading-snug">
+                オフにすると商品・サービス注文が自動的に受付済みになります（ガールズバー向け）
+              </p>
+            </div>
+            <Switch
+              id="order-approval-toggle"
+              checked={orderApprovalRequired}
+              disabled={orderApprovalLoading || orderApprovalSaving}
+              onCheckedChange={(v) => void persistOrderApproval(v)}
+            />
+          </div>
           {(pendingCount > 0 || servicePendingCount > 0) && (
             <div className="relative">
               <Bell className="w-6 h-6 text-red-500 animate-pulse" />
@@ -342,10 +412,10 @@ export default function OrderMonitoringPage() {
               </div>
             </div>
           )}
-           <Button onClick={() => { loadSalesOrders(); loadServiceOrders(); }} variant="outline">
-             <Clock className="w-4 h-4 mr-2" />
-             更新
-           </Button>
+          <Button onClick={() => { loadSalesOrders(); loadServiceOrders(); }} variant="outline">
+            <Clock className="w-4 h-4 mr-2" />
+            更新
+          </Button>
         </div>
       </div>
 

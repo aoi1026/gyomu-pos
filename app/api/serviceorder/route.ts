@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/database';
+import { getOrderApprovalRequired } from '@/lib/order-approval-required';
 
 export async function GET(request: NextRequest) {
   const client = await pool.connect();
@@ -115,6 +116,31 @@ export async function POST(request: NextRequest) {
         { success: false, error: 'サービスが見つかりません' },
         { status: 404 }
       );
+    }
+
+    const approvalRequired = await getOrderApprovalRequired(client);
+
+    if (!approvalRequired) {
+      try {
+        const columnCheck = await client.query(`
+          SELECT column_name FROM information_schema.columns
+          WHERE table_name = 'serviceorder' AND column_name = 'accepted_at'
+        `);
+        if (columnCheck.rows.length === 0) {
+          await client.query(`ALTER TABLE serviceorder ADD COLUMN accepted_at TIMESTAMP WITH TIME ZONE`);
+        }
+      } catch {
+        // ignore
+      }
+      const serviceOrderResult = await client.query(
+        `INSERT INTO serviceorder (cast_id, service_id, amount, table_id, session_id, status, accepted_at)
+         VALUES ($1, $2, $3, $4, $5, 'accepted', CURRENT_TIMESTAMP) RETURNING *`,
+        [cast_id || null, service_id, amount, table_id, session_id]
+      );
+      return NextResponse.json({
+        success: true,
+        data: serviceOrderResult.rows[0],
+      });
     }
 
     // サービス注文を作成（statusはpendingで開始）

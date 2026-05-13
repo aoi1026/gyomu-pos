@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/database';
+import { getOrderApprovalRequired } from '@/lib/order-approval-required';
+import { applySalesOrderAcceptedBizLogic } from '@/lib/salesorder-accepted-effects';
 
 export async function GET(request: NextRequest) {
   const client = await pool.connect();
@@ -83,6 +85,8 @@ export async function POST(request: NextRequest) {
     await client.query('BEGIN');
 
     try {
+      const approvalRequired = await getOrderApprovalRequired(client);
+
       // 商品情報を取得
       const productResult = await client.query(
         'SELECT id, name, sale_price, amount FROM product WHERE id = $1',
@@ -111,10 +115,21 @@ export async function POST(request: NextRequest) {
       const totalPrice = unitPrice * amount;
       const forCastValue = for_cast ? 1 : 0;
 
-      const salesOrderResult = await client.query(
-        'INSERT INTO salesorder (cast_id, product_id, amount, table_id, session_id, unit_price, total_price, for_cast) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *',
-        [cast_id || null, product_id, amount, table_id, session_id, unitPrice, totalPrice, forCastValue]
-      );
+      const salesOrderResult = approvalRequired
+        ? await client.query(
+            'INSERT INTO salesorder (cast_id, product_id, amount, table_id, session_id, unit_price, total_price, for_cast) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *',
+            [cast_id || null, product_id, amount, table_id, session_id, unitPrice, totalPrice, forCastValue]
+          )
+        : await client.query(
+            `INSERT INTO salesorder (cast_id, product_id, amount, table_id, session_id, unit_price, total_price, for_cast, status, accepted_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'accepted', CURRENT_TIMESTAMP) RETURNING *`,
+            [cast_id || null, product_id, amount, table_id, session_id, unitPrice, totalPrice, forCastValue]
+          );
+
+      const inserted = salesOrderResult.rows[0];
+      if (!approvalRequired && inserted) {
+        await applySalesOrderAcceptedBizLogic(client, inserted, inserted);
+      }
 
       // トランザクションコミット
       await client.query('COMMIT');
