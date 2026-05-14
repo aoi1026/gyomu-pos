@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict E54rQlQHbIcGrakd6J3xapvqwiQaa1RbhTCZvnfqKaxmOcaHlkrVmxDrhc5KmJU
+\restrict RwaQObWnx38DlcPLspGZkA7S0zJGUiGLNTGI7YuIycMySGwqM1XIr4sIU0C69ts
 
 -- Dumped from database version 18.2
 -- Dumped by pg_dump version 18.2
@@ -1811,6 +1811,7 @@ COPY public.project_variable (id, name, value, other, created_at, updated_at) FR
 152	receipt_payment_id_last	20260508003	領収書決済ID 最終発行	2026-02-26 14:28:55.500323+09	2026-05-08 16:35:39.697045+09
 3534	session_time_adjust_step_min	5	開始/終了時刻の調整単位（分）	2026-05-05 18:33:17.378823+09	2026-05-13 08:13:14.776703+09
 7833	order_approval_required	false	テーブル注文を管理者が手動承認するか（false=自動承認）	2026-05-13 09:05:45.535725+09	2026-05-13 15:25:00.917455+09
+9254	system_time	06:00	システム日付変更時刻 (HH:MM, JST)	2026-05-14 16:38:32.937453+09	2026-05-14 16:38:32.937453+09
 \.
 
 
@@ -1899,6 +1900,16 @@ COPY public.salary_category (id, cast_id, category_id, value, other, created_at,
 27	18	5	0.32	\N	2026-05-13 12:32:28.221183+09	2026-05-13 12:32:35.718788+09
 28	19	5	0.32	\N	2026-05-13 12:32:28.222544+09	2026-05-13 12:32:35.719618+09
 18	4	5	0.32	\N	2026-05-13 12:32:28.206483+09	2026-05-13 12:32:44.349313+09
+29	3	1	360.00	\N	2026-05-18 00:00:00.127349+09	2026-05-18 00:00:00.127349+09
+30	3	2	360.00	\N	2026-05-18 00:00:00.131984+09	2026-05-18 00:00:00.131984+09
+31	7	1	360.00	\N	2026-05-18 00:00:00.132871+09	2026-05-18 00:00:00.132871+09
+32	7	2	360.00	\N	2026-05-18 00:00:00.133754+09	2026-05-18 00:00:00.133754+09
+33	15	1	360.00	\N	2026-05-18 00:00:00.134611+09	2026-05-18 00:00:00.134611+09
+34	15	2	360.00	\N	2026-05-18 00:00:00.135477+09	2026-05-18 00:00:00.135477+09
+35	17	1	360.00	\N	2026-05-18 00:00:00.136434+09	2026-05-18 00:00:00.136434+09
+36	17	2	360.00	\N	2026-05-18 00:00:00.137265+09	2026-05-18 00:00:00.137265+09
+37	19	1	360.00	\N	2026-05-18 00:00:00.138153+09	2026-05-18 00:00:00.138153+09
+38	19	2	360.00	\N	2026-05-18 00:00:00.13895+09	2026-05-18 00:00:00.13895+09
 \.
 
 
@@ -2142,18 +2153,18 @@ COPY public."user" (id, name, mail, password, role, food_back, drink_back, main_
 10	table1	table1@example.com	270e33da79c5156c1ba3b42cbc190c6c	table	0.00	0.00	0.00	0.00	0.00	0.00		0	2026-02-25 18:12:21.864178+09	2026-02-25 18:12:21.864178+09	\N
 11	table2	table2@example.com	11c80bb6e72888f484b846399c2d5e45	table	0.00	0.00	0.00	0.00	0.00	0.00		0	2026-02-25 18:12:44.39673+09	2026-02-25 18:12:53.135577+09	other
 12	table3	table3@example.com	a4d3e519fe9fd7d2434e4f0f279f8155	table	0.00	0.00	0.00	0.00	0.00	0.00		0	2026-02-25 18:13:18.61353+09	2026-02-25 18:13:18.61353+09	\N
-3	hana	hana@example.com	52fd46504e1b86d80cfa22c0a1168a9d	cast	0.00	0.00	15.00	40.00	30.00	1700.00		0	2026-02-25 18:02:46.303976+09	2026-05-13 12:33:00.517643+09	female
 4	hiro	hiro@example.com	3f5215d48e31231d3da0a4bf858afa65	cast	0.00	0.00	15.00	40.00	30.00	1900.00		1	2026-02-25 18:03:26.441816+09	2026-05-13 12:33:00.517643+09	female
 5	taro	taro@example.com	3886bc9c9655241c5737d45eec5447bb	cast	0.00	0.00	15.00	40.00	30.00	1700.00		0	2026-02-25 18:03:52.025044+09	2026-05-13 12:33:00.517643+09	male
 6	momo	momo@example.com	06c56a89949d617def52f371c357b6db	cast	0.00	0.00	15.00	40.00	30.00	1900.00		0	2026-02-25 18:04:55.774071+09	2026-05-13 12:33:00.517643+09	female
-7	sato	sato@example.com	47ee51d3a36176c6b3b49691393952fc	cast	0.00	0.00	15.00	40.00	30.00	0.00		0	2026-02-25 18:05:12.842746+09	2026-05-13 12:33:00.517643+09	male
 13	tewt	twetwe@example.com	5cd4ba1360dc974e9241a5f8ff9c632f	cast	0.00	0.00	15.00	0.00	0.00	0.00		0	2026-05-05 14:17:40.688915+09	2026-05-13 12:33:00.517643+09	\N
 14	ererty	ereye@example.com	04a4f99a41e251ae24cbff2e604ad59b	cast	0.00	0.00	15.00	0.00	0.00	0.00		0	2026-05-05 14:17:49.687043+09	2026-05-13 12:33:00.517643+09	\N
-15	fg	ghh@example.com	19b19ffc30caef1c9376cd2982992a59	cast	0.00	0.00	15.00	0.00	0.00	0.00		0	2026-05-05 14:18:00.713902+09	2026-05-13 12:33:00.517643+09	\N
 16	vbvb	vbnvbn@example.com	8bbc2b904d0f41c51ae92c2268935b03	cast	0.00	0.00	15.00	0.00	0.00	0.00		0	2026-05-05 14:18:11.464763+09	2026-05-13 12:33:00.517643+09	\N
-17	kytj	tyju@example.com	b161b045b298f9abb4e4767d839c4bbe	cast	0.00	0.00	15.00	0.00	0.00	0.00		0	2026-05-05 14:18:21.587297+09	2026-05-13 12:33:00.517643+09	\N
 18	ertj	rtyj@example.com	b161b045b298f9abb4e4767d839c4bbe	cast	0.00	0.00	15.00	0.00	0.00	0.00		0	2026-05-05 14:18:31.601296+09	2026-05-13 12:33:00.517643+09	\N
-19	vbnj	vbnj@example.com	b161b045b298f9abb4e4767d839c4bbe	cast	0.00	0.00	15.00	0.00	0.00	0.00		0	2026-05-05 14:18:40.602026+09	2026-05-13 12:33:00.517643+09	\N
+3	hana	hana@example.com	52fd46504e1b86d80cfa22c0a1168a9d	cast	0.00	0.00	15.00	40.00	30.00	1700.00		0	2026-02-25 18:02:46.303976+09	2026-05-18 00:00:00.103091+09	female
+7	sato	sato@example.com	47ee51d3a36176c6b3b49691393952fc	cast	0.00	0.00	15.00	40.00	30.00	1700.00		0	2026-02-25 18:05:12.842746+09	2026-05-18 00:00:00.117656+09	male
+15	fg	ghh@example.com	19b19ffc30caef1c9376cd2982992a59	cast	0.00	0.00	15.00	0.00	0.00	1700.00		0	2026-05-05 14:18:00.713902+09	2026-05-18 00:00:00.118586+09	\N
+17	kytj	tyju@example.com	b161b045b298f9abb4e4767d839c4bbe	cast	0.00	0.00	15.00	0.00	0.00	1700.00		0	2026-05-05 14:18:21.587297+09	2026-05-18 00:00:00.119169+09	\N
+19	vbnj	vbnj@example.com	b161b045b298f9abb4e4767d839c4bbe	cast	0.00	0.00	15.00	0.00	0.00	1700.00		0	2026-05-05 14:18:40.602026+09	2026-05-18 00:00:00.119946+09	\N
 \.
 
 
@@ -2172,7 +2183,7 @@ COPY public.vip_room (id, name, status, other, session_id, created_at, updated_a
 -- Name: add_charges_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.add_charges_id_seq', 3271, true);
+SELECT pg_catalog.setval('public.add_charges_id_seq', 3285, true);
 
 
 --
@@ -2242,7 +2253,7 @@ SELECT pg_catalog.setval('public.product_id_seq', 26, true);
 -- Name: project_variable_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.project_variable_id_seq', 9248, true);
+SELECT pg_catalog.setval('public.project_variable_id_seq', 9548, true);
 
 
 --
@@ -2256,7 +2267,7 @@ SELECT pg_catalog.setval('public.salary_attenday_id_seq', 14, true);
 -- Name: salary_category_id_seq; Type: SEQUENCE SET; Schema: public; Owner: postgres
 --
 
-SELECT pg_catalog.setval('public.salary_category_id_seq', 28, true);
+SELECT pg_catalog.setval('public.salary_category_id_seq', 38, true);
 
 
 --
@@ -3550,5 +3561,5 @@ ALTER TABLE ONLY public.vip_room
 -- PostgreSQL database dump complete
 --
 
-\unrestrict E54rQlQHbIcGrakd6J3xapvqwiQaa1RbhTCZvnfqKaxmOcaHlkrVmxDrhc5KmJU
+\unrestrict RwaQObWnx38DlcPLspGZkA7S0zJGUiGLNTGI7YuIycMySGwqM1XIr4sIU0C69ts
 
