@@ -18,7 +18,7 @@ export interface TableLoginCredentials {
 // ローカルストレージからテーブル認証情報を取得
 export const getCurrentTable = (): TableAuth | null => {
   if (typeof window === 'undefined') return null;
-  
+   
   try {
     const stored = localStorage.getItem('table_auth');
     return stored ? JSON.parse(stored) : null;

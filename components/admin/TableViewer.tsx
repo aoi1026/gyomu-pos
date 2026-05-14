@@ -8,6 +8,16 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -167,6 +177,11 @@ export default function TableViewer({ tableId, onClose, onSessionMovedToTable }:
 
   const [showExtensionInfoPreview, setShowExtensionInfoPreview] = useState(false);
   const [extensionInfoPreviewData, setExtensionInfoPreviewData] = useState<ExtensionInfoReceiptPayload | null>(null);
+  /** 注文合計のグループ行削除の確認用 */
+  const [groupedOrderDeleteConfirm, setGroupedOrderDeleteConfirm] = useState<{
+    orders: CartOrder[];
+    productName: string;
+  } | null>(null);
 
   const buildReceiptData = async (): Promise<FullReceiptPayload | null> => {
     if (!session || !tableId) return null;
@@ -3607,7 +3622,12 @@ export default function TableViewer({ tableId, onClose, onSessionMovedToTable }:
                                         type="button"
                                         size="sm"
                                         variant="outline"
-                                        onClick={() => deleteGroupedOrderLine(row.orders, row.productName)}
+                                        onClick={() =>
+                                          setGroupedOrderDeleteConfirm({
+                                            orders: row.orders,
+                                            productName: row.productName,
+                                          })
+                                        }
                                         disabled={isOrderingDisabled}
                                         className="h-9 w-9 p-0 border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
                                         title={`${row.productName} を削除`}
@@ -4966,6 +4986,39 @@ export default function TableViewer({ tableId, onClose, onSessionMovedToTable }:
           </div>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog
+        open={groupedOrderDeleteConfirm !== null}
+        onOpenChange={(open) => {
+          if (!open) setGroupedOrderDeleteConfirm(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>注文行の削除</AlertDialogTitle>
+            <AlertDialogDescription>
+              {groupedOrderDeleteConfirm ? (
+                <>
+                  「{groupedOrderDeleteConfirm.productName}」の注文をすべて削除します。この操作は取り消せません。よろしいですか？
+                </>
+              ) : null}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>キャンセル</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 text-white hover:bg-red-700 focus:ring-red-600"
+              onClick={() => {
+                const payload = groupedOrderDeleteConfirm;
+                setGroupedOrderDeleteConfirm(null);
+                if (payload) void deleteGroupedOrderLine(payload.orders, payload.productName);
+              }}
+            >
+              削除する
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
