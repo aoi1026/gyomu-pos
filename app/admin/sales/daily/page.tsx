@@ -756,27 +756,46 @@ function DailySalesPageContent() {
                       <CardTitle>テーブル別売上</CardTitle>
                     </CardHeader>
                     <CardContent>
-                      <div className="space-y-3 max-h-96 overflow-y-auto">
-                        {tableSales.length === 0 ? (
-                          <div className="text-sm text-gray-500">データがありません</div>
-                        ) : (
-                          tableSales.map((row: any) => (
-                            <div key={row.table_id} className="flex justify-between items-center">
-                              <div className="flex items-center space-x-3">
-                                <span className="text-gray-700">{row.table_name}</span>
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => router.push(`/admin/sales/daily/table/${row.table_id}?date=${encodeURIComponent(selectedDate)}`)}
-                                >
-                                  詳細表示
-                                </Button>
-                              </div>
-                              <span className="font-medium">{formatCurrency(row.total_sales)}</span>
-                            </div>
-                          ))
-                        )}
-                      </div>
+                      {tableSales.length === 0 ? (
+                        <div className="text-sm text-gray-500">データがありません</div>
+                      ) : (
+                        <div className="overflow-x-auto max-h-96 overflow-y-auto">
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead>テーブル名</TableHead>
+                                <TableHead className="text-right w-40">売上</TableHead>
+                                <TableHead className="w-32 text-center">操作</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {tableSales.map((row: any) => (
+                                <TableRow key={row.table_id}>
+                                  <TableCell className="font-medium text-gray-900">
+                                    {row.table_name}
+                                  </TableCell>
+                                  <TableCell className="text-right tabular-nums">
+                                    {formatCurrency(row.total_sales)}
+                                  </TableCell>
+                                  <TableCell className="text-center">
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() =>
+                                        router.push(
+                                          `/admin/sales/daily/table/${row.table_id}?date=${encodeURIComponent(selectedDate)}`
+                                        )
+                                      }
+                                    >
+                                      詳細表示
+                                    </Button>
+                                  </TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </div>
+                      )}
                     </CardContent>
                   </Card>
                 </TabsContent>

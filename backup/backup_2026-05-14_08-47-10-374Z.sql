@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict JuhqUrXQkA32JPiTfVnqHsWbdo6hy7egBHoJVZhgaTuIPgW7OcS9kqSbKohlWI2
+\restrict xbbgWlKl9qwWBNRWLjo7Y5ZEwyoVv12retYCtX1cozItnoJQyJX3ONk7Mebzy6u
 
 -- Dumped from database version 18.2
 -- Dumped by pg_dump version 18.2
@@ -3486,6 +3486,14 @@ ALTER TABLE ONLY public.serviceorder
 
 
 --
+-- Name: serviceorder serviceorder_service_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.serviceorder
+    ADD CONSTRAINT serviceorder_service_id_fkey FOREIGN KEY (service_id) REFERENCES public.services(id) ON DELETE CASCADE;
+
+
+--
 -- Name: serviceorder serviceorder_session_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -3553,5 +3561,5 @@ ALTER TABLE ONLY public.vip_room
 -- PostgreSQL database dump complete
 --
 
-\unrestrict JuhqUrXQkA32JPiTfVnqHsWbdo6hy7egBHoJVZhgaTuIPgW7OcS9kqSbKohlWI2
+\unrestrict xbbgWlKl9qwWBNRWLjo7Y5ZEwyoVv12retYCtX1cozItnoJQyJX3ONk7Mebzy6u
 

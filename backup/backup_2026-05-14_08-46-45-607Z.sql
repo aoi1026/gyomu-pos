@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict RwaQObWnx38DlcPLspGZkA7S0zJGUiGLNTGI7YuIycMySGwqM1XIr4sIU0C69ts
+\restrict EMOg5uCpQ2AthJydmFAnXReOrrRH3egvaH26px81tS4laA3Tvse2bnvJ8CaFQDD
 
 -- Dumped from database version 18.2
 -- Dumped by pg_dump version 18.2
@@ -3561,5 +3561,5 @@ ALTER TABLE ONLY public.vip_room
 -- PostgreSQL database dump complete
 --
 
-\unrestrict RwaQObWnx38DlcPLspGZkA7S0zJGUiGLNTGI7YuIycMySGwqM1XIr4sIU0C69ts
+\unrestrict EMOg5uCpQ2AthJydmFAnXReOrrRH3egvaH26px81tS4laA3Tvse2bnvJ8CaFQDD
 
