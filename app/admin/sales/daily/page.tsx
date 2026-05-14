@@ -2,7 +2,7 @@
 
 export const dynamic = 'force-dynamic';
 
-import { Suspense, useEffect, useState } from 'react';
+import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import RoleGate from '@/components/auth/RoleGate';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -59,6 +59,12 @@ function DailySalesPageContent() {
 
   const router = useRouter();
   const { info, error } = useNotificationContext();
+
+  /** キャスト別売上タブ・CSV: 売上0円のキャストは表示しない */
+  const castSalesNonZero = useMemo(
+    () => castSales.filter((c: any) => (Number(c.total_sales) || 0) > 0),
+    [castSales]
+  );
 
   useEffect(() => {
     loadSalesData(selectedDate);
@@ -280,7 +286,7 @@ function DailySalesPageContent() {
       // キャスト別売上
       lines.push('【キャスト別売上】');
       lines.push('キャスト名,売上');
-      castSales.forEach((cast: any) => {
+      castSalesNonZero.forEach((cast: any) => {
         const sales = Number(cast.total_sales) || 0;
         lines.push(`"${cast.cast_name || ''}",${sales.toFixed(2)}`);
       });
@@ -729,10 +735,10 @@ function DailySalesPageContent() {
                     </CardHeader>
                     <CardContent>
                       <div className="space-y-3 max-h-96 overflow-y-auto">
-                        {castSales.length === 0 ? (
+                        {castSalesNonZero.length === 0 ? (
                           <div className="text-sm text-gray-500">データがありません</div>
                         ) : (
-                          castSales.map((cast: any) => (
+                          castSalesNonZero.map((cast: any) => (
                             <div key={cast.cast_id} className="flex justify-between items-center">
                               <span className="text-gray-700">{cast.cast_name}</span>
                               <span className="font-medium">{formatCurrency(cast.total_sales)}</span>

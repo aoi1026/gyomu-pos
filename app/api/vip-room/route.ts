@@ -7,7 +7,7 @@ export async function GET() {
   try {
     await ensureRoomTables(client);
     const result = await client.query(
-      `SELECT id, name, status, other, session_id, created_at, updated_at
+      `SELECT id, name, price, status, other, session_id, created_at, updated_at
        FROM vip_room
        ORDER BY id ASC`
     );
@@ -26,14 +26,18 @@ export async function POST(request: NextRequest) {
     await ensureRoomTables(client);
     const body = await request.json();
     const name = String(body?.name ?? '').trim();
+    const price = Number(body?.price ?? 0);
     const other = body?.other != null ? String(body.other) : null;
     if (!name) {
       return NextResponse.json({ success: false, error: '部屋名を入力してください' }, { status: 400 });
     }
+    if (!Number.isFinite(price) || price < 0) {
+      return NextResponse.json({ success: false, error: '料金は0以上で入力してください' }, { status: 400 });
+    }
     const result = await client.query(
-      `INSERT INTO vip_room (name, status, other) VALUES ($1, 0, $2)
-       RETURNING id, name, status, other, session_id, created_at, updated_at`,
-      [name, other]
+      `INSERT INTO vip_room (name, price, status, other) VALUES ($1, $2, 0, $3)
+       RETURNING id, name, price, status, other, session_id, created_at, updated_at`,
+      [name, price, other]
     );
     return NextResponse.json({ success: true, room: result.rows[0] });
   } catch (e) {

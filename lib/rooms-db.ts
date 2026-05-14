@@ -6,12 +6,16 @@ export async function ensureRoomTables(client: PoolClient) {
     CREATE TABLE IF NOT EXISTS vip_room (
       id SERIAL PRIMARY KEY,
       name VARCHAR(200) NOT NULL,
+      price DECIMAL(10,2) NOT NULL DEFAULT 0.00 CHECK (price >= 0),
       status SMALLINT NOT NULL DEFAULT 0 CHECK (status IN (0, 1)),
       other TEXT,
       session_id INTEGER REFERENCES sessions(id) ON DELETE SET NULL,
       created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
     )
+  `);
+  await client.query(`
+    ALTER TABLE vip_room ADD COLUMN IF NOT EXISTS price DECIMAL(10,2) NOT NULL DEFAULT 0.00 CHECK (price >= 0)
   `);
   await client.query(`
     CREATE INDEX IF NOT EXISTS idx_vip_room_session_id ON vip_room(session_id)

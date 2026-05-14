@@ -22,7 +22,7 @@ const dbConfig = {
   port: parseInt(process.env.DB_PORT || '5432'),
   database: process.env.DB_NAME || 'cabaclub_system',
   user: process.env.DB_USER || 'postgres',
-  password: process.env.DB_PASSWORD || 'root',
+  password: process.env.DB_PASSWORD || 'postgres',
 };
 
 const BACKUP_DIR = path.join(process.cwd(), 'backup');

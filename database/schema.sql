@@ -51,7 +51,6 @@ INSERT INTO add_charges (charge_name, value, other) VALUES
     ('inside', 0.00, NULL),
     ('together', 0.00, NULL),
     ('bottle_keep', 0.00, NULL),
-    ('vip_room', 0.00, NULL),
     ('song_room', 0.00, NULL)
 ON CONFLICT (charge_name) DO NOTHING;
 
@@ -346,6 +345,7 @@ CREATE TRIGGER update_sessions_updated_at
 CREATE TABLE IF NOT EXISTS vip_room (
     id SERIAL PRIMARY KEY,
     name VARCHAR(200) NOT NULL,
+    price DECIMAL(10,2) NOT NULL DEFAULT 0.00 CHECK (price >= 0),
     status SMALLINT NOT NULL DEFAULT 0 CHECK (status IN (0, 1)),
     other TEXT,
     session_id INTEGER REFERENCES sessions(id) ON DELETE SET NULL,

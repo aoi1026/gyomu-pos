@@ -75,12 +75,16 @@ interface SessionData {
 
 interface CartOrder {
   id: number;
+  product_id?: number;
   product_name: string;
   unit_price: number;
   amount: number;
   total_price: number;
+  cast_id?: number | null;
   cast_name?: string;
+  for_cast?: number;
   status: string;
+  created_at?: string;
 }
 
 interface ServiceOrder {
@@ -362,7 +366,7 @@ export default function TableViewer({ tableId, onClose, onSessionMovedToTable }:
   const [showBottleKeepDialog, setShowBottleKeepDialog] = useState(false);
   const [showVipRoomDialog, setShowVipRoomDialog] = useState(false);
   const [showKaraokeDialog, setShowKaraokeDialog] = useState(false);
-  const [vipRooms, setVipRooms] = useState<Array<{ id: number; name: string; status: number; other: string | null }>>([]);
+  const [vipRooms, setVipRooms] = useState<Array<{ id: number; name: string; price?: number | string; status: number; other: string | null; session_id?: number | null }>>([]);
   const [selectedVipRoomId, setSelectedVipRoomId] = useState<string>('');
   const [songRooms, setSongRooms] = useState<Array<{ id: number; name: string; status: number; other: string | null }>>([]);
   const [selectedSongRoomId, setSelectedSongRoomId] = useState<string>('');
@@ -858,6 +862,91 @@ export default function TableViewer({ tableId, onClose, onSessionMovedToTable }:
     }
   };
 
+  const findSameOrderLine = (productId: unknown, castId: unknown, forCast: boolean) => {
+    const normalizedCastId = castId == null || castId === 'none' ? null : Number(castId);
+    return cartOrders.find((order: CartOrder) => {
+      const st = (orderRequestStatus as any)[order.id] || order.status;
+      const orderCastId = order.cast_id == null ? null : Number(order.cast_id);
+      return (
+        st !== 'rejected' &&
+        Number(order.product_id) === Number(productId) &&
+        orderCastId === normalizedCastId &&
+        Number(order.for_cast) === (forCast ? 1 : 0)
+      );
+    });
+  };
+
+  const changeExistingOrderQuantity = async (
+    sourceOrder: CartOrder,
+    delta: number,
+    options: { reload?: boolean; notify?: boolean } = {}
+  ): Promise<boolean> => {
+    if (!session || !tableId) return false;
+    if (isOrderingDisabled) {
+      error(
+        'エラー',
+        isPaymentCompleted
+          ? '決済が完了しているため、商品の追加はできません'
+          : 'セット時間が終了したため、商品の追加はできません'
+      );
+      return false;
+    }
+    if (!sourceOrder?.id) {
+      error('エラー', '元の注文情報が取得できません');
+      return false;
+    }
+    try {
+      const response = await fetch(`/api/salesorder/${sourceOrder.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          amount_delta: delta,
+        }),
+      });
+      const result = await response.json();
+      if (!result.success) {
+        error('エラー', result.error || '数量変更に失敗しました');
+        return false;
+      }
+      if (options.reload !== false) await loadCartOrders(session.id);
+      if (options.notify !== false) success('数量変更', `${sourceOrder.product_name} の数量を更新しました`);
+      return true;
+    } catch (err) {
+      console.error('数量変更エラー:', err);
+      error('エラー', '数量変更に失敗しました');
+      return false;
+    }
+  };
+
+  /** 既存注文と同じ商品・同じ担当（キャスト/お客様）でもう1点追加（ダイアログ無し） */
+  const quickReorderSameAsExisting = async (sourceOrder: CartOrder) => {
+    await changeExistingOrderQuantity(sourceOrder, 1);
+  };
+
+  const deleteGroupedOrderLine = async (orders: CartOrder[], productName: string) => {
+    if (!session) return;
+    if (isOrderingDisabled) {
+      error(
+        'エラー',
+        isPaymentCompleted
+          ? '決済が完了しているため、商品の削除はできません'
+          : 'セット時間が終了したため、商品の削除はできません'
+      );
+      return;
+    }
+    for (const order of [...orders].reverse()) {
+      const amount = Number(order.amount) || 0;
+      if (amount <= 0) continue;
+      const ok = await changeExistingOrderQuantity(order, -amount, {
+        reload: false,
+        notify: false,
+      });
+      if (!ok) return;
+    }
+    await loadCartOrders(session.id);
+    success('削除', `${productName} を削除しました`);
+  };
+
   // 注文を送信
   const handleOrderSubmit = async () => {
     if (!session || !selectedProduct || !tableId) return;
@@ -867,13 +956,25 @@ export default function TableViewer({ tableId, onClose, onSessionMovedToTable }:
     }
 
     try {
+      const selectedCastId = selectedCastForOrder && selectedCastForOrder !== 'none' ? parseInt(selectedCastForOrder) : null;
+      const sameOrderLine = findSameOrderLine(selectedProduct.id, selectedCastId, isForCast);
+      if (sameOrderLine) {
+        await changeExistingOrderQuantity(sameOrderLine, orderQuantity);
+        setShowOrderDialog(false);
+        setSelectedProduct(null);
+        setOrderQuantity(1);
+        setSelectedCastForOrder('none');
+        setIsForCast(false);
+        return;
+      }
+
       const response = await fetch('/api/salesorder', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          cast_id: selectedCastForOrder && selectedCastForOrder !== 'none' ? parseInt(selectedCastForOrder) : null,
+          cast_id: selectedCastId,
           product_id: selectedProduct.id,
           amount: orderQuantity,
           table_id: tableId,
@@ -1317,24 +1418,7 @@ export default function TableViewer({ tableId, onClose, onSessionMovedToTable }:
       error('通知', 'その部屋は現在利用中です');
       return;
     }
-    let charges = addCharges;
-    if (Object.keys(charges).length === 0) {
-      try {
-        const chargesResponse = await fetch('/api/add-charges');
-        const chargesResult = await chargesResponse.json();
-        if (chargesResult.success && chargesResult.charges) {
-          const chargesMap: { [key: string]: number } = {};
-          chargesResult.charges.forEach((charge: any) => {
-            chargesMap[charge.charge_name] = parseFloat(charge.value) || 0;
-          });
-          charges = chargesMap;
-          setAddCharges(chargesMap);
-        }
-      } catch (err) {
-        console.error('追加料金取得エラー:', err);
-      }
-    }
-    const vipUnit = charges['vip_room'] || 0;
+    const vipUnit = Number(room.price) || 0;
     const reserveRes = await fetch(`/api/vip-room/${roomId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -1510,21 +1594,40 @@ export default function TableViewer({ tableId, onClose, onSessionMovedToTable }:
   ) => {
     const hasVip = servicesSnapshot.some(s => s.type === 'vip_room');
     const hasKaraoke = servicesSnapshot.some(s => s.type === 'karaoke');
-    const vipUnit = chargesMap['vip_room'] || 0;
     const songUnit = chargesMap['song_room'] || 0;
     try {
-      if (hasVip && vipUnit > 0) {
-        await fetch('/api/additional-services', {
+      if (hasVip) {
+        const roomRes = await fetch('/api/vip-room', { cache: 'no-store' });
+        const roomJson = await roomRes.json();
+        const activeVipRooms = roomJson.success
+          ? (roomJson.rooms || []).filter((room: any) => Number(room.session_id) === sessionId)
+          : [];
+        const vipRows =
+          activeVipRooms.length > 0
+            ? activeVipRooms.map((room: any) => ({
+                charge: Number(room.price) || 0,
+                note: `セット延長 - ${room.name}`,
+              }))
+            : servicesSnapshot
+                .filter(s => s.type === 'vip_room' && !String(s.note || '').startsWith('セット延長'))
+                .map(s => ({
+                  charge: Number(s.charge) || 0,
+                  note: s.note ? `セット延長 - ${s.note}` : 'セット延長',
+                }));
+
+        for (const vipRow of vipRows.filter((row: { charge: number; note: string }) => row.charge > 0)) {
+          await fetch('/api/additional-services', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             sessionId,
             type: 'vip_room',
             count: 1,
-            charge: vipUnit,
-            note: 'セット延長',
+            charge: vipRow.charge,
+            note: vipRow.note,
           }),
         });
+        }
       }
       if (hasKaraoke && songUnit > 0) {
         await fetch('/api/additional-services', {
@@ -2661,14 +2764,20 @@ export default function TableViewer({ tableId, onClose, onSessionMovedToTable }:
                                   {cartOrders.map((order: any) => (
                                     <div key={order.id} className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-2 sm:p-3 bg-gray-50 rounded-lg border gap-2 sm:gap-0">
                                       <div className="flex-1 min-w-0 w-full sm:w-auto">
-                                        <h4 className="font-medium text-xs sm:text-sm truncate">{order.product_name}</h4>
-                                        <p className="text-[10px] sm:text-xs text-gray-500">
+                                        <div className="flex items-center gap-1.5 flex-wrap">
+                                          <span
+                                            className={`inline-flex items-center rounded px-1.5 py-0.5 text-[9px] sm:text-[10px] font-semibold border ${
+                                              order.cast_id
+                                                ? 'border-purple-200 bg-purple-50 text-purple-700'
+                                                : 'border-gray-200 bg-gray-50 text-gray-700'
+                                            }`}
+                                          >
+                                            {order.cast_name ? order.cast_name : 'お客様'}
+                                          </span>
+                                          <h4 className="font-medium text-xs sm:text-sm truncate">{order.product_name}</h4>
+                                        </div>
+                                        <p className="text-[10px] sm:text-xs text-gray-500 mt-0.5">
                                           ¥{order.unit_price?.toLocaleString()} × {order.amount}個
-                                          {order.cast_name ? (
-                                            <span className="ml-1 sm:ml-2 text-blue-600">(担当: {order.cast_name})</span>
-                                          ) : (
-                                            <span className="ml-1 sm:ml-2 text-gray-500">(お客様直接注文)</span>
-                                          )}
                                         </p>
                                         <div className="flex flex-col sm:flex-row items-start sm:items-center mt-1 gap-1 sm:gap-0">
                                           <span className="text-xs sm:text-sm font-bold text-blue-600">
@@ -2714,6 +2823,17 @@ export default function TableViewer({ tableId, onClose, onSessionMovedToTable }:
                                             </div>
                                           )}
                                         </div>
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          onClick={() => quickReorderSameAsExisting(order)}
+                                          disabled={isOrderingDisabled}
+                                          className="h-7 px-2 text-[10px] sm:text-xs border-blue-200 text-blue-700 hover:bg-blue-50"
+                                          title={`${order.cast_name ? order.cast_name : 'お客様'} に ${order.product_name} をもう1点追加`}
+                                        >
+                                          <Plus className="w-3 h-3 sm:mr-1" />
+                                          <span className="hidden sm:inline">同じ注文</span>
+                                        </Button>
                                         {(() => {
                                           const st = (orderRequestStatus as any)[order.id] || order.status;
                                           const canDelete = st === 'pending' || st === 'sent';
@@ -3385,35 +3505,122 @@ export default function TableViewer({ tableId, onClose, onSessionMovedToTable }:
                     </div>
 
                     <div className="space-y-2">
-                      {/* 商品の明細（個別表示） */}
+                      {/* 商品の明細（同じ商品・同じ注文者で集約） */}
                       {(() => {
                         const acceptedOrders = cartOrders.filter(order => {
                           const status = orderRequestStatus[order.id] || order.status;
                           return status === 'accepted';
                         });
-                        if (acceptedOrders.length > 0) {
-                          return (
+                        if (acceptedOrders.length === 0) return null;
+
+                        const groupedMap = new Map<string, {
+                          key: string;
+                          productName: string;
+                          unitPrice: number;
+                          quantity: number;
+                          total: number;
+                          castLabel: string;
+                          isCast: boolean;
+                          orders: CartOrder[];
+                        }>();
+                        for (const o of acceptedOrders) {
+                          const castKey = o.cast_id == null ? 'guest' : `cast:${o.cast_id}`;
+                          const key = `${Number(o.product_id)}:${castKey}:${Number(o.for_cast) || 0}`;
+                          const cur = groupedMap.get(key) || {
+                            key,
+                            productName: String(o.product_name || ''),
+                            unitPrice: Number(o.unit_price) || 0,
+                            quantity: 0,
+                            total: 0,
+                            castLabel: o.cast_name ? String(o.cast_name) : 'お客様',
+                            isCast: !!o.cast_id,
+                            orders: [],
+                          };
+                          cur.quantity += Number(o.amount) || 0;
+                          cur.total += Number(o.total_price) || 0;
+                          cur.orders.push(o);
+                          groupedMap.set(key, cur);
+                        }
+                        const groupedOrders = Array.from(groupedMap.values());
+
+                        return (
+                          <div className="space-y-2">
+                            <div className="text-xs font-semibold text-gray-600">商品</div>
                             <div className="space-y-1">
-                              <div className="text-xs font-semibold text-gray-600 mb-1">商品</div>
-                              {acceptedOrders.map((order) => {
-                                const unitPrice = Number(order.unit_price) || 0;
-                                const qty = Number(order.amount) || 1;
-                                const total = Number(order.total_price) || 0;
-                                const breakdown = qty > 1 ? `¥${unitPrice.toLocaleString()} × ${qty}` : `¥${unitPrice.toLocaleString()}`;
+                              {groupedOrders.map((row) => {
+                                const targetOrder = row.orders[row.orders.length - 1];
                                 return (
-                                  <div key={order.id} className="flex justify-between items-start text-sm pl-3 gap-2">
-                                    <div className="min-w-0 flex-1">
-                                      <div className="text-gray-700 truncate">{order.product_name}</div>
-                                      <div className="text-gray-400 text-xs mt-0.5">{breakdown}</div>
+                                  <div key={row.key} className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-xl border border-gray-100 bg-gray-50/60 px-3 py-2.5">
+                                    <div className="flex items-center gap-1 rounded-lg border bg-white p-1 shadow-sm">
+                                      <Button
+                                        type="button"
+                                        size="sm"
+                                        variant="ghost"
+                                        onClick={() => changeExistingOrderQuantity(targetOrder, -1)}
+                                        disabled={isOrderingDisabled}
+                                        className="h-9 w-9 p-0 text-gray-700 hover:bg-gray-100"
+                                        title={`${row.castLabel} の ${row.productName} を1点減らす`}
+                                      >
+                                        <Minus className="w-4 h-4" />
+                                      </Button>
+                                      <span className="min-w-9 text-center text-sm font-bold tabular-nums">
+                                        {row.quantity}
+                                      </span>
+                                      <Button
+                                        type="button"
+                                        size="sm"
+                                        variant="ghost"
+                                        onClick={() => changeExistingOrderQuantity(targetOrder, 1)}
+                                        disabled={isOrderingDisabled}
+                                        className="h-9 w-9 p-0 text-gray-700 hover:bg-gray-100"
+                                        title={`${row.castLabel} の ${row.productName} を1点増やす`}
+                                      >
+                                        <Plus className="w-4 h-4" />
+                                      </Button>
                                     </div>
-                                    <span className="flex-shrink-0">{formatCurrency(customerBillLineDisplayAmount(total, orderBillRoundUnitForDisplay))}</span>
+
+                                    <div className="min-w-0">
+                                      <div className="text-sm font-semibold text-gray-800 truncate">
+                                        {row.productName}
+                                      </div>
+                                      <div className="mt-1 flex min-w-0 items-center gap-1.5">
+                                        <span
+                                          className={`inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold border ${
+                                            row.isCast
+                                              ? 'border-purple-200 bg-purple-50 text-purple-700'
+                                              : 'border-gray-200 bg-gray-50 text-gray-700'
+                                          }`}
+                                        >
+                                          {row.castLabel}
+                                        </span>
+                                        <span className="text-xs text-gray-500">
+                                          ¥{row.unitPrice.toLocaleString()} / 点
+                                        </span>
+                                      </div>
+                                    </div>
+
+                                    <div className="flex items-center gap-1.5 justify-self-end">
+                                      <span className="text-right text-sm font-bold tabular-nums whitespace-nowrap">
+                                        {formatCurrency(customerBillLineDisplayAmount(row.total, orderBillRoundUnitForDisplay))}
+                                      </span>
+                                      <Button
+                                        type="button"
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => deleteGroupedOrderLine(row.orders, row.productName)}
+                                        disabled={isOrderingDisabled}
+                                        className="h-9 w-9 p-0 border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
+                                        title={`${row.productName} を削除`}
+                                      >
+                                        <Trash2 className="w-4 h-4" />
+                                      </Button>
+                                    </div>
                                   </div>
                                 );
                               })}
                             </div>
-                          );
-                        }
-                        return null;
+                          </div>
+                        );
                       })()}
 
                       {/* セッション料金 */}
@@ -4390,7 +4597,7 @@ export default function TableViewer({ tableId, onClose, onSessionMovedToTable }:
           </DialogHeader>
           <div className="space-y-3">
             <p className="text-sm text-gray-600">
-              追加料金（1回）: {formatCurrency(addCharges['vip_room'] || 0)}
+              追加料金は選択したVIPルームごとの料金が適用されます。
             </p>
             <div className="space-y-2 max-h-[45vh] overflow-y-auto pr-1">
               {vipRooms.length === 0 ? (
@@ -4405,7 +4612,12 @@ export default function TableViewer({ tableId, onClose, onSessionMovedToTable }:
                       selectedVipRoomId === String(room.id) ? 'border-purple-600 bg-purple-50' : 'border-gray-200 hover:bg-gray-50'
                     }`}
                   >
-                    <span className="font-medium text-gray-900">{room.name}</span>
+                    <span className="min-w-0">
+                      <span className="block font-medium text-gray-900 truncate">{room.name}</span>
+                      <span className="block text-xs text-purple-700 font-semibold">
+                        {formatCurrency(Number(room.price) || 0)}
+                      </span>
+                    </span>
                     <span className="flex items-center gap-2 shrink-0">
                       {room.status === 1 ? (
                         <span className="inline-flex items-center justify-center rounded-full border-2 border-amber-500 px-2 py-0.5 text-[10px] font-semibold text-amber-800 whitespace-nowrap">

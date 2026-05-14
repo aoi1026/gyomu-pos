@@ -3,7 +3,6 @@ const DEFAULT_CHARGES = [
   { name: 'inside', label: '場内指名料' },
   { name: 'together', label: '同伴料' },
   { name: 'bottle_keep', label: 'ボトル保管料' },
-  { name: 'vip_room', label: '個室使用料' },
   { name: 'song_room', label: 'カラオケ利用料' },
   // 要件: セット料金/延長料金は add_charges の「charge_nameがset_price/extension_priceの行」の value を参照する
   { name: 'set_price', label: 'セット料金' },

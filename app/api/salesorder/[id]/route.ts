@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/database';
-import { applySalesOrderAcceptedBizLogic } from '@/lib/salesorder-accepted-effects';
+import {
+  applySalesOrderAcceptedAmountDelta,
+  applySalesOrderAcceptedBizLogic,
+} from '@/lib/salesorder-accepted-effects';
 
 export const dynamic = 'force-dynamic';
 
@@ -8,13 +11,22 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   const client = await pool.connect();
   try {
     const { id } = await params;
-    const { status, accepted_by } = await request.json();
+    const { status, accepted_by, amount_delta } = await request.json();
+    const amountDelta =
+      amount_delta === undefined || amount_delta === null ? null : Number(amount_delta);
     
-    console.log('売上注文更新リクエスト:', { id, status, accepted_by });
+    console.log('売上注文更新リクエスト:', { id, status, accepted_by, amount_delta });
     
-    if (!status) {
+    if (!status && amountDelta === null) {
       return NextResponse.json(
-        { success: false, error: 'ステータスが必要です' },
+        { success: false, error: 'ステータスまたは数量変更が必要です' },
+        { status: 400 }
+      );
+    }
+
+    if (amountDelta !== null && (!Number.isFinite(amountDelta) || amountDelta === 0 || !Number.isInteger(amountDelta))) {
+      return NextResponse.json(
+        { success: false, error: '数量変更は0以外の整数で指定してください' },
         { status: 400 }
       );
     }
@@ -38,7 +50,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
     // 既存注文の取得（在庫更新のため）
     const existingRes = await client.query(
-      `SELECT id, product_id, amount, status, for_cast, cast_id, session_id, total_price
+      `SELECT id, product_id, amount, status, for_cast, cast_id, session_id, unit_price, total_price, accepted_at
          FROM salesorder
         WHERE id = $1
         FOR UPDATE`,
@@ -54,6 +66,86 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     const existing = existingRes.rows[0];
     const wasRejected = existing.status === 'rejected';
     const wasAccepted = existing.status === 'accepted';
+
+    if (amountDelta !== null) {
+      if (existing.status === 'rejected') {
+        await client.query('ROLLBACK');
+        return NextResponse.json(
+          { success: false, error: '拒否済みの注文は数量変更できません' },
+          { status: 400 }
+        );
+      }
+
+      const oldAmount = Number(existing.amount) || 0;
+      const newAmount = oldAmount + amountDelta;
+      if (newAmount < 0) {
+        await client.query('ROLLBACK');
+        return NextResponse.json(
+          { success: false, error: '数量は0未満にできません' },
+          { status: 400 }
+        );
+      }
+
+      if (amountDelta > 0) {
+        const stockRes = await client.query(
+          `SELECT amount FROM product WHERE id = $1 FOR UPDATE`,
+          [Number(existing.product_id)]
+        );
+        const stock = Number(stockRes.rows[0]?.amount) || 0;
+        if (stock < amountDelta) {
+          await client.query('ROLLBACK');
+          return NextResponse.json(
+            { success: false, error: `在庫不足です。利用可能数量: ${stock}` },
+            { status: 400 }
+          );
+        }
+        await client.query(
+          `UPDATE product SET amount = amount - $1 WHERE id = $2`,
+          [amountDelta, Number(existing.product_id)]
+        );
+      } else {
+        await client.query(
+          `UPDATE product SET amount = amount + $1 WHERE id = $2`,
+          [Math.abs(amountDelta), Number(existing.product_id)]
+        );
+      }
+
+      const unitPrice = Number(existing.unit_price) || 0;
+      const totalDelta = unitPrice * amountDelta;
+      let updatedRow = null;
+
+      if (newAmount === 0) {
+        await client.query(`DELETE FROM salesorder WHERE id = $1`, [id]);
+      } else {
+        const quantityUpdateRes = await client.query(
+          `
+          UPDATE salesorder
+             SET amount = $1,
+                 total_price = $2
+           WHERE id = $3
+           RETURNING *
+          `,
+          [newAmount, unitPrice * newAmount, id]
+        );
+        updatedRow = quantityUpdateRes.rows[0];
+      }
+
+      if (existing.status === 'accepted') {
+        await applySalesOrderAcceptedAmountDelta(
+          client,
+          existing,
+          updatedRow || existing,
+          totalDelta
+        );
+      }
+
+      await client.query('COMMIT');
+      return NextResponse.json({
+        success: true,
+        data: updatedRow,
+        deleted: newAmount === 0,
+      });
+    }
 
     const updateFields = ['status = $1'];
     const values = [status];

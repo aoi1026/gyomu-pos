@@ -17,7 +17,6 @@ type ChargeName =
   | 'inside'
   | 'together'
   | 'bottle_keep'
-  | 'vip_room'
   | 'song_room'
   | 'set_price'
   | 'extension_price';
@@ -36,7 +35,6 @@ const CHARGE_LABELS: Record<ChargeName, { title: string; description: string }> 
   inside: { title: '場内指名料', description: '' }, // 店内滞在に対して発生する指名料です。
   together: { title: '同伴料', description: '' }, // キャストとの同伴にかかる料金です。
   bottle_keep: { title: 'ボトル保管料', description: '' }, // ボトルをキープする際に発生する料金です。
-  vip_room: { title: '個室使用料', description: '' }, // VIPルーム利用時の追加料金です。
   song_room: { title: 'カラオケ利用料', description: '' }, // カラオケ設備の利用に対する料金です。
   set_price: { title: 'セット料金', description: '' }, // 基本セット料金です。
   extension_price: { title: '延長料金', description: '' }, // セット延長時の料金です。
@@ -78,7 +76,7 @@ export default function AddChargesPage() {
             // standard_date / regular / arubaito など、追加料金以外の設定レコードは表示から除外
             .filter(
               (charge: any) =>
-                !['standard_date', 'regular', 'arubaito'].includes(
+                !['standard_date', 'regular', 'arubaito', 'vip_room'].includes(
                   String(charge.charge_name)
                 )
             )

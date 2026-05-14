@@ -35,7 +35,7 @@ export async function applySalesOrderAcceptedBizLogic(
     await client.query(
       `
       UPDATE nomination
-         SET rank_cost = COALESCE(rank_cost, 0) + $1
+         SET rank_cost = GREATEST(COALESCE(rank_cost, 0) + $1, 0)
        WHERE session_id = $2
          AND cast_id = $3
          AND (
@@ -93,5 +93,106 @@ export async function applySalesOrderAcceptedBizLogic(
     }
   } catch (e) {
     console.error('rank_cost加算エラー（承認時）:', e);
+  }
+}
+
+/**
+ * 承認済みキャスト注文の数量変更に伴う差分補正。
+ * total_price の増減分だけ rank_cost / castsalary_price / salary.sales_back_yen を調整する。
+ */
+export async function applySalesOrderAcceptedAmountDelta(
+  client: PoolClient,
+  existing: SalesOrderAcceptRow,
+  resultRow: { accepted_at?: Date | string | null },
+  totalPriceDelta: number
+): Promise<void> {
+  const forCast = Number(existing.for_cast) === 1;
+  const castId = existing.cast_id != null ? Number(existing.cast_id) : null;
+  const sessId = existing.session_id != null ? Number(existing.session_id) : null;
+  const delta = Number(totalPriceDelta) || 0;
+  const orderId = existing.id;
+
+  if (!forCast || !castId || !sessId || delta === 0) return;
+
+  try {
+    await client.query(`ALTER TABLE nomination ADD COLUMN IF NOT EXISTS rank_cost DECIMAL(12,2) DEFAULT 0.00`);
+    await client.query(`ALTER TABLE nomination ADD COLUMN IF NOT EXISTS tomain_nomination INTEGER DEFAULT 0`);
+    await client.query(`ALTER TABLE salesorder ADD COLUMN IF NOT EXISTS castsalary_price DECIMAL(12,2) DEFAULT 0.00`);
+    await client.query(`ALTER TABLE salary ADD COLUMN IF NOT EXISTS sales_back_yen DECIMAL(12,2) DEFAULT 0.00`);
+
+    await client.query(
+      `
+      UPDATE nomination
+         SET rank_cost = COALESCE(rank_cost, 0) + $1
+       WHERE session_id = $2
+         AND cast_id = $3
+         AND (
+           type_id IN ('main','together')
+           OR (type_id = 'inside' AND COALESCE(tomain_nomination,0) = 1)
+         )
+      `,
+      [delta, sessId, castId]
+    );
+
+    const categoryRes = await client.query(`SELECT category_id FROM product WHERE id = $1`, [Number(existing.product_id)]);
+    const categoryId = categoryRes.rows[0]?.category_id ? Number(categoryRes.rows[0].category_id) : null;
+
+    let computedDelta = delta;
+    if (categoryId) {
+      const scRes = await client.query(
+        `SELECT value FROM salary_category WHERE cast_id = $1 AND category_id = $2 ORDER BY id DESC LIMIT 1`,
+        [castId, categoryId]
+      );
+      const vRaw = scRes.rows[0]?.value;
+      const v = vRaw === null || vRaw === undefined ? null : Number(vRaw);
+      if (v === null || !Number.isFinite(v)) {
+        computedDelta = delta;
+      } else if (v === -1) {
+        computedDelta = delta;
+      } else if (v >= 0 && v <= 1) {
+        computedDelta = delta * v;
+      } else if (v > 1) {
+        computedDelta = v * Math.sign(delta);
+      } else {
+        computedDelta = 0;
+      }
+    }
+
+    await client.query(
+      `UPDATE salesorder SET castsalary_price = GREATEST(COALESCE(castsalary_price, 0) + $1, 0) WHERE id = $2`,
+      [computedDelta, orderId]
+    );
+
+    const acceptedAt = resultRow?.accepted_at ?? new Date();
+    const ymRes = await client.query(
+      `SELECT EXTRACT(YEAR FROM $1::timestamptz)::int AS year, EXTRACT(MONTH FROM $1::timestamptz)::int AS month`,
+      [acceptedAt]
+    );
+    const year = Number(ymRes.rows[0]?.year);
+    const month = Number(ymRes.rows[0]?.month);
+    if (Number.isFinite(year) && Number.isFinite(month) && computedDelta > 0) {
+      await client.query(
+        `
+        INSERT INTO salary (user_id, year, month, sales_back_yen)
+        VALUES ($1, $2, $3, $4)
+        ON CONFLICT (user_id, year, month)
+        DO UPDATE SET sales_back_yen = COALESCE(salary.sales_back_yen, 0) + EXCLUDED.sales_back_yen
+        `,
+        [castId, year, month, computedDelta]
+      );
+    } else if (Number.isFinite(year) && Number.isFinite(month) && computedDelta < 0) {
+      await client.query(
+        `
+        UPDATE salary
+           SET sales_back_yen = GREATEST(COALESCE(sales_back_yen, 0) + $1, 0)
+         WHERE user_id = $2
+           AND year = $3
+           AND month = $4
+        `,
+        [computedDelta, castId, year, month]
+      );
+    }
+  } catch (e) {
+    console.error('rank_cost差分補正エラー（数量変更時）:', e);
   }
 }

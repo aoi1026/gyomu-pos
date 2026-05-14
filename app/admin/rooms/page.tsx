@@ -10,18 +10,25 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { ArrowLeft, DoorOpen, Plus, Save } from 'lucide-react';
+import { ArrowLeft, DoorOpen, Edit2, Plus, Save } from 'lucide-react';
 import { useNotificationContext } from '@/lib/notification-context';
 
 interface RoomRow {
   id: number;
   name: string;
+  price?: number | string;
   status: number;
   other: string | null;
   session_id: number | null;
   created_at?: string;
   updated_at?: string;
 }
+
+const currencyFormatter = new Intl.NumberFormat('ja-JP', {
+  style: 'currency',
+  currency: 'JPY',
+  maximumFractionDigits: 0,
+});
 
 export default function AdminRoomsPage() {
   const router = useRouter();
@@ -30,8 +37,11 @@ export default function AdminRoomsPage() {
   const [vipRooms, setVipRooms] = useState<RoomRow[]>([]);
   const [songRooms, setSongRooms] = useState<RoomRow[]>([]);
   const [vipAddOpen, setVipAddOpen] = useState(false);
+  const [vipEditOpen, setVipEditOpen] = useState(false);
   const [songAddOpen, setSongAddOpen] = useState(false);
-  const [vipForm, setVipForm] = useState({ name: '', other: '' });
+  const [selectedVipRoom, setSelectedVipRoom] = useState<RoomRow | null>(null);
+  const [vipForm, setVipForm] = useState({ name: '', price: '0', other: '' });
+  const [vipEditForm, setVipEditForm] = useState({ name: '', price: '0', other: '' });
   const [songForm, setSongForm] = useState({ name: '', other: '' });
   const [submitting, setSubmitting] = useState(false);
 
@@ -91,21 +101,71 @@ export default function AdminRoomsPage() {
       error('エラー', '部屋名を入力してください');
       return;
     }
+    const price = Number(vipForm.price);
+    if (!Number.isFinite(price) || price < 0) {
+      error('エラー', '料金は0以上の数値で入力してください');
+      return;
+    }
     setSubmitting(true);
     try {
       const res = await fetch('/api/vip-room', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: vipForm.name.trim(), other: vipForm.other.trim() || null }),
+        body: JSON.stringify({ name: vipForm.name.trim(), price, other: vipForm.other.trim() || null }),
       });
       const j = await res.json();
       if (!j.success) throw new Error(j.error || '追加に失敗しました');
       success('追加完了', 'VIPルームを追加しました');
       setVipAddOpen(false);
-      setVipForm({ name: '', other: '' });
+      setVipForm({ name: '', price: '0', other: '' });
       await loadAll();
     } catch (e) {
       error('エラー', e instanceof Error ? e.message : '追加に失敗しました');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const openVipEdit = (room: RoomRow) => {
+    setSelectedVipRoom(room);
+    setVipEditForm({
+      name: room.name,
+      price: String(Number(room.price ?? 0)),
+      other: room.other ?? '',
+    });
+    setVipEditOpen(true);
+  };
+
+  const saveVipEdit = async () => {
+    if (!selectedVipRoom) return;
+    if (!vipEditForm.name.trim()) {
+      error('エラー', '部屋名を入力してください');
+      return;
+    }
+    const price = Number(vipEditForm.price);
+    if (!Number.isFinite(price) || price < 0) {
+      error('エラー', '料金は0以上の数値で入力してください');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const res = await fetch(`/api/vip-room/${selectedVipRoom.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: vipEditForm.name.trim(),
+          price,
+          other: vipEditForm.other.trim() || null,
+        }),
+      });
+      const j = await res.json();
+      if (!j.success) throw new Error(j.error || '更新に失敗しました');
+      success('更新完了', 'VIPルームを更新しました');
+      setVipEditOpen(false);
+      setSelectedVipRoom(null);
+      await loadAll();
+    } catch (e) {
+      error('エラー', e instanceof Error ? e.message : '更新に失敗しました');
     } finally {
       setSubmitting(false);
     }
@@ -136,20 +196,22 @@ export default function AdminRoomsPage() {
     }
   };
 
-  const renderTable = (rooms: RoomRow[]) => (
+  const renderTable = (rooms: RoomRow[], type: 'vip' | 'song') => (
     <Table>
       <TableHeader>
         <TableRow>
           <TableHead>ID</TableHead>
           <TableHead>部屋名</TableHead>
+          {type === 'vip' && <TableHead>料金</TableHead>}
           <TableHead>状態</TableHead>
           <TableHead>その他</TableHead>
+          {type === 'vip' && <TableHead className="w-24 text-center">操作</TableHead>}
         </TableRow>
       </TableHeader>
       <TableBody>
         {rooms.length === 0 ? (
           <TableRow>
-            <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
+            <TableCell colSpan={type === 'vip' ? 6 : 4} className="text-center text-muted-foreground py-8">
               登録がありません
             </TableCell>
           </TableRow>
@@ -158,6 +220,13 @@ export default function AdminRoomsPage() {
             <TableRow key={r.id}>
               <TableCell>{r.id}</TableCell>
               <TableCell className="font-medium">{r.name}</TableCell>
+              {type === 'vip' && (
+                <TableCell>
+                  <Badge variant="outline" className="bg-purple-50 text-purple-700">
+                    {currencyFormatter.format(Number(r.price ?? 0))}
+                  </Badge>
+                </TableCell>
+              )}
               <TableCell>
                 {r.status === 1 ? (
                   <Badge variant="destructive">利用中</Badge>
@@ -168,6 +237,14 @@ export default function AdminRoomsPage() {
               <TableCell className="max-w-[240px] truncate" title={r.other || ''}>
                 {r.other || '—'}
               </TableCell>
+              {type === 'vip' && (
+                <TableCell className="text-center">
+                  <Button size="sm" variant="outline" onClick={() => openVipEdit(r)} className="gap-1">
+                    <Edit2 className="w-4 h-4" />
+                    編集
+                  </Button>
+                </TableCell>
+              )}
             </TableRow>
           ))
         )}
@@ -217,7 +294,7 @@ export default function AdminRoomsPage() {
                     追加
                   </Button>
                 </div>
-                {renderTable(vipRooms)}
+                {renderTable(vipRooms, 'vip')}
               </TabsContent>
               <TabsContent value="song" className="mt-4 space-y-4">
                 <div className="flex justify-end">
@@ -226,7 +303,7 @@ export default function AdminRoomsPage() {
                     追加
                   </Button>
                 </div>
-                {renderTable(songRooms)}
+                {renderTable(songRooms, 'song')}
               </TabsContent>
             </Tabs>
           </CardContent>
@@ -249,6 +326,18 @@ export default function AdminRoomsPage() {
               />
             </div>
             <div className="space-y-2">
+              <Label htmlFor="vip-price">料金 (円)</Label>
+              <Input
+                id="vip-price"
+                type="number"
+                min="0"
+                step="100"
+                value={vipForm.price}
+                onChange={(e) => setVipForm((p) => ({ ...p, price: e.target.value }))}
+                placeholder="例: 5000"
+              />
+            </div>
+            <div className="space-y-2">
               <Label htmlFor="vip-other">その他</Label>
               <Input
                 id="vip-other"
@@ -262,6 +351,57 @@ export default function AdminRoomsPage() {
                 キャンセル
               </Button>
               <Button onClick={saveVip} disabled={submitting} className="gap-2">
+                <Save className="w-4 h-4" />
+                保存
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={vipEditOpen} onOpenChange={(open) => {
+        setVipEditOpen(open);
+        if (!open) setSelectedVipRoom(null);
+      }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>VIPルームを編集</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="vip-edit-name">部屋名</Label>
+              <Input
+                id="vip-edit-name"
+                value={vipEditForm.name}
+                onChange={(e) => setVipEditForm((p) => ({ ...p, name: e.target.value }))}
+                placeholder="例: VIP-A"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="vip-edit-price">料金 (円)</Label>
+              <Input
+                id="vip-edit-price"
+                type="number"
+                min="0"
+                step="100"
+                value={vipEditForm.price}
+                onChange={(e) => setVipEditForm((p) => ({ ...p, price: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="vip-edit-other">その他</Label>
+              <Input
+                id="vip-edit-other"
+                value={vipEditForm.other}
+                onChange={(e) => setVipEditForm((p) => ({ ...p, other: e.target.value }))}
+                placeholder="備考（任意）"
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setVipEditOpen(false)} disabled={submitting}>
+                キャンセル
+              </Button>
+              <Button onClick={saveVipEdit} disabled={submitting} className="gap-2">
                 <Save className="w-4 h-4" />
                 保存
               </Button>

@@ -66,6 +66,8 @@ export default function Dashboard() {
   const [storeIdInput, setStoreIdInput] = useState<string>('');
   /** お客様請求の切り上げ単位（円）。0=なし */
   const [customerBillRoundUpInput, setCustomerBillRoundUpInput] = useState<string>('0');
+  /** システム日付変更時刻 (HH:MM, JST)。深夜営業を跨ぐ業務日の境界として利用 */
+  const [systemTimeInput, setSystemTimeInput] = useState<string>('06:00');
   const [showBackupDialog, setShowBackupDialog] = useState(false);
   const [showRestoreDialog, setShowRestoreDialog] = useState(false);
   const [showLogoutDialog, setShowLogoutDialog] = useState(false);
@@ -252,13 +254,14 @@ export default function Dashboard() {
 
   const loadStoreInfoForDialog = async () => {
     try {
-      const [nameRes, addrRes, telRes, greetingRes, storeIdRes, billRoundRes] = await Promise.all([
+      const [nameRes, addrRes, telRes, greetingRes, storeIdRes, billRoundRes, systemTimeRes] = await Promise.all([
         fetch('/api/project-variables?name=store_name'),
         fetch('/api/project-variables?name=store_address'),
         fetch('/api/project-variables?name=store_tel'),
         fetch('/api/project-variables?name=receipt_greeting'),
         fetch('/api/project-variables?name=store_id'),
         fetch('/api/project-variables?name=customer_bill_round_up_to_yen'),
+        fetch('/api/project-variables?name=system_time'),
       ]);
       const nameJson = await nameRes.json();
       const addrJson = await addrRes.json();
@@ -266,6 +269,7 @@ export default function Dashboard() {
       const greetingJson = await greetingRes.json();
       const storeIdJson = await storeIdRes.json();
       const billRoundJson = await billRoundRes.json();
+      const systemTimeJson = await systemTimeRes.json();
       if (nameJson?.success && nameJson?.data?.value) setStoreNameInput(String(nameJson.data.value));
       if (addrJson?.success && addrJson?.data?.value) setStoreAddressInput(String(addrJson.data.value));
       if (telJson?.success && telJson?.data?.value) setStorePhoneInput(String(telJson.data.value));
@@ -278,6 +282,19 @@ export default function Dashboard() {
       } else {
         setCustomerBillRoundUpInput('0');
       }
+      if (systemTimeJson?.success && systemTimeJson?.data?.value) {
+        const raw = String(systemTimeJson.data.value).trim();
+        const m = /^(\d{1,2}):(\d{2})$/.exec(raw);
+        if (m) {
+          const hh = Math.max(0, Math.min(23, parseInt(m[1], 10)));
+          const mm = Math.max(0, Math.min(59, parseInt(m[2], 10)));
+          setSystemTimeInput(`${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`);
+        } else {
+          setSystemTimeInput('06:00');
+        }
+      } else {
+        setSystemTimeInput('06:00');
+      }
     } catch (err) {
       console.error('店舗情報取得エラー:', err);
     }
@@ -288,6 +305,19 @@ export default function Dashboard() {
       error('エラー', '店舗名を入力してください');
       return;
     }
+
+    const systemTimeMatch = /^(\d{1,2}):(\d{2})$/.exec(systemTimeInput.trim());
+    if (!systemTimeMatch) {
+      error('エラー', 'システム日付変更時刻は HH:MM 形式で入力してください');
+      return;
+    }
+    const sysHH = parseInt(systemTimeMatch[1], 10);
+    const sysMM = parseInt(systemTimeMatch[2], 10);
+    if (sysHH < 0 || sysHH > 23 || sysMM < 0 || sysMM > 59) {
+      error('エラー', 'システム日付変更時刻が不正です（00:00 〜 23:59）');
+      return;
+    }
+    const normalizedSystemTime = `${String(sysHH).padStart(2, '0')}:${String(sysMM).padStart(2, '0')}`;
 
     try {
       const updates = [
@@ -324,6 +354,15 @@ export default function Dashboard() {
             value: String(Math.max(0, parseInt(customerBillRoundUpInput, 10) || 0)),
           }),
         }),
+        fetch('/api/project-variables', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: 'system_time',
+            value: normalizedSystemTime,
+            other: 'システム日付変更時刻 (HH:MM, JST)',
+          }),
+        }),
       ];
       const results = await Promise.all(updates.map((r) => r.then((res) => res.json())));
       if (results.every((r) => r.success)) {
@@ -335,6 +374,7 @@ export default function Dashboard() {
         setReceiptGreetingInput('');
         setStoreIdInput('');
         setCustomerBillRoundUpInput('0');
+        setSystemTimeInput('06:00');
         success('店舗情報を更新しました', '店舗情報が正常に更新されました');
       } else {
         error('エラー', results.find((r) => !r.success)?.error || '店舗情報の更新に失敗しました');
@@ -1143,11 +1183,11 @@ export default function Dashboard() {
           <DialogHeader>
             <DialogTitle className="flex items-center">
               <Settings className="w-5 h-5 mr-2" />
-              店舗情報追加
+              設定
             </DialogTitle>
-            <DialogDescription>
+            {/* <DialogDescription>
               店舗名・住所・電話番号・請求端数を設定します（印刷時のレシートにも反映されます）
-            </DialogDescription>
+            </DialogDescription> */}
           </DialogHeader>
 
           <div className="space-y-4">
@@ -1213,6 +1253,20 @@ export default function Dashboard() {
               </p>
             </div>
             <div className="space-y-2">
+              <Label htmlFor="system-time">システム日付変更時刻（JST）</Label>
+              <Input
+                id="system-time"
+                type="time"
+                step={60}
+                value={systemTimeInput}
+                onChange={(e) => setSystemTimeInput(e.target.value)}
+                className="w-full"
+              />
+              <p className="text-xs text-muted-foreground">
+                深夜営業を跨ぐ業務日の境界時刻です。給与の週次自動更新（毎週月曜日）もこの時刻に実行されます。
+              </p>
+            </div>
+            <div className="space-y-2">
               <Label htmlFor="store-id">店舗ID（領収書最下部）</Label>
               <Input
                 id="store-id"
@@ -1235,6 +1289,7 @@ export default function Dashboard() {
                   setReceiptGreetingInput('');
                   setStoreIdInput('');
                   setCustomerBillRoundUpInput('0');
+                  setSystemTimeInput('06:00');
                 }}
               >
                 キャンセル

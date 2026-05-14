@@ -61,7 +61,8 @@ async function ensureProjectVariableTable(client: any) {
       ('store_address', '', '店舗住所'),
       ('store_tel', '', '店舗電話番号'),
       ('receipt_greeting', 'ありがとうございます。\nまたのご来店をお待ちしております。', '領収書挨拶文（改行可）'),
-      ('store_id', '', '店舗ID（領収書最下部）')
+      ('store_id', '', '店舗ID（領収書最下部）'),
+      ('system_time', '06:00', 'システム日付変更時刻 (HH:MM, JST)')
     ON CONFLICT (name) DO NOTHING
   `);
 }
