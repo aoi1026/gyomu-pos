@@ -4,7 +4,7 @@ import type {
   ExtensionInfoReceiptPayload,
 } from '@/lib/printing/escpos-raster';
 import { formatYen } from '@/lib/printing/escpos-raster';
-import { summarizeSessionPayments, type SessionPayment } from '@/lib/session-payments';
+import { summarizeSessionPayments, toNumber, type SessionPayment } from '@/lib/session-payments';
 
 export async function fetchStoreName(): Promise<string> {
   try {
@@ -297,12 +297,26 @@ export function buildFullReceipt(args: BuildFullReceiptArgs): FullReceiptPayload
     .filter((name, i, arr) => arr.indexOf(name) === i)
     .join(' / ');
 
-  // Compute partial payment info for receipt display
+  // Compute partial payment info for receipt display.
+  //
+  // Rules:
+  //  - 2+ payments  → 途中会計 = sum of all-but-last base amounts,
+  //                   残りお支払額 = last payment base (if fully paid) or outstanding.
+  //  - 1 payment, not fully paid → 途中会計 = paidBaseTotal, 残りお支払額 = outstanding.
+  //  - 1 payment, fully paid    → single lump-sum payment; no partial row shown.
   let partialPaymentTotal: number | undefined;
   let remainingAmount: number | undefined;
   if (sessionPayments.length > 0) {
     const summary = summarizeSessionPayments(sessionPayments, total);
-    if (summary.paidBaseTotal > 0 && !summary.isFullyPaid) {
+    if (sessionPayments.length >= 2) {
+      const lastP = sessionPayments[sessionPayments.length - 1];
+      const lastBase = Math.max(toNumber(lastP.amount) - toNumber(lastP.fee_amount ?? 0), 0);
+      const priorBase = Math.max(summary.paidBaseTotal - lastBase, 0);
+      if (priorBase > 0) {
+        partialPaymentTotal = priorBase;
+        remainingAmount = summary.isFullyPaid ? lastBase : summary.outstanding;
+      }
+    } else if (summary.paidBaseTotal > 0 && !summary.isFullyPaid) {
       partialPaymentTotal = summary.paidBaseTotal;
       remainingAmount = summary.outstanding;
     }

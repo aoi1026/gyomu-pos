@@ -49,6 +49,7 @@ import {
   parseCustomerBillRoundUpUnit,
 } from '@/lib/customer-bill-rounding';
 import { summarizeSessionPayments, type SessionPayment } from '@/lib/session-payments';
+import { clearSessionLocalStorage } from '@/lib/session-client-storage';
 import { getCastRealtimeSubtitle } from '@/lib/cast-realtime-subtitle';
 import StripeProvider from '@/components/providers/StripeProvider';
 import StripePaymentForm from '@/components/payment/StripePaymentForm';
@@ -642,10 +643,14 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
       if (savedNominationType === 'main' || savedNominationType === 'inside' || savedNominationType === 'together') {
         setCurrentNominationType(savedNominationType);
       }
-      // 人数を復元
+      // 人数を復元（アクティブなセッションがある場合のみ。取消後の guest_count は復元しない）
+      const sessionIdForGuest = localStorage.getItem('current_session_id');
       const savedGuestCount = localStorage.getItem('guest_count');
-      if (savedGuestCount) {
+      if (sessionIdForGuest && savedGuestCount) {
         setGuestCount(savedGuestCount);
+      } else if (!sessionIdForGuest) {
+        setGuestCount('');
+        localStorage.removeItem('guest_count');
       }
       // セット延長情報を復元
       const savedExtensions = localStorage.getItem('set_extensions');
@@ -962,9 +967,32 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
                 localStorage.setItem('set_extensions', JSON.stringify(activeSession.set_extensions));
               }
             } else if (!sessionData) {
-              // セッションが存在しない場合（削除された場合など）、セッション情報をクリア
+              // セッション取消などで DB から削除された場合
+              clearSessionLocalStorage(sessionId);
+              setIsSessionActive(false);
               setSession(null);
+              setGuestCount('');
               setSetExtensionCountdown(0);
+              setSetExtensions([]);
+              setCartOrders([]);
+              setServiceOrders([]);
+              setNominations([]);
+              setNominationCharges([]);
+              setAdditionalServices([]);
+              setIsPaymentCompleted(false);
+              setCurrentNominationType(null);
+              setOrderRequestStatus({});
+              setServiceRequestStatus({});
+              try {
+                const updatedTable = await endTableSession(tableAuth.table_id);
+                setTableAuth(updatedTable);
+              } catch (err) {
+                console.error('テーブルセッション終了エラー:', err);
+              }
+              if (!isEndingSessionRef.current) {
+                success('セッション取消', 'セッションが取り消されました');
+                setTimeout(() => router.push('/table-list'), 500);
+              }
             }
           }
         } else if (isSessionActive && session) {
@@ -2064,7 +2092,7 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
 
     confirm(
       'セッション取消',
-      'このセッションを取り消しますか？注文・指名・追加サービス・決済履歴など、このセッションに関連するデータは保存されず削除されます。',
+      'このセッションを取り消しますか？注文・指名・追加サービス・決済履歴・顧客数など、このセッションに関連するデータは保存されず削除されます。',
       async () => {
         isEndingSessionRef.current = true;
         setIsRedirectingAfterEnd(true);
@@ -2076,6 +2104,10 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
             throw new Error('セッション情報が見つかりません');
           }
 
+          // ポーリングが削除前のセッションを再同期しないよう先に ID を消す
+          localStorage.removeItem('current_session_id');
+          clearSessionLocalStorage(sessionId);
+
           const response = await fetch(`/api/sessions/${sessionId}`, {
             method: 'DELETE',
           });
@@ -2084,30 +2116,6 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
           if (!result.success) {
             throw new Error(result.error || 'セッションの取消に失敗しました');
           }
-
-          localStorage.removeItem(`cart_orders_${sessionId}`);
-          localStorage.removeItem(`service_orders_${sessionId}`);
-          localStorage.removeItem('current_session_id');
-          localStorage.removeItem('guest_count');
-          localStorage.removeItem('set_count');
-          localStorage.removeItem('set_extensions');
-          localStorage.removeItem('set_extension_start_time');
-          localStorage.removeItem('set_extension_total_seconds');
-          localStorage.removeItem('nomination_charges');
-          localStorage.removeItem('additional_services');
-          localStorage.removeItem('payment_completed');
-          localStorage.removeItem('paid_amount');
-          localStorage.removeItem('cost');
-          localStorage.removeItem('fullcost');
-          localStorage.removeItem('nomination_type');
-          localStorage.removeItem('service_orders');
-          localStorage.removeItem('cart_orders');
-
-          Object.keys(localStorage).forEach(key => {
-            if (key.startsWith('cart_orders_') || key.startsWith('service_orders_')) {
-              localStorage.removeItem(key);
-            }
-          });
 
           setIsSessionActive(false);
           setSession(null);
@@ -4021,8 +4029,10 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
                           onChange={(e) => {
                             const value = e.target.value;
                             setGuestCount(value);
-                            // ローカルストレージに即座に保存
-                            if (value.trim() !== '') {
+                            // セッション開始前は localStorage に保存しない（取消後に人数が残らないようにする）
+                            if (!isSessionActive) {
+                              localStorage.removeItem('guest_count');
+                            } else if (value.trim() !== '') {
                               localStorage.setItem('guest_count', value);
                             } else {
                               localStorage.removeItem('guest_count');

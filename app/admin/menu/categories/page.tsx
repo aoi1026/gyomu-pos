@@ -13,7 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { 
   ArrowLeft, Tag, Plus, Edit, Trash2, Save, X, 
-  AlertCircle, CheckCircle, Package, Upload
+  AlertCircle, CheckCircle, Package, Upload, ArrowUp, ArrowDown
 } from 'lucide-react';
 import { useNotificationContext } from '@/lib/notification-context';
 import { compressImageFileToDataUrl } from '@/lib/image/compress';
@@ -23,6 +23,7 @@ interface Category {
   name: string;
   image?: string | null;
   other: string;
+  sort_order?: number;
   created_at: string;
   updated_at: string;
 }
@@ -47,6 +48,7 @@ export default function CategoryManagementPage() {
   const [imageFileName, setImageFileName] = useState<string>('');
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
   const [deleteCategoryId, setDeleteCategoryId] = useState<number | null>(null);
+  const [reorderingId, setReorderingId] = useState<number | null>(null);
 
   const router = useRouter();
   const { success, error } = useNotificationContext();
@@ -96,14 +98,29 @@ export default function CategoryManagementPage() {
     setIsDeleteDialogOpen(true);
   };
 
-  // 固定カテゴリ（ID:1,2,3）を先頭に表示するための並び替え済み配列
-  const sortedCategories = [...categories].sort((a, b) => {
-    const pinA = a.id === 1 || a.id === 2 || a.id === 3 ? 0 : 1;
-    const pinB = b.id === 1 || b.id === 2 || b.id === 3 ? 0 : 1;
-    if (pinA !== pinB) return pinA - pinB;
-    // 同一グループ内はIDの小さい→大きい順（昇順）で表示
-    return a.id - b.id;
-  });
+  const handleReorder = async (categoryId: number, direction: 'up' | 'down') => {
+    if (reorderingId != null) return;
+    setReorderingId(categoryId);
+    try {
+      const response = await fetch('/api/categories/reorder', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: categoryId, direction }),
+      });
+      const result = await response.json();
+      if (result.success) {
+        if (!result.unchanged) {
+          await loadCategories();
+        }
+      } else {
+        error('エラー', result.error || '表示順序の更新に失敗しました');
+      }
+    } catch {
+      error('エラー', '表示順序の更新に失敗しました');
+    } finally {
+      setReorderingId(null);
+    }
+  };
 
   const validateForm = (): string[] => {
     const errors: string[] = [];
@@ -299,10 +316,11 @@ export default function CategoryManagementPage() {
                       <TableHead>作成日</TableHead>
                       <TableHead>更新日</TableHead>
                       <TableHead className="text-center">操作</TableHead>
+                      <TableHead className="text-center w-20">順序</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {sortedCategories.map((category) => (
+                    {categories.map((category, index) => (
                       <TableRow key={category.id}>
                         {/* <TableCell>
                           {category.image ? (
@@ -348,22 +366,48 @@ export default function CategoryManagementPage() {
                         </TableCell>
                         <TableCell className="text-center">
                           <div className="flex justify-center space-x-2">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleEdit(category)}
+                              >
+                                <Edit className="w-4 h-4 mr-1" />
+                                変更
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleDelete(category.id)}
+                                className="text-red-600 hover:text-red-700"
+                              >
+                                <Trash2 className="w-4 h-4 mr-1" />
+                                削除
+                              </Button>
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <div className="flex  items-center justify-center gap-5">
                             <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => handleEdit(category)}
-                            >
-                              <Edit className="w-4 h-4 mr-1" />
-                              変更
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => handleDelete(category.id)}
-                              className="text-red-600 hover:text-red-700"
-                            >
-                              <Trash2 className="w-4 h-4 mr-1" />
-                              削除
+                                type="button"
+                                size="icon"
+                                variant="ghost"
+                                className="h-8 w-8"
+                                disabled={index === 0 || reorderingId != null}
+                                onClick={() => handleReorder(category.id, 'up')}
+                                aria-label="上へ移動"
+                              >
+                                <ArrowUp className="w-4 h-4" />
+                              </Button>
+                              <Button
+                                type="button"
+                                size="icon"
+                                variant="ghost"
+                                className="h-8 w-8"
+                                disabled={index === categories.length - 1 || reorderingId != null}
+                                onClick={() => handleReorder(category.id, 'down')}
+                                aria-label="下へ移動"
+                              >
+                                <ArrowDown className="w-4 h-4" />
                             </Button>
                           </div>
                         </TableCell>

@@ -200,7 +200,34 @@ export default function TableViewer({ tableId, onClose, onSessionMovedToTable }:
     productName: string;
   } | null>(null);
 
-  const buildReceiptData = async (): Promise<FullReceiptPayload | null> => {
+  const isCancellingSessionRef = useRef(false);
+
+  /** セッション取消後・削除検知時に UI と決済状態を初期化（顧客数も残さない） */
+  const resetSessionRelatedState = () => {
+    setSession(null);
+    setCartOrders([]);
+    setServiceOrders([]);
+    setNominations([]);
+    setSetExtensions([]);
+    setGuestCount('');
+    setSetExtensionCountdown(0);
+    setAdditionalServices([]);
+    setOrderRequestStatus({});
+    setServiceRequestStatus({});
+    setSessionPayments([]);
+    setIsPaymentCompleted(false);
+    setPaidAmount(0);
+    setLastPaymentMethod('');
+    setManualTotal(null);
+    setShowPaymentDialog(false);
+    setShowPaymentMethodDialog(false);
+    setShowCashPaymentDialog(false);
+    setShowStoreCreditCardPaymentDialog(false);
+    setIsEditingTotal(false);
+    setEditingTotalValue('');
+  };
+
+  const buildReceiptData = async (paymentsOverride?: SessionPayment[]): Promise<FullReceiptPayload | null> => {
     if (!session || !tableId) return null;
     const [storeName, storeAddress, storePhone, greeting, paymentId, storeId] = await Promise.all([
       fetchStoreName(),
@@ -228,15 +255,15 @@ export default function TableViewer({ tableId, onClose, onSessionMovedToTable }:
       setExtensions,
       nominations: nominations as any,
       additionalServices,
-      sessionPayments,
+      sessionPayments: paymentsOverride ?? sessionPayments,
     });
   };
 
-  const tryAutoPrintReceipts = async () => {
+  const tryAutoPrintReceipts = async (paymentsOverride?: SessionPayment[]) => {
     if (printer.status !== 'connected' && !printer.isNetworkPrinterReady) return;
     if (!session || !tableId || !tableData) return;
     try {
-      const payload = await buildReceiptData();
+      const payload = await buildReceiptData(paymentsOverride);
       if (!payload) return;
       await printer.requestPrint(buildFullReceiptTextEscPos(payload), '領収書自動印刷', {
         osFallback: () => printFullReceiptViaOs(payload),
@@ -274,7 +301,9 @@ export default function TableViewer({ tableId, onClose, onSessionMovedToTable }:
       return;
     }
     try {
-      const payload = await buildReceiptData();
+      // 最新の決済情報を取得してからプレビューを生成
+      const latestPayments = await loadSessionPayments(session.id);
+      const payload = await buildReceiptData(latestPayments);
       if (!payload) return;
       setReceiptPreviewData(payload);
       setShowReceiptPreview(true);
@@ -535,7 +564,8 @@ export default function TableViewer({ tableId, onClose, onSessionMovedToTable }:
   // セッション情報を取得
   const loadSession = async () => {
     if (!tableId) return;
-    
+    if (isCancellingSessionRef.current) return;
+
     try {
       const response = await fetch('/api/sessions');
       const result = await response.json();
@@ -603,11 +633,9 @@ export default function TableViewer({ tableId, onClose, onSessionMovedToTable }:
             setPaidAmount(0);
           }
         } else {
-          // セッションが終了した場合
-          if (session) {
-            setSession(null);
-            setLoading(false);
-          }
+          // アクティブセッションなし（取消・終了・削除後）
+          resetSessionRelatedState();
+          setLoading(false);
         }
       }
     } catch (error) {
@@ -1146,10 +1174,12 @@ export default function TableViewer({ tableId, onClose, onSessionMovedToTable }:
 
     confirm(
       'セッション取消',
-      'このセッションを取り消しますか？注文・指名・追加サービス・決済履歴など、このセッションに関連するデータは保存されず削除されます。',
+      'このセッションを取り消しますか？注文・指名・追加サービス・決済履歴・顧客数など、このセッションに関連するデータは保存されず削除されます。',
       async () => {
+        isCancellingSessionRef.current = true;
+        const sessionId = session.id;
         try {
-          const response = await fetch(`/api/sessions/${session.id}`, {
+          const response = await fetch(`/api/sessions/${sessionId}`, {
             method: 'DELETE',
           });
           const result = await response.json();
@@ -1158,31 +1188,16 @@ export default function TableViewer({ tableId, onClose, onSessionMovedToTable }:
             throw new Error(result.error || 'セッションの取消に失敗しました');
           }
 
-          setSession(null);
-          setCartOrders([]);
-          setServiceOrders([]);
-          setNominations([]);
-          setSetExtensions([]);
-          setGuestCount('');
-          setSetExtensionCountdown(0);
-          setAdditionalServices([]);
-          setOrderRequestStatus({});
-          setServiceRequestStatus({});
-          setIsPaymentCompleted(false);
-          setPaidAmount(0);
-          setLastPaymentMethod('');
-          setManualTotal(null);
-          setShowPaymentDialog(false);
-          setShowPaymentMethodDialog(false);
-          setShowCashPaymentDialog(false);
-          setShowStoreCreditCardPaymentDialog(false);
+          resetSessionRelatedState();
 
           success('セッション取消', 'セッションを取り消しました');
 
           setTimeout(() => {
+            isCancellingSessionRef.current = false;
             onClose();
           }, 500);
         } catch (err) {
+          isCancellingSessionRef.current = false;
           console.error('セッション取消エラー:', err);
           error('エラー', `セッション取消に失敗しました: ${err instanceof Error ? err.message : '不明なエラー'}`);
         }
@@ -2339,7 +2354,8 @@ export default function TableViewer({ tableId, onClose, onSessionMovedToTable }:
       await loadCartOrders(session.id);
       await loadSession();
       if (justFullyPaid) {
-        await tryAutoPrintReceipts();
+        // Pass latestPayments directly to avoid stale React state at print time
+        await tryAutoPrintReceipts(latestPayments);
       }
       return true;
     } catch (err) {
@@ -5113,6 +5129,12 @@ export default function TableViewer({ tableId, onClose, onSessionMovedToTable }:
                 <span>合　計</span>
                 <span>{receiptPreviewData.total.toLocaleString('ja-JP')}円</span>
               </div>
+              {(receiptPreviewData.partialPaymentTotal ?? 0) > 0 && (
+                <div className="flex justify-between font-semibold text-sm mt-2 pt-1 border-t border-dashed border-gray-300">
+                  <span>途中会計：{(receiptPreviewData.partialPaymentTotal ?? 0).toLocaleString('ja-JP')}円</span>
+                  <span>残りお支払額：{(receiptPreviewData.remainingAmount ?? 0).toLocaleString('ja-JP')}円</span>
+                </div>
+              )}
               <div className="text-xs text-gray-500 mt-1 text-center">{receiptPreviewData.taxDetailText}</div>
               <div className="text-xs text-gray-600 mt-3 pt-2 border-t text-center space-y-0.5">
                 <div>
