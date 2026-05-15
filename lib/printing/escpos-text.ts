@@ -266,6 +266,15 @@ export function buildFullReceiptTextEscPos(
   b.push(ALIGN_LEFT, SIZE_WIDE, BOLD_ON);
   b.line(leftRight('合　計', fmtEn(payload.total), COL_WIDTH_WIDE));
   b.push(SIZE_NORMAL, BOLD_OFF);
+
+  // Partial payment / remaining balance (shown when there was a mid-session payment)
+  if ((payload.partialPaymentTotal ?? 0) > 0) {
+    const partial = payload.partialPaymentTotal ?? 0;
+    const remaining = payload.remainingAmount ?? 0;
+    b.push(ALIGN_LEFT, SIZE_WIDE, BOLD_ON);
+    b.line(leftRight(`途中会計:${fmtEn(partial)}`, `残金:${fmtEn(remaining)}`, COL_WIDTH_WIDE));
+    b.push(SIZE_NORMAL, BOLD_OFF);
+  }
   b.lf();
 
   // Tax detail

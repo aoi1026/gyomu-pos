@@ -48,6 +48,7 @@ import {
   customerBillPaymentAmount,
   parseCustomerBillRoundUpUnit,
 } from '@/lib/customer-bill-rounding';
+import { summarizeSessionPayments, type SessionPayment } from '@/lib/session-payments';
 import { getCastRealtimeSubtitle } from '@/lib/cast-realtime-subtitle';
 import StripeProvider from '@/components/providers/StripeProvider';
 import StripePaymentForm from '@/components/payment/StripePaymentForm';
@@ -688,21 +689,56 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
   }, [tableAuth]);
 
   // セッション情報から決済完了状態を確認
+  // 旧仕様では session.cost > 0 で完了扱いだったが、途中会計（部分入金）で誤判定するため
+  // session_payments の受領合計が請求合計に達したときのみ「決済成功」表示にする。
   const checkPaymentStatus = async () => {
     if (!tableAuth || !isSessionActive) return;
     const sessionId = localStorage.getItem('current_session_id');
     if (!sessionId) return;
 
     try {
-      const response = await fetch(`/api/sessions?id=${sessionId}`);
-      const result = await response.json();
-      if (result.success && result.data?.[0]) {
-        const sessionData = result.data[0];
-        if (sessionData.cost && parseFloat(sessionData.cost) > 0) {
-          setIsPaymentCompleted(true);
-          localStorage.setItem('payment_completed', 'true');
-          localStorage.setItem('paid_amount', sessionData.cost.toString());
+      const [sessionRes, paymentsRes] = await Promise.all([
+        fetch(`/api/sessions?id=${sessionId}`),
+        fetch(`/api/session-payments?session_id=${sessionId}`).catch(() => null),
+      ]);
+      const sessionResult = await sessionRes.json();
+      const sessionData =
+        sessionResult.success && sessionResult.data?.[0] ? sessionResult.data[0] : null;
+      if (!sessionData) return;
+
+      const sessionCost = sessionData.cost ? parseFloat(sessionData.cost) : 0;
+      const billTotal = calculatePaymentAmount();
+
+      let summary: { paidBaseTotal: number; paidGrossTotal: number; isFullyPaid: boolean } | null =
+        null;
+      if (paymentsRes) {
+        const paymentsJson = await paymentsRes.json();
+        if (paymentsJson?.success && Array.isArray(paymentsJson.data)) {
+          const payments: SessionPayment[] = paymentsJson.data;
+          summary = summarizeSessionPayments(payments, billTotal);
         }
+      }
+
+      let completed = false;
+      let paidGross = 0;
+      if (summary && summary.paidBaseTotal > 0) {
+        completed = billTotal > 0 && summary.isFullyPaid;
+        paidGross = summary.paidGrossTotal;
+      } else {
+        // 旧データ向けフォールバック (session_payments が無い)
+        completed = billTotal > 0 && sessionCost + 0.0001 >= billTotal;
+        paidGross = sessionCost;
+      }
+
+      if (completed) {
+        setIsPaymentCompleted(true);
+        localStorage.setItem('payment_completed', 'true');
+        localStorage.setItem('paid_amount', String(paidGross));
+      } else {
+        setIsPaymentCompleted(false);
+        localStorage.removeItem('payment_completed');
+        // paid_amount は部分入金額として残してもよい
+        localStorage.setItem('paid_amount', String(paidGross));
       }
     } catch (err) {
       console.error('決済状態確認エラー:', err);
@@ -6182,14 +6218,14 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
             </DialogHeader>
 
             <div className="space-y-4">
-              <Button
+              {/* <Button
                 onClick={handleCreditCardPayment}
                 className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
                 size="lg"
               >
                 <CreditCard className="w-5 h-5 mr-2" />
                 クレジットカードで決済 ({formatCurrency(calculatePaymentAmount())})
-              </Button>
+              </Button> */}
 
               <Button
                 onClick={handleStoreCreditCardPayment}

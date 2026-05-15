@@ -49,6 +49,15 @@ import {
   customerBillPaymentAmount,
   parseCustomerBillRoundUpUnit,
 } from '@/lib/customer-bill-rounding';
+import {
+  CARD_FEE_RATE_OPTIONS,
+  buildPaymentMethodSummary,
+  computeGrossFromBase,
+  payTypeLabel,
+  summarizeSessionPayments,
+  toNumber as toNumberMoney,
+  type SessionPayment,
+} from '@/lib/session-payments';
 import { getCastRealtimeSubtitle } from '@/lib/cast-realtime-subtitle';
 import type { FullReceiptPayload, ExtensionInfoReceiptPayload } from '@/lib/printing/escpos-raster';
 import {
@@ -164,8 +173,16 @@ export default function TableViewer({ tableId, onClose, onSessionMovedToTable }:
   const [showCashPaymentDialog, setShowCashPaymentDialog] = useState(false);
   const [showStoreCreditCardPaymentDialog, setShowStoreCreditCardPaymentDialog] = useState(false);
   const [paymentAmount, setPaymentAmount] = useState<number>(0);
+  /** 現金決済ダイアログ: 請求合計への充当額（円） */
   const [cashPaymentAmount, setCashPaymentAmount] = useState<string>('');
+  /** 店舗用クレカ決済ダイアログ: 請求合計への充当額（円） */
   const [storeCreditCardPaymentAmount, setStoreCreditCardPaymentAmount] = useState<string>('');
+  /** 店舗用クレカ決済ダイアログ: 手数料率（%）。0/10/15/20 から選択 */
+  const [storeCreditCardFeeRate, setStoreCreditCardFeeRate] = useState<string>('0');
+  /** Stripe(クレジットカード)決済の手数料率（%） */
+  const [onlineCardFeeRate, setOnlineCardFeeRate] = useState<string>('0');
+  /** セッション決済履歴（同一セッションに紐づくすべての支払い） */
+  const [sessionPayments, setSessionPayments] = useState<SessionPayment[]>([]);
   const [isPaymentCompleted, setIsPaymentCompleted] = useState<boolean>(false);
   const [paidAmount, setPaidAmount] = useState<number>(0);
   const [lastPaymentMethod, setLastPaymentMethod] = useState<string>(''); // 領収書用: 現金 / クレジットカード / 店舗用クレジットカード
@@ -211,6 +228,7 @@ export default function TableViewer({ tableId, onClose, onSessionMovedToTable }:
       setExtensions,
       nominations: nominations as any,
       additionalServices,
+      sessionPayments,
     });
   };
 
@@ -568,16 +586,20 @@ export default function TableViewer({ tableId, onClose, onSessionMovedToTable }:
               loadAddCharges(),
               loadMenuData(),
               loadServices(),
-              loadCasts()
+              loadCasts(),
+              loadSessionPayments(activeSession.id),
             ]);
-          }
-          
-          // 決済完了状態を確認（セッションのcostが0より大きい場合）
-          if (activeSession.cost && parseFloat(activeSession.cost) > 0) {
-            setIsPaymentCompleted(true);
-            setPaidAmount(parseFloat(activeSession.cost));
           } else {
-            setIsPaymentCompleted(false);
+            // 2回目以降のポーリングでも支払履歴は別ウィンドウや顧客側の操作で増減する可能性があるので
+            // ポーリングごとに同期する。
+            void loadSessionPayments(activeSession.id);
+          }
+
+          // 決済完了状態はセッションの cost を信頼。残金は支払履歴ロード後に再計算される。
+          const sessionCost = activeSession.cost ? parseFloat(activeSession.cost) : 0;
+          if (sessionCost > 0) {
+            setPaidAmount(sessionCost);
+          } else {
             setPaidAmount(0);
           }
         } else {
@@ -595,6 +617,25 @@ export default function TableViewer({ tableId, onClose, onSessionMovedToTable }:
         setLoading(false);
       }
     }
+  };
+
+  // セッションの決済履歴を取得
+  const loadSessionPayments = async (sessionId: number) => {
+    try {
+      const response = await fetch(`/api/session-payments?session_id=${sessionId}`, {
+        cache: 'no-store',
+      });
+      const result = await response.json();
+      if (result?.success) {
+        const rows: SessionPayment[] = Array.isArray(result.data) ? result.data : [];
+        setSessionPayments(rows);
+        return rows;
+      }
+    } catch (err) {
+      console.error('決済履歴取得エラー:', err);
+    }
+    setSessionPayments([]);
+    return [] as SessionPayment[];
   };
 
   // 注文カートを取得
@@ -2222,20 +2263,113 @@ export default function TableViewer({ tableId, onClose, onSessionMovedToTable }:
     }
   };
 
+  /**
+   * 部分入金 (途中会計) 1件を session_payments に登録し、session.cost を「請求合計への充当合計」へ更新する共通処理。
+   *
+   * @param payType  0=店舗用クレカ, 1=現金, 2=オンラインカード
+   * @param baseAmount 請求合計への充当額 (¥)
+   * @param feeRatePercent カード手数料率 (0/10/15/20 等)。現金は 0。
+   */
+  const submitSessionPayment = async (
+    payType: 0 | 1 | 2,
+    baseAmount: number,
+    feeRatePercent: number
+  ): Promise<boolean> => {
+    if (!session) return false;
+    if (!Number.isFinite(baseAmount) || baseAmount <= 0) return false;
+    if (![0, 1, 2].includes(payType)) return false;
+
+    const rate = Math.max(0, Math.min(100, Number(feeRatePercent) || 0));
+    const feeAmount = payType === 1 ? 0 : Math.max(0, Math.round((baseAmount * rate) / 100));
+    const grossAmount = Math.round(baseAmount + feeAmount);
+
+    try {
+      // 1. 決済履歴を保存
+      const res = await fetch('/api/session-payments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          session_id: session.id,
+          pay_type: payType,
+          amount: grossAmount,
+          fee_rate: rate,
+          fee_amount: feeAmount,
+        }),
+      });
+      const result = await res.json();
+      if (!result?.success) {
+        error('エラー', result?.error || '決済履歴の保存に失敗しました');
+        return false;
+      }
+
+      // 2. 最新の支払履歴を再読み込み (残金・完了判定の根拠)
+      const latestPayments = await loadSessionPayments(session.id);
+
+      // 3. 累計の請求充当額を計算して session.cost に同期
+      const billTotal = getBillTotal();
+      const summary = summarizeSessionPayments(latestPayments, billTotal);
+      await fetch(`/api/sessions/${session.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cost: summary.paidBaseTotal, pay_type: payType }),
+      }).catch((err) => {
+        console.error('sessions.cost 更新エラー:', err);
+      });
+
+      const justFullyPaid = summary.isFullyPaid;
+
+      // 4. 完了時は承認待ち注文を拒否し、自動印刷を試みる
+      if (justFullyPaid) {
+        const ordersToReject = cartOrders.filter((order: any) => {
+          const st = orderRequestStatus[order.id] || order.status;
+          return st === 'pending' || st === 'sent';
+        });
+        await Promise.all(
+          ordersToReject.map((order: any) =>
+            fetch(`/api/salesorder/${order.id}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ status: 'rejected' }),
+            }).catch((err) => console.error('注文拒否更新エラー:', err))
+          )
+        );
+      }
+
+      setLastPaymentMethod(buildPaymentMethodSummary(latestPayments));
+      await loadCartOrders(session.id);
+      await loadSession();
+      if (justFullyPaid) {
+        await tryAutoPrintReceipts();
+      }
+      return true;
+    } catch (err) {
+      console.error('決済処理エラー:', err);
+      error('エラー', '決済処理中にエラーが発生しました');
+      return false;
+    }
+  };
+
   // 決済処理
   const handlePayment = () => {
+    const summary = getPaymentSummary();
+    if (summary.outstanding <= 0 && getBillTotal() > 0) {
+      // 残金なし。誤操作で開かないよう何もしない。
+      return;
+    }
     setShowPaymentMethodDialog(true);
   };
 
   const handleCashPayment = () => {
     setShowPaymentMethodDialog(false);
     setShowCashPaymentDialog(true);
-    setCashPaymentAmount('');
+    const outstanding = getPaymentSummary().outstanding;
+    setCashPaymentAmount(outstanding > 0 ? String(outstanding) : '');
   };
 
   const handleCreditCardPayment = () => {
-    const paymentAmount = calculatePaymentAmount();
-    setPaymentAmount(paymentAmount);
+    const outstanding = getPaymentSummary().outstanding;
+    setPaymentAmount(outstanding);
+    setOnlineCardFeeRate('0');
     setShowPaymentMethodDialog(false);
     setShowPaymentDialog(true);
   };
@@ -2243,57 +2377,20 @@ export default function TableViewer({ tableId, onClose, onSessionMovedToTable }:
   const handleStoreCreditCardPayment = () => {
     setShowPaymentMethodDialog(false);
     setShowStoreCreditCardPaymentDialog(true);
-    setStoreCreditCardPaymentAmount('');
+    const outstanding = getPaymentSummary().outstanding;
+    setStoreCreditCardPaymentAmount(outstanding > 0 ? String(outstanding) : '');
+    setStoreCreditCardFeeRate('0');
   };
 
-  const handlePaymentSuccess = async (paymentIntentId: string) => {
+  const handlePaymentSuccess = async (_paymentIntentId: string) => {
     if (!session) return;
-    
-    try {
-      // セッションの現在のcostを取得
-      const sessionResponse = await fetch(`/api/sessions?id=${session.id}`);
-      const sessionResult = await sessionResponse.json();
-      const currentCost = sessionResult.success && sessionResult.data?.[0]?.cost ? parseFloat(sessionResult.data[0].cost) : 0;
-      const newCost = currentCost + paymentAmount;
-      
-      await fetch(`/api/sessions/${session.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cost: newCost, pay_type: 2 })
-      });
-
-      // 決済履歴を保存（失敗しても決済フローは継続）
-      fetch('/api/session-payments', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ session_id: session.id, pay_type: 2, amount: paymentAmount })
-      }).catch(() => {});
-      
-      // 承認待ちの注文を拒否
-      const ordersToReject = cartOrders.filter((order: any) => {
-        const st = orderRequestStatus[order.id] || order.status;
-        return st === 'pending' || st === 'sent';
-      });
-      await Promise.all(
-        ordersToReject.map((order: any) =>
-          fetch(`/api/salesorder/${order.id}`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ status: 'rejected' })
-          }).catch(err => console.error('注文拒否更新エラー:', err))
-        )
-      );
-      
-      setIsPaymentCompleted(true);
-      setPaidAmount(paymentAmount);
-      setLastPaymentMethod('クレジットカード');
+    const baseAmount = paymentAmount;
+    const rate = Math.max(0, Number(onlineCardFeeRate) || 0);
+    const ok = await submitSessionPayment(2, baseAmount, rate);
+    if (ok) {
       setShowPaymentDialog(false);
       setPaymentAmount(0);
-      await loadCartOrders(session.id);
-      await loadSession();
-      await tryAutoPrintReceipts();
-    } catch (err) {
-      console.error('クレジットカード決済エラー:', err);
+      setOnlineCardFeeRate('0');
     }
   };
 
@@ -2304,120 +2401,59 @@ export default function TableViewer({ tableId, onClose, onSessionMovedToTable }:
   const handlePaymentCancel = () => {
     setShowPaymentDialog(false);
     setPaymentAmount(0);
+    setOnlineCardFeeRate('0');
   };
 
   const handleCashPaymentConfirm = async () => {
-    const amount = parseFloat(cashPaymentAmount);
-    if (isNaN(amount) || amount <= 0 || !session) return;
+    const baseAmount = parseFloat(cashPaymentAmount);
+    if (isNaN(baseAmount) || baseAmount <= 0 || !session) return;
 
-    const totalAmount = calculateTotal();
-    if (amount < totalAmount) return;
-    
-    try {
-      // セッションの現在のcostを取得
-      const sessionResponse = await fetch(`/api/sessions?id=${session.id}`);
-      const sessionResult = await sessionResponse.json();
-      const currentCost = sessionResult.success && sessionResult.data?.[0]?.cost ? parseFloat(sessionResult.data[0].cost) : 0;
-      const newCost = currentCost + amount;
-      
-      await fetch(`/api/sessions/${session.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cost: newCost, pay_type: 1 })
-      });
+    const outstanding = getPaymentSummary().outstanding;
+    if (baseAmount > outstanding + 0.0001) {
+      error('エラー', `残金 ${formatCurrency(outstanding)} を超える金額は登録できません`);
+      return;
+    }
 
-      // 決済履歴を保存（失敗しても決済フローは継続）
-      fetch('/api/session-payments', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ session_id: session.id, pay_type: 1, amount })
-      }).catch(() => {});
-      
-      // 承認待ちの注文を拒否
-      const ordersToReject = cartOrders.filter((order: any) => {
-        const st = orderRequestStatus[order.id] || order.status;
-        return st === 'pending' || st === 'sent';
-      });
-      await Promise.all(
-        ordersToReject.map((order: any) =>
-          fetch(`/api/salesorder/${order.id}`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ status: 'rejected' })
-          }).catch(err => console.error('注文拒否更新エラー:', err))
-        )
-      );
-      
-      setIsPaymentCompleted(true);
-      setPaidAmount(amount);
-      setLastPaymentMethod('現金');
+    const ok = await submitSessionPayment(1, baseAmount, 0);
+    if (ok) {
       setShowCashPaymentDialog(false);
       setCashPaymentAmount('');
-      await loadCartOrders(session.id);
-      await loadSession();
-      await tryAutoPrintReceipts();
-    } catch (err) {
-      console.error('現金決済エラー:', err);
+      const after = getPaymentSummary();
+      if (!after.isFullyPaid) {
+        success('お預かり受領', `${formatCurrency(baseAmount)} を受領しました（残金: ${formatCurrency(after.outstanding)}）`);
+      }
     }
   };
 
   const handleStoreCreditCardPaymentConfirm = async () => {
     if (isProcessingStoreCreditCardPayment) return;
-    
-    const amount = parseFloat(storeCreditCardPaymentAmount);
-    if (isNaN(amount) || amount <= 0 || !session) return;
 
-    const totalAmount = calculateTotal();
-    if (amount < totalAmount) return;
-    
+    const baseAmount = parseFloat(storeCreditCardPaymentAmount);
+    if (isNaN(baseAmount) || baseAmount <= 0 || !session) return;
+
+    const outstanding = getPaymentSummary().outstanding;
+    if (baseAmount > outstanding + 0.0001) {
+      error('エラー', `残金 ${formatCurrency(outstanding)} を超える金額は登録できません`);
+      return;
+    }
+
+    const rate = Math.max(0, Number(storeCreditCardFeeRate) || 0);
+
     setIsProcessingStoreCreditCardPayment(true);
-    
     try {
-      // セッションの現在のcostを取得
-      const sessionResponse = await fetch(`/api/sessions?id=${session.id}`);
-      const sessionResult = await sessionResponse.json();
-      const currentCost = sessionResult.success && sessionResult.data?.[0]?.cost ? parseFloat(sessionResult.data[0].cost) : 0;
-      const newCost = currentCost + amount;
-      
-      await fetch(`/api/sessions/${session.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cost: newCost, pay_type: 0 })
-      });
-
-      // 決済履歴を保存（失敗しても決済フローは継続）
-      fetch('/api/session-payments', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ session_id: session.id, pay_type: 0, amount })
-      }).catch(() => {});
-      
-      // 承認待ちの注文を拒否
-      const ordersToReject = cartOrders.filter((order: any) => {
-        const st = orderRequestStatus[order.id] || order.status;
-        return st === 'pending' || st === 'sent';
-      });
-      await Promise.all(
-        ordersToReject.map((order: any) =>
-          fetch(`/api/salesorder/${order.id}`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ status: 'rejected' })
-          }).catch(err => console.error('注文拒否更新エラー:', err))
-        )
-      );
-      
-      setIsPaymentCompleted(true);
-      setPaidAmount(amount);
-      setLastPaymentMethod('店舗用クレジットカード');
-      setShowStoreCreditCardPaymentDialog(false);
-      setStoreCreditCardPaymentAmount('');
-      await loadCartOrders(session.id);
-      await loadSession();
-      await tryAutoPrintReceipts();
-    } catch (err) {
-      console.error('店舗用クレジットカード決済エラー:', err);
-      error('エラー', '決済処理中にエラーが発生しました');
+      const ok = await submitSessionPayment(0, baseAmount, rate);
+      if (ok) {
+        setShowStoreCreditCardPaymentDialog(false);
+        setStoreCreditCardPaymentAmount('');
+        setStoreCreditCardFeeRate('0');
+        const after = getPaymentSummary();
+        if (!after.isFullyPaid) {
+          success(
+            'お預かり受領',
+            `${formatCurrency(baseAmount)} を受領しました（残金: ${formatCurrency(after.outstanding)}）`
+          );
+        }
+      }
     } finally {
       setIsProcessingStoreCreditCardPayment(false);
     }
@@ -2428,6 +2464,36 @@ export default function TableViewer({ tableId, onClose, onSessionMovedToTable }:
     const ru = getManualTotal() !== null ? 0 : customerBillRoundUpYen;
     return customerBillPaymentAmount(total, ru);
   };
+
+  /** 現在の請求合計 (端数処理後の最終請求額) */
+  const getBillTotal = () => calculatePaymentAmount();
+
+  /** 受領済み / 残金 等のサマリーを計算する */
+  const getPaymentSummary = () => {
+    return summarizeSessionPayments(sessionPayments, getBillTotal());
+  };
+
+  // 残金 ≦ 0 になれば決済完了とみなす。
+  // 既存の「session.cost > 0」フラグだけだと部分入金で誤って完了扱いになるため、
+  // session_payments がある場合は残金で判定し、無い場合は旧来通り session.cost のみで判定する。
+  useEffect(() => {
+    if (!session) {
+      setIsPaymentCompleted(false);
+      return;
+    }
+    const billTotal = getBillTotal();
+    if (sessionPayments.length === 0) {
+      // 旧データ等で履歴が無い場合は session.cost をそのまま使う
+      const cost = paidAmount;
+      setIsPaymentCompleted(billTotal > 0 && cost > 0 && cost + 0.0001 >= billTotal);
+      return;
+    }
+    const summary = summarizeSessionPayments(sessionPayments, billTotal);
+    setIsPaymentCompleted(summary.isFullyPaid);
+    setPaidAmount(summary.paidGrossTotal);
+    setLastPaymentMethod(buildPaymentMethodSummary(sessionPayments));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionPayments, session?.id]);
 
   // 注文合計を計算（テーブルページと同じロジック）
   const calculateTotal = () => {
@@ -3979,25 +4045,82 @@ export default function TableViewer({ tableId, onClose, onSessionMovedToTable }:
                         )}
                       </div>
                       
+                      {/* 受領内訳・残金 */}
+                      {(() => {
+                        const summary = getPaymentSummary();
+                        const billTotal = getBillTotal();
+                        if (billTotal <= 0) return null;
+                        if (sessionPayments.length === 0 && summary.outstanding > 0) return null;
+                        return (
+                          <div className="mt-4 border-t pt-3 space-y-2">
+                            <div className="flex items-center justify-between text-sm">
+                              <span className="text-gray-600">受領済み（請求充当）</span>
+                              <span className="font-semibold text-gray-900">{formatCurrency(summary.paidBaseTotal)}</span>
+                            </div>
+                            {summary.paidFeeTotal > 0 && (
+                              <div className="flex items-center justify-between text-xs text-gray-500">
+                                <span>カード手数料（お客様負担）</span>
+                                <span>{formatCurrency(summary.paidFeeTotal)}</span>
+                              </div>
+                            )}
+                            <div className="flex items-center justify-between text-sm">
+                              <span className="text-gray-600">残金</span>
+                              <span className={`font-bold ${summary.outstanding > 0 ? 'text-rose-600' : 'text-green-700'}`}>
+                                {formatCurrency(summary.outstanding)}
+                              </span>
+                            </div>
+                            {sessionPayments.length > 0 && (
+                              <div className="rounded-md bg-gray-50 p-2 space-y-1">
+                                <div className="text-[11px] text-gray-500">受領内訳</div>
+                                {sessionPayments.map((p) => {
+                                  const amt = toNumberMoney(p.amount);
+                                  const fee = toNumberMoney(p.fee_amount);
+                                  const base = Math.max(amt - fee, 0);
+                                  const rate = toNumberMoney(p.fee_rate);
+                                  return (
+                                    <div key={p.id} className="flex items-center justify-between text-xs">
+                                      <span className="flex items-center gap-1">
+                                        <Badge variant="outline" className="px-1.5 py-0 text-[10px]">
+                                          {payTypeLabel(Number(p.pay_type))}
+                                        </Badge>
+                                        {fee > 0 && (
+                                          <span className="text-gray-500">手数料 {rate}%</span>
+                                        )}
+                                      </span>
+                                      <span className="tabular-nums">
+                                        {formatCurrency(base)}
+                                        {fee > 0 && (
+                                          <span className="text-gray-400"> (+{formatCurrency(fee)})</span>
+                                        )}
+                                      </span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
+
                       {/* 決済ボタンまたは決済成功表示 */}
                       {isPaymentCompleted ? (
                         <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg text-center">
                           <CheckCircle className="w-8 h-8 text-green-600 mx-auto mb-2" />
-                          <div className="font-bold text-lg text-green-700 mb-1">決済成功</div>
-                          <div className="text-sm text-green-600 mb-2">支払いが完了しました</div>
+                          <div className="font-bold text-lg text-green-700 mb-1">決済完了</div>
+                          <div className="text-sm text-green-600 mb-2">残金 0 円 / 受領総額（手数料込み）</div>
                           <div className="text-lg font-bold text-green-700">
                             {formatCurrency(paidAmount)}
                           </div>
                         </div>
                       ) : (
-                        <Button 
+                        <Button
                           onClick={handlePayment}
                           className="w-full mt-4 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
                           size="lg"
-                          disabled={calculateTotal() <= 0 || isNaN(calculateTotal())}
+                          disabled={getBillTotal() <= 0 || isNaN(getBillTotal()) || getPaymentSummary().outstanding <= 0}
                         >
                           <CreditCard className="w-4 h-4 mr-2" />
-                          決済
+                          {sessionPayments.length > 0 ? '決済を追加（残金あり）' : '決済'}
                         </Button>
                       )}
                       <Button
@@ -4202,36 +4325,38 @@ export default function TableViewer({ tableId, onClose, onSessionMovedToTable }:
               決済方法を選択
             </DialogTitle>
             <DialogDescription>
-              支払い方法を選択してください
+              現金とカードを組み合わせて受領できます。途中会計の場合は残金以下の金額で確定してください。
             </DialogDescription>
           </DialogHeader>
-          
-          <div className="space-y-4">
-            <Button
-              onClick={handleCreditCardPayment}
-              className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
-              size="lg"
-            >
-              <CreditCard className="w-5 h-5 mr-2" />
-              クレジットカードで決済 ({formatCurrency(calculatePaymentAmount())})
-            </Button>
-            
+
+          {(() => {
+            const summary = getPaymentSummary();
+            return (
+              <div className="rounded-md bg-gray-50 p-3 text-sm space-y-1 mb-2">
+                <div className="flex justify-between"><span>請求合計</span><span className="font-semibold">{formatCurrency(getBillTotal())}</span></div>
+                <div className="flex justify-between"><span>受領済み</span><span>{formatCurrency(summary.paidBaseTotal)}</span></div>
+                <div className="flex justify-between"><span>残金</span><span className={summary.outstanding > 0 ? 'text-rose-600 font-bold' : 'text-green-700 font-bold'}>{formatCurrency(summary.outstanding)}</span></div>
+              </div>
+            );
+          })()}
+
+          <div className="space-y-3">
             <Button
               onClick={handleCashPayment}
               className="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700"
               size="lg"
             >
               <DollarSign className="w-5 h-5 mr-2" />
-              現金で決済 ({formatCurrency(calculateTotal())})
+              現金で受領
             </Button>
-            
+
             <Button
               onClick={handleStoreCreditCardPayment}
               className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
               size="lg"
             >
               <CreditCard className="w-5 h-5 mr-2" />
-              店舗用クレジットカード決済 
+              店舗用クレジットカードで受領
             </Button>
           </div>
         </DialogContent>
@@ -4243,50 +4368,72 @@ export default function TableViewer({ tableId, onClose, onSessionMovedToTable }:
           <DialogHeader>
             <DialogTitle className="flex items-center">
               <DollarSign className="w-5 h-5 mr-2" />
-              現金決済
+              現金受領
             </DialogTitle>
             <DialogDescription>
-              決済金額を入力してください
+              受領金額を入力してください（途中会計は残金以下の金額で確定できます）
             </DialogDescription>
           </DialogHeader>
-          
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="cash-amount">決済金額</Label>
-              <Input
-                id="cash-amount"
-                type="number"
-                min={calculateTotal()}
-                placeholder="金額を入力"
-                value={cashPaymentAmount}
-                onChange={(e) => setCashPaymentAmount(e.target.value)}
-                className="w-full"
-              />
-              <p className="text-sm text-gray-500">
-                合計金額: {formatCurrency(calculateTotal())}
-              </p>
-            </div>
-            
-            <div className="flex justify-end space-x-3">
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setShowCashPaymentDialog(false);
-                  setCashPaymentAmount('');
-                }}
-              >
-                キャンセル
-              </Button>
-              <Button
-                onClick={handleCashPaymentConfirm}
-                disabled={!cashPaymentAmount || parseFloat(cashPaymentAmount) < calculateTotal()}
-                className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700"
-              >
-                <CheckCircle className="w-4 h-4 mr-2" />
-                確認
-              </Button>
-            </div>
-          </div>
+
+          {(() => {
+            const summary = getPaymentSummary();
+            return (
+              <div className="space-y-4">
+                <div className="rounded-md bg-gray-50 p-3 text-sm space-y-1">
+                  <div className="flex justify-between"><span>請求合計</span><span>{formatCurrency(getBillTotal())}</span></div>
+                  <div className="flex justify-between"><span>残金</span><span className="font-bold text-rose-600">{formatCurrency(summary.outstanding)}</span></div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="cash-amount">受領金額（請求への充当）</Label>
+                  <Input
+                    id="cash-amount"
+                    type="number"
+                    min={0}
+                    max={summary.outstanding}
+                    step={1}
+                    placeholder="金額を入力"
+                    value={cashPaymentAmount}
+                    onChange={(e) => setCashPaymentAmount(e.target.value)}
+                    className="w-full"
+                  />
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCashPaymentAmount(String(summary.outstanding))}
+                    >
+                      残金全額
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="flex justify-end space-x-3">
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setShowCashPaymentDialog(false);
+                      setCashPaymentAmount('');
+                    }}
+                  >
+                    キャンセル
+                  </Button>
+                  <Button
+                    onClick={handleCashPaymentConfirm}
+                    disabled={
+                      !cashPaymentAmount ||
+                      parseFloat(cashPaymentAmount) <= 0 ||
+                      parseFloat(cashPaymentAmount) > summary.outstanding + 0.0001
+                    }
+                    className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700"
+                  >
+                    <CheckCircle className="w-4 h-4 mr-2" />
+                    確認
+                  </Button>
+                </div>
+              </div>
+            );
+          })()}
         </DialogContent>
       </Dialog>
 
@@ -4296,63 +4443,115 @@ export default function TableViewer({ tableId, onClose, onSessionMovedToTable }:
           <DialogHeader>
             <DialogTitle className="flex items-center">
               <CreditCard className="w-5 h-5 mr-2" />
-              店舗用クレジットカード決済
+              店舗用クレジットカード受領
             </DialogTitle>
             <DialogDescription>
-              決済金額を入力してください
+              請求への充当額と手数料率を指定してください。カードに請求する金額は「充当額 ×（1 + 手数料率）」になります。
             </DialogDescription>
           </DialogHeader>
-          
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="store-credit-card-amount">決済金額</Label>
-              <Input
-                id="store-credit-card-amount"
-                type="number"
-                min={calculateTotal()}
-                placeholder="金額を入力"
-                value={storeCreditCardPaymentAmount}
-                onChange={(e) => setStoreCreditCardPaymentAmount(e.target.value)}
-                className="w-full"
-              />
-              <p className="text-sm text-gray-500">
-                合計金額: {formatCurrency(calculateTotal())}
-              </p>
-            </div>
-            
-            <div className="flex justify-end space-x-3">
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setShowStoreCreditCardPaymentDialog(false);
-                  setStoreCreditCardPaymentAmount('');
-                }}
-              >
-                キャンセル
-              </Button>
-              <Button
-                onClick={handleStoreCreditCardPaymentConfirm}
-                disabled={isProcessingStoreCreditCardPayment || !storeCreditCardPaymentAmount || parseFloat(storeCreditCardPaymentAmount) < calculateTotal()}
-                className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
-              >
-                {isProcessingStoreCreditCardPayment ? (
-                  <>
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
-                    処理中...
-                  </>
-                ) : (
-                  <>
-                    <CheckCircle className="w-4 h-4 mr-2" />
-                    確認
-                  </>
-                )}
-              </Button>
-            </div>
-          </div>
+
+          {(() => {
+            const summary = getPaymentSummary();
+            const baseAmount = parseFloat(storeCreditCardPaymentAmount);
+            const safeBase = Number.isFinite(baseAmount) ? Math.max(0, baseAmount) : 0;
+            const rate = Math.max(0, Number(storeCreditCardFeeRate) || 0);
+            const feeAmount = Math.round((safeBase * rate) / 100);
+            const grossCharge = computeGrossFromBase(safeBase, rate);
+            return (
+              <div className="space-y-4">
+                <div className="rounded-md bg-gray-50 p-3 text-sm space-y-1">
+                  <div className="flex justify-between"><span>請求合計</span><span>{formatCurrency(getBillTotal())}</span></div>
+                  <div className="flex justify-between"><span>残金</span><span className="font-bold text-rose-600">{formatCurrency(summary.outstanding)}</span></div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="store-credit-card-amount">請求への充当額</Label>
+                  <Input
+                    id="store-credit-card-amount"
+                    type="number"
+                    min={0}
+                    max={summary.outstanding}
+                    step={1}
+                    placeholder="金額を入力"
+                    value={storeCreditCardPaymentAmount}
+                    onChange={(e) => setStoreCreditCardPaymentAmount(e.target.value)}
+                    className="w-full"
+                  />
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setStoreCreditCardPaymentAmount(String(summary.outstanding))}
+                    >
+                      残金全額
+                    </Button>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="store-credit-card-fee-rate">カード手数料率</Label>
+                  <Select value={storeCreditCardFeeRate} onValueChange={setStoreCreditCardFeeRate}>
+                    <SelectTrigger id="store-credit-card-fee-rate" className="w-full">
+                      <SelectValue placeholder="手数料率を選択" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {CARD_FEE_RATE_OPTIONS.map((r) => (
+                        <SelectItem key={r} value={String(r)}>
+                          {r}%
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="rounded-md border border-purple-200 bg-purple-50 p-3 text-sm space-y-1">
+                  <div className="flex justify-between"><span>請求充当額</span><span>{formatCurrency(safeBase)}</span></div>
+                  <div className="flex justify-between"><span>手数料 ({rate}%)</span><span>{formatCurrency(feeAmount)}</span></div>
+                  <div className="flex justify-between font-bold text-purple-800 border-t border-purple-200 pt-1">
+                    <span>カードに請求する金額</span>
+                    <span>{formatCurrency(grossCharge)}</span>
+                  </div>
+                </div>
+
+                <div className="flex justify-end space-x-3">
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setShowStoreCreditCardPaymentDialog(false);
+                      setStoreCreditCardPaymentAmount('');
+                      setStoreCreditCardFeeRate('0');
+                    }}
+                  >
+                    キャンセル
+                  </Button>
+                  <Button
+                    onClick={handleStoreCreditCardPaymentConfirm}
+                    disabled={
+                      isProcessingStoreCreditCardPayment ||
+                      !storeCreditCardPaymentAmount ||
+                      safeBase <= 0 ||
+                      safeBase > summary.outstanding + 0.0001
+                    }
+                    className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
+                  >
+                    {isProcessingStoreCreditCardPayment ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                        処理中...
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle className="w-4 h-4 mr-2" />
+                        確認
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </div>
+            );
+          })()}
         </DialogContent>
       </Dialog>
 
-      {/* クレジットカード決済ダイアログ */}
+      {/* クレジットカード(Stripe)決済ダイアログ */}
       <Dialog open={showPaymentDialog} onOpenChange={setShowPaymentDialog}>
         <DialogContent className="max-w-md">
           <DialogHeader>
@@ -4361,19 +4560,39 @@ export default function TableViewer({ tableId, onClose, onSessionMovedToTable }:
               クレジットカード決済
             </DialogTitle>
             <DialogDescription>
-              支払い金額: {formatCurrency(paymentAmount)}
+              請求への充当額: {formatCurrency(paymentAmount)}
             </DialogDescription>
           </DialogHeader>
-          
-          <div className="mt-4">
-            <StripeProvider>
-              <StripePaymentForm
-                amount={paymentAmount}
-                onSuccess={handlePaymentSuccess}
-                onError={handlePaymentError}
-                onCancel={handlePaymentCancel}
-              />
-            </StripeProvider>
+
+          <div className="space-y-3 mt-2">
+            <div className="space-y-2">
+              <Label htmlFor="online-card-fee-rate">カード手数料率</Label>
+              <Select value={onlineCardFeeRate} onValueChange={setOnlineCardFeeRate}>
+                <SelectTrigger id="online-card-fee-rate" className="w-full">
+                  <SelectValue placeholder="手数料率を選択" />
+                </SelectTrigger>
+                <SelectContent>
+                  {CARD_FEE_RATE_OPTIONS.map((r) => (
+                    <SelectItem key={r} value={String(r)}>
+                      {r}%
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-gray-500">
+                カードに請求する金額: {formatCurrency(computeGrossFromBase(paymentAmount, Number(onlineCardFeeRate) || 0))}
+              </p>
+            </div>
+            <div className="mt-4">
+              <StripeProvider>
+                <StripePaymentForm
+                  amount={computeGrossFromBase(paymentAmount, Number(onlineCardFeeRate) || 0)}
+                  onSuccess={handlePaymentSuccess}
+                  onError={handlePaymentError}
+                  onCancel={handlePaymentCancel}
+                />
+              </StripeProvider>
+            </div>
           </div>
         </DialogContent>
       </Dialog>

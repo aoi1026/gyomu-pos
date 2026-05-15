@@ -32,6 +32,10 @@ export type FullReceiptPayload = {
   startTime: string;
   guestCount: string;
   nomineeNames?: string;
+  /** 途中会計で受領済みの合計額（0 または未設定なら表示しない） */
+  partialPaymentTotal?: number;
+  /** 残りお支払額（0 または未設定なら表示しない） */
+  remainingAmount?: number;
 };
 
 export type ExtensionInfoReceiptPayload = {
@@ -266,6 +270,9 @@ export function makeFullReceiptCanvas(payload: FullReceiptPayload, widthPx: numb
   if (timeGuest.length) bottomLines.push(timeGuest.join('  '));
   if (payload.nomineeNames?.trim()) bottomLines.push(`指名:${payload.nomineeNames.trim()}`);
 
+  const fontPartial = 22;
+  const hasPartial = (payload.partialPaymentTotal ?? 0) > 0;
+
   const h =
     56 +
     (fontStore + 10) +
@@ -281,6 +288,7 @@ export function makeFullReceiptCanvas(payload: FullReceiptPayload, widthPx: numb
     (fontSubtotal + yGap) * 2 +
     18 +
     (fontTotal + 12) +
+    (hasPartial ? (fontPartial + yGap + 6) : 0) +
     (fontInfo + yGap) +
     14 +
     bottomLines.length * (fontBottom + yGap) +
@@ -374,6 +382,17 @@ export function makeFullReceiptCanvas(payload: FullReceiptPayload, widthPx: numb
   ctx.textAlign = 'right';
   ctx.fillText(formatAmountEn(payload.total), amtRight, y);
   y += fontTotal + 12;
+
+  if (hasPartial) {
+    const partial = payload.partialPaymentTotal ?? 0;
+    const remaining = payload.remainingAmount ?? 0;
+    ctx.font = `bold ${fontPartial}px sans-serif`;
+    ctx.textAlign = 'left';
+    ctx.fillText(`途中会計：${formatAmountEn(partial)}`, padX, y);
+    ctx.textAlign = 'right';
+    ctx.fillText(`残りお支払額：${formatAmountEn(remaining)}`, amtRight, y);
+    y += fontPartial + yGap + 6;
+  }
 
   if (payload.taxDetailText) {
     ctx.font = `${fontInfo}px sans-serif`;

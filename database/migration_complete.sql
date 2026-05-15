@@ -176,11 +176,22 @@ CREATE TABLE IF NOT EXISTS public.session_payments (
     session_id INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
     -- 決済方法: 0=店舗用クレジットカード, 1=現金, 2=クレジットカード
     pay_type INTEGER NOT NULL CHECK (pay_type IN (0, 1, 2)),
+    -- 顧客から受け取った（カード請求した）金額 (¥)。手数料分を含む。
     amount DECIMAL(12,2) NOT NULL CHECK (amount >= 0),
+    -- カード決済時の手数料率 (%)。現金は 0。
+    fee_rate DECIMAL(5,2) NOT NULL DEFAULT 0 CHECK (fee_rate >= 0 AND fee_rate <= 100),
+    -- 手数料の金額 (¥)。amount に含まれ、請求合計への充当額 = amount - fee_amount。
+    fee_amount DECIMAL(12,2) NOT NULL DEFAULT 0 CHECK (fee_amount >= 0),
     other TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
+
+-- 既存環境向けの拡張カラム追加
+ALTER TABLE public.session_payments
+    ADD COLUMN IF NOT EXISTS fee_rate DECIMAL(5,2) NOT NULL DEFAULT 0;
+ALTER TABLE public.session_payments
+    ADD COLUMN IF NOT EXISTS fee_amount DECIMAL(12,2) NOT NULL DEFAULT 0;
 
 CREATE INDEX IF NOT EXISTS idx_session_payments_session_id ON public.session_payments(session_id);
 CREATE INDEX IF NOT EXISTS idx_session_payments_created_at ON public.session_payments(created_at);

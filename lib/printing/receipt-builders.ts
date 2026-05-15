@@ -4,6 +4,7 @@ import type {
   ExtensionInfoReceiptPayload,
 } from '@/lib/printing/escpos-raster';
 import { formatYen } from '@/lib/printing/escpos-raster';
+import { summarizeSessionPayments, type SessionPayment } from '@/lib/session-payments';
 
 export async function fetchStoreName(): Promise<string> {
   try {
@@ -210,6 +211,8 @@ export type BuildFullReceiptArgs = {
   setExtensions: Array<{ count: number; timestamp?: number; price?: number }>;
   nominations: Array<{ cost?: number; cast_name?: string }>;
   additionalServices: Array<{ charge: number }>;
+  /** 途中会計がある場合の決済レコード一覧 */
+  sessionPayments?: SessionPayment[];
 };
 
 export function buildFullReceipt(args: BuildFullReceiptArgs): FullReceiptPayload {
@@ -230,6 +233,7 @@ export function buildFullReceipt(args: BuildFullReceiptArgs): FullReceiptPayload
     setExtensions,
     nominations,
     additionalServices,
+    sessionPayments = [],
   } = args;
 
   const orderLines: Array<{ item: string; qty: number; amount: number }> = [];
@@ -268,7 +272,7 @@ export function buildFullReceipt(args: BuildFullReceiptArgs): FullReceiptPayload
     orderLines.push({ item: '追加サービス', qty: 1, amount: additionalTotal });
   }
 
-  let subtotal = orderLines.reduce((s, r) => s + r.amount, 0);
+  const subtotal = orderLines.reduce((s, r) => s + r.amount, 0);
   const tax = Math.round(subtotal * 0.1);
   const total = subtotal + tax;
   const taxDetailText = `(内消費税額10%) ${tax.toLocaleString('ja-JP')}円`;
@@ -293,6 +297,17 @@ export function buildFullReceipt(args: BuildFullReceiptArgs): FullReceiptPayload
     .filter((name, i, arr) => arr.indexOf(name) === i)
     .join(' / ');
 
+  // Compute partial payment info for receipt display
+  let partialPaymentTotal: number | undefined;
+  let remainingAmount: number | undefined;
+  if (sessionPayments.length > 0) {
+    const summary = summarizeSessionPayments(sessionPayments, total);
+    if (summary.paidBaseTotal > 0 && !summary.isFullyPaid) {
+      partialPaymentTotal = summary.paidBaseTotal;
+      remainingAmount = summary.outstanding;
+    }
+  }
+
   return {
     storeName,
     tableNumber,
@@ -310,6 +325,8 @@ export function buildFullReceipt(args: BuildFullReceiptArgs): FullReceiptPayload
     startTime: startTimeStr,
     guestCount: guestLabel,
     nomineeNames: nomineeNames || undefined,
+    partialPaymentTotal,
+    remainingAmount,
   };
 }
 
