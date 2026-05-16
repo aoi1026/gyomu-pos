@@ -311,8 +311,12 @@ export default function DailyTableDetailPage({ params }: { params: Promise<{ tab
                                 const k = getEditKey(s.id, itemKey);
                                 const row = editMap[k];
                                 
-                                // 指名の場合、キャスト名を取得
+                                // 注文: 商品名に注文者（顧客 / キャスト名）を付記
                                 let displayName = it.name || '';
+                                if (it.category === '注文' && it.order_party) {
+                                  displayName = `${it.name || ''}（${it.order_party}）`;
+                                }
+                                // 指名の場合、キャスト名を取得
                                 if (it.category === '指名' && castList.length > 0) {
                                   // item_keyやcast_idから該当するキャストを探す
                                   const castId = it.cast_id || it.nomination_id;

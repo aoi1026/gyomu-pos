@@ -150,14 +150,17 @@ export async function GET(request: NextRequest) {
 		const monthly_total_deducts = Number(monthlyDeductsResult.rows[0]?.monthly_total_deducts || 0);
 		const monthly_gross_profit = monthly_total_payments - monthly_total_deducts;
 
-		// テーブル別売上集計（業務日基準）
+		// テーブル別売上集計（業務日基準・完了セッションのみ）
+		// status = 0 が完了済みセッション。
+		// 完了時刻 (end_at) が業務日内かどうかで判定し、end_at が NULL の場合は created_at にフォールバック。
 		const tableSalesResult = await client.query(
 			`
 			WITH sess AS (
 				SELECT id, table_id, cost
 				FROM sessions
-				WHERE created_at >= ${BIZ_DAY_START}
-				  AND created_at < ${BIZ_DAY_END}
+				WHERE status = 0
+				  AND COALESCE(end_at, created_at) >= ${BIZ_DAY_START}
+				  AND COALESCE(end_at, created_at) < ${BIZ_DAY_END}
 			),
 			pay AS (
 				SELECT sp.session_id, COALESCE(SUM(sp.amount), 0) AS pay_total
@@ -178,7 +181,8 @@ export async function GET(request: NextRequest) {
 			SELECT
 				t.id AS table_id,
 				t.name AS table_name,
-				COALESCE(SUM(spd.paid_total), 0) AS total_sales
+				COALESCE(SUM(spd.paid_total), 0) AS total_sales,
+				COUNT(spd.paid_total) AS session_count
 			FROM "table" t
 			LEFT JOIN sess_paid spd ON spd.table_id = t.id
 			GROUP BY t.id, t.name

@@ -292,12 +292,13 @@ function DailySalesPageContent() {
       });
       lines.push('');
       
-      // テーブル別売上
+      // テーブル別売上（完了セッションのみ）
       lines.push('【テーブル別売上】');
-      lines.push('テーブル名,売上');
-      tableSales.forEach((row: any) => {
+      lines.push('テーブル名,完了セッション数,売上合計');
+      tableSales.filter((row: any) => Number(row.session_count) > 0).forEach((row: any) => {
         const sales = Number(row.total_sales) || 0;
-        lines.push(`"${row.table_name || ''}",${sales.toFixed(2)}`);
+        const cnt = Number(row.session_count) || 0;
+        lines.push(`"${row.table_name || ''}",${cnt},${sales.toFixed(2)}`);
       });
       lines.push('');
       
@@ -756,25 +757,31 @@ function DailySalesPageContent() {
                       <CardTitle>テーブル別売上</CardTitle>
                     </CardHeader>
                     <CardContent>
-                      {tableSales.length === 0 ? (
-                        <div className="text-sm text-gray-500">データがありません</div>
+                      {tableSales.filter((r: any) => Number(r.session_count) > 0).length === 0 ? (
+                        <div className="text-sm text-gray-500">完了したセッションがありません</div>
                       ) : (
                         <div className="overflow-x-auto max-h-96 overflow-y-auto">
                           <Table>
                             <TableHeader>
                               <TableRow>
                                 <TableHead>テーブル名</TableHead>
-                                <TableHead className="text-right w-40">売上</TableHead>
+                                <TableHead className="text-right w-48">完了セッション数</TableHead>
+                                <TableHead className="text-right w-40">売上合計</TableHead>
                                 <TableHead className="w-32 text-center">操作</TableHead>
                               </TableRow>
                             </TableHeader>
                             <TableBody>
-                              {tableSales.map((row: any) => (
+                              {tableSales
+                                .filter((row: any) => Number(row.session_count) > 0)
+                                .map((row: any) => (
                                 <TableRow key={row.table_id}>
                                   <TableCell className="font-medium text-gray-900">
                                     {row.table_name}
                                   </TableCell>
-                                  <TableCell className="text-right tabular-nums">
+                                  <TableCell className="text-right tabular-nums text-gray-600">
+                                    {Number(row.session_count)}件
+                                  </TableCell>
+                                  <TableCell className="text-right tabular-nums font-semibold">
                                     {formatCurrency(row.total_sales)}
                                   </TableCell>
                                   <TableCell className="text-center">

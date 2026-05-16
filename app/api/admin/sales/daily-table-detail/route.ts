@@ -107,7 +107,8 @@ export async function GET(request: NextRequest) {
           (SELECT set_price FROM set_charge) AS unit_price,
           COALESCE(s.client, 0)::int AS quantity,
           ((SELECT set_price FROM set_charge) * COALESCE(s.client, 0)) AS total,
-          NULL::text AS unit_price_note
+          NULL::text AS unit_price_note,
+          NULL::text AS order_party
         FROM sess s
 
         UNION ALL
@@ -126,7 +127,8 @@ export async function GET(request: NextRequest) {
           COALESCE(sp.amount, 0) AS unit_price,
           1::int AS quantity,
           COALESCE(sp.amount, 0) AS total,
-          NULL::text AS unit_price_note
+          NULL::text AS unit_price_note,
+          NULL::text AS order_party
         FROM session_payments sp
         INNER JOIN sess s ON s.id = sp.session_id
 
@@ -141,7 +143,8 @@ export async function GET(request: NextRequest) {
           (SELECT extension_price FROM charges) AS unit_price,
           GREATEST(COALESCE(s.set_count, 0)::int - 1, 0) AS quantity,
           ((SELECT extension_price FROM charges) * COALESCE(s.client, 0) * GREATEST(COALESCE(s.set_count, 0)::int - 1, 0)) AS total,
-          ('(' || COALESCE(s.client, 0)::int || '名)')::text AS unit_price_note
+          ('(' || COALESCE(s.client, 0)::int || '名)')::text AS unit_price_note,
+          NULL::text AS order_party
         FROM sess s
 
         UNION ALL
@@ -155,10 +158,15 @@ export async function GET(request: NextRequest) {
           COALESCE(so.unit_price, 0),
           COALESCE(so.amount, 0)::int,
           COALESCE(so.total_price, COALESCE(so.unit_price, 0) * COALESCE(so.amount, 0)),
-          NULL::text AS unit_price_note
+          NULL::text AS unit_price_note,
+          CASE
+            WHEN COALESCE(so.for_cast, 0) = 0 THEN '顧客'::text
+            ELSE COALESCE(cu.name, 'キャスト')::text
+          END AS order_party
         FROM salesorder so
         INNER JOIN sess s ON s.id = so.session_id
         INNER JOIN product p ON p.id = so.product_id
+        LEFT JOIN "user" cu ON cu.id = so.cast_id
         WHERE so.status = 'accepted'
 
         UNION ALL
@@ -172,10 +180,15 @@ export async function GET(request: NextRequest) {
           0::numeric,
           COALESCE(sv.amount, 0)::int,
           0::numeric,
-          NULL::text AS unit_price_note
+          NULL::text AS unit_price_note,
+          CASE
+            WHEN sv.cast_id IS NULL THEN '顧客'::text
+            ELSE COALESCE(cu.name, 'キャスト')::text
+          END AS order_party
         FROM serviceorder sv
         INNER JOIN sess s ON s.id = sv.session_id
         INNER JOIN services se ON se.id = sv.service_id
+        LEFT JOIN "user" cu ON cu.id = sv.cast_id
         WHERE sv.status = 'accepted'
 
         UNION ALL
@@ -189,7 +202,8 @@ export async function GET(request: NextRequest) {
           CASE WHEN COALESCE(a.count, 0) > 0 THEN COALESCE(a.charge, 0) / a.count ELSE 0 END,
           COALESCE(a.count, 0)::int,
           COALESCE(a.charge, 0),
-          NULL::text AS unit_price_note
+          NULL::text AS unit_price_note,
+          NULL::text AS order_party
         FROM additional_services a
         INNER JOIN sess s ON s.id = a.session_id
 
@@ -209,7 +223,8 @@ export async function GET(request: NextRequest) {
           COALESCE(n.cost, 0),
           NULL::int,
           COALESCE(n.cost, 0),
-          NULL::text AS unit_price_note
+          NULL::text AS unit_price_note,
+          NULL::text AS order_party
         FROM nomination n
         INNER JOIN sess s ON s.id = n.session_id
       ),
@@ -223,7 +238,8 @@ export async function GET(request: NextRequest) {
           COALESCE(o.unit_price, r.unit_price) AS unit_price,
           COALESCE(o.quantity, r.quantity) AS quantity,
           COALESCE(o.total, r.total) AS total,
-          r.unit_price_note
+          r.unit_price_note,
+          r.order_party
         FROM item_rows r
         LEFT JOIN session_item_overrides o
           ON o.session_id = r.session_id
@@ -240,7 +256,8 @@ export async function GET(request: NextRequest) {
               'unit_price', unit_price,
               'unit_price_note', unit_price_note,
               'quantity', quantity,
-              'total', total
+              'total', total,
+              'order_party', order_party
             )
             ORDER BY sort_key, name
           ) AS items,
