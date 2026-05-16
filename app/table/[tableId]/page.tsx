@@ -5816,10 +5816,10 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
                   onValueChange={setSelectedCast}
                   disabled={!isForCast}
                 >
-                  <SelectTrigger className={!isForCast ? 'opacity-50 cursor-not-allowed' : ''}>
+                  <SelectTrigger className={`w-full min-w-0 ${!isForCast ? 'opacity-50 cursor-not-allowed' : ''}`}>
                     <SelectValue placeholder="キャストを選択してください" />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="w-[var(--radix-select-trigger-width)] max-w-none">
                     <SelectItem value="none">キャストなし</SelectItem>
                     {isCastsLoading ? (
                       <SelectItem value="loading" disabled>
@@ -5828,8 +5828,8 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
                     ) : (
                       casts.map((cast) => (
                         <SelectItem key={cast.id} value={cast.id.toString()}>
-                          <div className="flex flex-col items-start gap-0.5 py-0.5 max-w-[280px]">
-                            <span className="font-medium leading-tight">{cast.name}</span>
+                          <div className="flex flex-col items-start gap-0.5 py-0.5 w-full">
+                            <span className="font-medium leading-tight break-all whitespace-normal">{cast.name}</span>
                             <span className="text-[10px] text-gray-500 leading-tight whitespace-normal">
                               {getCastRealtimeSubtitle(cast, {})}
                             </span>
