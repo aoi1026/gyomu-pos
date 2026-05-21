@@ -258,6 +258,7 @@ export default function PayrollPreviewPage() {
           rental_yen: row.rental_yen != null ? Number(row.rental_yen) : undefined,
           other_deduct_yen: row.other_deduct_yen != null ? Number(row.other_deduct_yen) : undefined,
           penalty_yen: row.penalty_yen != null ? Number(row.penalty_yen) : undefined,
+          b_adjust_yen: row.b_adjust_yen != null ? Number(row.b_adjust_yen) : undefined,
           bonus_yen: row.bonus_yen != null ? Number(row.bonus_yen) : undefined,
           point_yen: row.point_yen != null ? Number(row.point_yen) : undefined,
           additional_point_yen: row.additional_point_yen != null ? Number(row.additional_point_yen) : undefined,
@@ -299,6 +300,7 @@ export default function PayrollPreviewPage() {
         rental_yen: Number(row.rental_yen || 0),
         other_deduct_yen: Number(row.other_deduct_yen || 0),
         penalty_yen: Number(row.penalty_yen || 0),
+        b_adjust_yen: Number(row.b_adjust_yen || 0),
         bonus_yen: Number(row.bonus_yen || 0),
         point_yen: Number(row.point_yen || 0),
         additional_point_yen: Number(row.additional_point_yen || 0),
@@ -1348,7 +1350,8 @@ export default function PayrollPreviewPage() {
                     <th rowSpan={2} className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[70px] sticky top-0 bg-gray-50 z-20">時給</th>
                     <th rowSpan={2} className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[90px] sticky top-0 bg-gray-50 z-20">時間給</th>
                     <th colSpan={5 + payrollCategories.length} className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap border-l-2 border-gray-300 border-r-2 border-gray-300 sticky top-0 bg-gray-50 z-20">バック</th>
-                    <th rowSpan={2} className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[90px] border-l-2 border-gray-400 sticky top-0 bg-gray-50 z-20">ボーナス</th>
+                    <th rowSpan={2} className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[90px] border-l-2 border-gray-400 sticky top-0 bg-gray-50 z-20">B調整</th>
+                    <th rowSpan={2} className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[90px] sticky top-0 bg-gray-50 z-20">ボーナス</th>
                     <th rowSpan={2} className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[90px] sticky top-0 bg-gray-50 z-20">ポイント</th>
                     <th rowSpan={2} className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[95px] border-r-2 border-gray-300 sticky top-0 bg-gray-50 z-20">追加ポイント</th>
                     <th rowSpan={2} className="p-2 sm:p-3 text-center font-semibold whitespace-nowrap min-w-[90px] sticky top-0 bg-gray-50 z-20">バック合計</th>
@@ -1391,6 +1394,7 @@ export default function PayrollPreviewPage() {
                         const v = Number(next.categoryTotals?.[c.id] ?? next.categoryTotals?.[String(c.id)] ?? 0);
                         return sum + (Number.isFinite(v) ? v : 0);
                       }, 0);
+                      const bAdjust = Number(next.b_adjust_yen || 0);
                       const bonus = Number(next.bonus_yen || 0);
                       const point = Number(next.point_yen || 0);
                       const addPoint = Number(next.additional_point_yen || 0);
@@ -1401,7 +1405,7 @@ export default function PayrollPreviewPage() {
                         Number(next.inside_nomination_extension_fee || 0) +
                         Number(next.together_nomination_fee || 0);
                       const back_total = nominationBack + categoryBackTotal;
-                      const total = base_pay + back_total + bonus + point + addPoint;
+                      const total = base_pay + back_total + bAdjust + bonus + point + addPoint;
 
                       const paid = Number(next.paid_price || 0); // 前借日払
                       const pickup = Number(next.pickup_yen || 0);
@@ -1620,6 +1624,23 @@ export default function PayrollPreviewPage() {
                         <td className="p-2 sm:p-3 text-center whitespace-nowrap border-l-2 border-gray-400">
                           <Input
                             type="text"
+                            value={row.b_adjust_yen ?? 0}
+                            inputMode="decimal"
+                            pattern="-?[0-9]*[.,]?[0-9]*"
+                            onChange={(e) => { 
+                              if (!isUnlocked) return;
+                              const raw = String(e.target.value || '').replace(',', '.');
+                              const n = raw.trim() === '-' ? 0 : Number(raw);
+                              updateField('b_adjust_yen', Number.isFinite(n) ? n : 0); 
+                              ensureAutoRelock(row.user_id); 
+                            }}
+                            className="px-1.5 py-1 text-center h-8 sm:h-9 text-xs sm:text-sm w-full min-w-[70px]"
+                            disabled={!isUnlocked}
+                          />
+                        </td>
+                        <td className="p-2 sm:p-3 text-center whitespace-nowrap">
+                          <Input
+                            type="text"
                             value={row.bonus_yen ?? 0}
                             inputMode="decimal"
                             pattern="[0-9]*[.,]?[0-9]*"
@@ -1763,7 +1784,8 @@ export default function PayrollPreviewPage() {
                                   </div>
                                 </td>
                               ))}
-                              <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap border-l-2 border-gray-400">{formatCurrency(dailyRow.bonus_yen ?? 0)}</td>
+                              <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap border-l-2 border-gray-400">{formatCurrency(dailyRow.b_adjust_yen ?? 0)}</td>
+                              <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap">{formatCurrency(dailyRow.bonus_yen ?? 0)}</td>
                               <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap">{formatCurrency(dailyRow.point_yen ?? 0)}</td>
                               <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap border-r-2 border-gray-300">{formatCurrency(dailyRow.additional_point_yen ?? 0)}</td>
                               <td className="p-2 sm:p-3 text-center font-semibold text-xs sm:text-sm whitespace-nowrap">{formatCurrency(dailyRow.back_total ?? 0)}</td>
@@ -1847,7 +1869,8 @@ export default function PayrollPreviewPage() {
                                 </div>
                               </td>
                             ))}
-                            <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap border-l-2 border-gray-400">{formatCurrency(dailyRowsData[row.user_id].reduce((sum: number, r: any) => sum + Number(r.bonus_yen || 0), 0))}</td>
+                            <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap border-l-2 border-gray-400">{formatCurrency(dailyRowsData[row.user_id].reduce((sum: number, r: any) => sum + Number(r.b_adjust_yen || 0), 0))}</td>
+                            <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap">{formatCurrency(dailyRowsData[row.user_id].reduce((sum: number, r: any) => sum + Number(r.bonus_yen || 0), 0))}</td>
                             <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap">{formatCurrency(dailyRowsData[row.user_id].reduce((sum: number, r: any) => sum + Number(r.point_yen || 0), 0))}</td>
                             <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap border-r-2 border-gray-300">{formatCurrency(dailyRowsData[row.user_id].reduce((sum: number, r: any) => sum + Number(r.additional_point_yen || 0), 0))}</td>
                             <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap">{formatCurrency(dailyRowsData[row.user_id].reduce((sum: number, r: any) => sum + Number(r.back_total || 0), 0))}</td>
@@ -1952,6 +1975,9 @@ export default function PayrollPreviewPage() {
                         </div>
                       </td>
                     ))}
+                    <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap">
+                      {formatCurrency(monthlyRows.reduce((sum, r) => sum + Number(r.b_adjust_yen || 0), 0))}
+                    </td>
                     <td className="p-2 sm:p-3 text-center text-xs sm:text-sm whitespace-nowrap">
                       {formatCurrency(monthlyRows.reduce((sum, r) => sum + Number(r.bonus_yen || 0), 0))}
                     </td>

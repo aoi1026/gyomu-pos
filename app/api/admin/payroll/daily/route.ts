@@ -242,10 +242,11 @@ export async function GET(request: NextRequest) {
         const categoryAmounts = catAmountMap[dateStr] || {};
         const basePay = Number(r.base_pay || 0);
         const backTotal = Number(saved.back_total || 0);
+        const bAdjust = Number(saved.b_adjust_yen || 0);
         const bonus = Number(saved.bonus_yen || 0);
         const point = Number(saved.point_yen || 0);
         const addPoint = Number(saved.additional_point_yen || 0);
-        const totalPay = basePay + backTotal + bonus + point + addPoint;
+        const totalPay = basePay + backTotal + bAdjust + bonus + point + addPoint;
         const paid = Number(saved.paid_price || 0);
         return {
           date: dateStr,
@@ -273,6 +274,7 @@ export async function GET(request: NextRequest) {
           other_deduct_yen: Number(saved.other_deduct_yen || 0),
           penalty_yen: Number(saved.penalty_yen || 0),
           deduction_yen: Number(saved.deduction_yen || 0),
+          b_adjust_yen: bAdjust,
           bonus_yen: bonus,
           point_yen: point,
           additional_point_yen: addPoint,
@@ -298,6 +300,7 @@ export async function GET(request: NextRequest) {
       const togetherBack = (charges.together || 0) * togetherRate * togetherCnt;
 
       const categoryBackTotal = Object.values(categoryTotals).reduce((s, x) => s + (Number(x) || 0), 0);
+      const b_adjust_yen = 0;
       const bonus = 0;
       const point = 0;
       const addPoint = 0;
@@ -305,7 +308,7 @@ export async function GET(request: NextRequest) {
         mainBack + mainExtBack + insideBack + insideExtBack + togetherBack + categoryBackTotal;
 
       const base_pay = Number(r.base_pay || 0);
-      const total = base_pay + back_total + bonus + point + addPoint;
+      const total = base_pay + back_total + b_adjust_yen + bonus + point + addPoint;
 
       const paid = 0;
       const pickup = 0;
@@ -335,6 +338,7 @@ export async function GET(request: NextRequest) {
         other_deduct_yen: otherDeduct,
         penalty_yen: penalty,
         deduction_yen,
+        b_adjust_yen,
         bonus_yen: bonus,
         point_yen: point,
         additional_point_yen: addPoint,
@@ -388,6 +392,9 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Invalid date' }, { status: 400 });
     }
 
+    // 旧DB向けの最低限の保険（B調整）
+    await client.query(`ALTER TABLE salary_daily ADD COLUMN IF NOT EXISTS b_adjust_yen DECIMAL(12,2) DEFAULT 0.00`);
+
     const editable = {
       basic_hours: body.basic_hours != null ? Number(body.basic_hours) : undefined,
       paid_price: body.paid_price != null ? Number(body.paid_price) : undefined,
@@ -396,6 +403,7 @@ export async function PUT(request: NextRequest) {
       rental_yen: body.rental_yen != null ? Number(body.rental_yen) : undefined,
       other_deduct_yen: body.other_deduct_yen != null ? Number(body.other_deduct_yen) : undefined,
       penalty_yen: body.penalty_yen != null ? Number(body.penalty_yen) : undefined,
+      b_adjust_yen: body.b_adjust_yen != null ? Number(body.b_adjust_yen) : undefined,
       bonus_yen: body.bonus_yen != null ? Number(body.bonus_yen) : undefined,
       point_yen: body.point_yen != null ? Number(body.point_yen) : undefined,
       additional_point_yen: body.additional_point_yen != null ? Number(body.additional_point_yen) : undefined,
@@ -522,6 +530,7 @@ export async function PUT(request: NextRequest) {
     const rental_yen = editable.rental_yen ?? (saved ? Number(saved.rental_yen) : undefined) ?? 0;
     const other_deduct_yen = editable.other_deduct_yen ?? (saved ? Number(saved.other_deduct_yen) : undefined) ?? 0;
     const penalty_yen = editable.penalty_yen ?? (saved ? Number(saved.penalty_yen) : undefined) ?? 0;
+    const b_adjust_yen = editable.b_adjust_yen ?? (saved ? Number(saved.b_adjust_yen) : undefined) ?? 0;
     const bonus_yen = editable.bonus_yen ?? (saved ? Number(saved.bonus_yen) : undefined) ?? 0;
     const point_yen = editable.point_yen ?? (saved ? Number(saved.point_yen) : undefined) ?? 0;
     const additional_point_yen = editable.additional_point_yen ?? (saved ? Number(saved.additional_point_yen) : undefined) ?? 0;
@@ -561,7 +570,7 @@ export async function PUT(request: NextRequest) {
     const deduction_yen = paid_price + pickup_yen + hairmake_yen + rental_yen + other_deduct_yen + penalty_yen;
     const back_total =
       mainBack + mainExtBack + insideBack + insideExtBack + togetherBack + categoryBackTotal;
-    const total_pay_yen = base_pay + back_total + bonus_yen + point_yen + additional_point_yen;
+    const total_pay_yen = base_pay + back_total + b_adjust_yen + bonus_yen + point_yen + additional_point_yen;
     const realTotal_price = total_pay_yen - deduction_yen;
 
     await client.query(
@@ -571,11 +580,11 @@ export async function PUT(request: NextRequest) {
         main_nomination_count, main_nomination_fee, main_nomination_extension_count, main_nomination_extension_fee,
         inside_nomination_count, inside_nomination_fee, inside_nomination_extension_count, inside_nomination_extension_fee,
         together_nomination_count, together_nomination_fee, category_totals,
-        bonus_yen, point_yen, additional_point_yen, back_total, total_pay_yen, realTotal_price
+        b_adjust_yen, bonus_yen, point_yen, additional_point_yen, back_total, total_pay_yen, realTotal_price
       ) VALUES (
         $1::date, $2::int, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
         $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23::jsonb,
-        $24, $25, $26, $27, $28, $29
+        $24, $25, $26, $27, $28, $29, $30
       )
       ON CONFLICT (date, user_id) DO UPDATE SET
         basic_hours = EXCLUDED.basic_hours,
@@ -599,6 +608,7 @@ export async function PUT(request: NextRequest) {
         together_nomination_count = EXCLUDED.together_nomination_count,
         together_nomination_fee = EXCLUDED.together_nomination_fee,
         category_totals = EXCLUDED.category_totals,
+        b_adjust_yen = EXCLUDED.b_adjust_yen,
         bonus_yen = EXCLUDED.bonus_yen,
         point_yen = EXCLUDED.point_yen,
         additional_point_yen = EXCLUDED.additional_point_yen,
@@ -609,7 +619,7 @@ export async function PUT(request: NextRequest) {
         dateParam, userId, basic_hours, paid_price, pickup_yen, hairmake_yen, rental_yen, other_deduct_yen, penalty_yen,
         deduction_yen, hourly, base_pay,
         mainCnt, mainBack, mainExtCnt, mainExtBack, insideCnt, insideBack, insideExtCnt, insideExtBack, togetherCnt, togetherBack, JSON.stringify(category_totals),
-        bonus_yen, point_yen, additional_point_yen, back_total, total_pay_yen, realTotal_price,
+        b_adjust_yen, bonus_yen, point_yen, additional_point_yen, back_total, total_pay_yen, realTotal_price,
       ]
     );
 

@@ -231,6 +231,8 @@ CREATE TABLE IF NOT EXISTS salary (
     other_deduct_yen DECIMAL(12,2) DEFAULT 0.00 CHECK (other_deduct_yen >= 0),
     penalty_yen DECIMAL(12,2) DEFAULT 0.00 CHECK (penalty_yen >= 0),
     -- 追加（入力可能）
+    -- B調整（マイナス入力可）
+    b_adjust_yen DECIMAL(12,2) DEFAULT 0.00,
     bonus_yen DECIMAL(12,2) DEFAULT 0.00 CHECK (bonus_yen >= 0),
     point_yen DECIMAL(12,2) DEFAULT 0.00 CHECK (point_yen >= 0),
     additional_point_yen DECIMAL(12,2) DEFAULT 0.00 CHECK (additional_point_yen >= 0),
@@ -278,6 +280,8 @@ CREATE TABLE IF NOT EXISTS salary_daily (
     together_nomination_count INTEGER DEFAULT 0 CHECK (together_nomination_count >= 0),
     together_nomination_fee DECIMAL(12,2) DEFAULT 0.00 CHECK (together_nomination_fee >= 0),
     category_totals JSONB DEFAULT '{}'::jsonb,
+    -- B調整（マイナス入力可）
+    b_adjust_yen DECIMAL(12,2) DEFAULT 0.00,
     bonus_yen DECIMAL(12,2) DEFAULT 0.00 CHECK (bonus_yen >= 0),
     point_yen DECIMAL(12,2) DEFAULT 0.00 CHECK (point_yen >= 0),
     additional_point_yen DECIMAL(12,2) DEFAULT 0.00 CHECK (additional_point_yen >= 0),
@@ -521,6 +525,25 @@ CREATE INDEX IF NOT EXISTS idx_notifications_created_at ON notifications(created
 CREATE TRIGGER update_notifications_updated_at 
     BEFORE UPDATE ON notifications 
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- システムログ（注文明細削除・レシート印刷）
+CREATE TABLE IF NOT EXISTS log_record (
+    id SERIAL PRIMARY KEY,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    business_date DATE NOT NULL,
+    table_label TEXT NOT NULL DEFAULT '',
+    action_type TEXT NOT NULL CHECK (action_type IN ('明細削除', 'レシート印刷')),
+    original_amount DECIMAL(12,2),
+    quantity INTEGER,
+    target_staff_label TEXT,
+    item_name TEXT,
+    ordered_at TIMESTAMP WITH TIME ZONE,
+    payment_method TEXT,
+    memo TEXT,
+    session_id INTEGER REFERENCES sessions(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_log_record_business_date_id ON log_record (business_date DESC, id DESC);
 
 -- プロジェクト変数管理テーブル
 CREATE TABLE IF NOT EXISTS project_variable (

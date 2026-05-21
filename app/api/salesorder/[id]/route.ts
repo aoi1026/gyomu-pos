@@ -4,6 +4,7 @@ import {
   applySalesOrderAcceptedAmountDelta,
   applySalesOrderAcceptedBizLogic,
 } from '@/lib/salesorder-accepted-effects';
+import { insertLogRecord, logBusinessDateNow } from '@/lib/log-record-db';
 
 export const dynamic = 'force-dynamic';
 
@@ -48,12 +49,30 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     // トランザクション開始
     await client.query('BEGIN');
 
-    // 既存注文の取得（在庫更新のため）
+    // 既存注文の取得（在庫更新・ログ用にテーブル名・商品名・キャスト名を付与）
     const existingRes = await client.query(
-      `SELECT id, product_id, amount, status, for_cast, cast_id, session_id, unit_price, total_price, accepted_at
-         FROM salesorder
-        WHERE id = $1
-        FOR UPDATE`,
+      `SELECT
+         so.id,
+         so.product_id,
+         so.amount,
+         so.status,
+         so.for_cast,
+         so.cast_id,
+         so.session_id,
+         so.unit_price,
+         so.total_price,
+         so.accepted_at,
+         so.created_at,
+         p.name AS product_name,
+         t.name AS table_label,
+         u.name AS cast_name_for_order
+       FROM salesorder so
+       INNER JOIN sessions s ON s.id = so.session_id
+       INNER JOIN "table" t ON t.id = s.table_id
+       INNER JOIN product p ON p.id = so.product_id
+       LEFT JOIN "user" u ON u.id = so.cast_id
+       WHERE so.id = $1
+       FOR UPDATE OF so`,
       [id]
     );
     if (existingRes.rows.length === 0) {
@@ -137,6 +156,32 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
           updatedRow || existing,
           totalDelta
         );
+      }
+
+      // 注文行が消えた場合のみシステムログ（明細削除）
+      if (newAmount === 0 && existing.status !== 'rejected') {
+        const removedQty = Math.abs(amountDelta);
+        const unitPrice = Number(existing.unit_price) || 0;
+        const originalAmount = unitPrice * removedQty;
+        const castName = existing.cast_name_for_order ? String(existing.cast_name_for_order) : '';
+        const targetStaff =
+          existing.cast_id == null ? 'お客様' : castName || 'キャスト';
+        const orderedAt = existing.accepted_at || existing.created_at || null;
+        try {
+          await insertLogRecord(client, {
+            business_date: logBusinessDateNow(),
+            table_label: String(existing.table_label || ''),
+            action_type: '明細削除',
+            original_amount: originalAmount,
+            quantity: removedQty,
+            target_staff_label: targetStaff,
+            item_name: String(existing.product_name || ''),
+            ordered_at: orderedAt,
+            session_id: Number(existing.session_id) || null,
+          });
+        } catch (logErr) {
+          console.error('log_record 明細削除ログエラー:', logErr);
+        }
       }
 
       await client.query('COMMIT');
@@ -298,9 +343,29 @@ export async function DELETE(_request: NextRequest, { params }: { params: Promis
     const { id } = await params;
     await client.query('BEGIN');
 
-    // 注文を取得し、pending以外は削除不可
+    // 注文を取得し、pending以外は削除不可（ログ用に結合）
     const orderRes = await client.query(
-      `SELECT id, product_id, amount, status FROM salesorder WHERE id = $1 FOR UPDATE`,
+      `SELECT
+         so.id,
+         so.product_id,
+         so.amount,
+         so.status,
+         so.session_id,
+         so.cast_id,
+         so.for_cast,
+         so.unit_price,
+         so.created_at,
+         so.accepted_at,
+         p.name AS product_name,
+         t.name AS table_label,
+         u.name AS cast_name_for_order
+       FROM salesorder so
+       INNER JOIN sessions s ON s.id = so.session_id
+       INNER JOIN "table" t ON t.id = s.table_id
+       INNER JOIN product p ON p.id = so.product_id
+       LEFT JOIN "user" u ON u.id = so.cast_id
+       WHERE so.id = $1
+       FOR UPDATE OF so`,
       [id]
     );
     if (orderRes.rows.length === 0) {
@@ -311,6 +376,26 @@ export async function DELETE(_request: NextRequest, { params }: { params: Promis
     if (order.status !== 'pending') {
       await client.query('ROLLBACK');
       return NextResponse.json({ success: false, error: '承認待ち以外は削除できません' }, { status: 400 });
+    }
+
+    const qty = Number(order.amount) || 0;
+    const unitPrice = Number(order.unit_price) || 0;
+    const castName = order.cast_name_for_order ? String(order.cast_name_for_order) : '';
+    const targetStaff = order.cast_id == null ? 'お客様' : castName || 'キャスト';
+    try {
+      await insertLogRecord(client, {
+        business_date: logBusinessDateNow(),
+        table_label: String(order.table_label || ''),
+        action_type: '明細削除',
+        original_amount: unitPrice * qty,
+        quantity: qty,
+        target_staff_label: targetStaff,
+        item_name: String(order.product_name || ''),
+        ordered_at: order.accepted_at || order.created_at || null,
+        session_id: Number(order.session_id) || null,
+      });
+    } catch (logErr) {
+      console.error('log_record 明細削除ログエラー(pending DELETE):', logErr);
     }
 
     // 在庫を戻す

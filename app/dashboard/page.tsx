@@ -1088,6 +1088,15 @@ export default function Dashboard() {
 
                 <Button
                   variant="outline"
+                  className="h-24 flex-col space-y-2 hover:bg-slate-50 hover:border-slate-300"
+                  onClick={() => router.push('/admin/system-logs')}
+                >
+                  <FileText className="w-6 h-6 text-slate-700" />
+                  <span className="text-sm font-medium">システムログ</span>
+                </Button>
+
+                <Button
+                  variant="outline"
                   className="h-24 flex-col space-y-2 hover:bg-cyan-50 hover:border-cyan-300"
                   onClick={() => router.push('/admin/tables')}
                 >

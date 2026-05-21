@@ -126,6 +126,29 @@ interface Nomination {
   created_at: string;
 }
 
+/** 領収書印刷を log_record に記録（失敗しても UI は継続） */
+async function postReceiptPrintLogApi(params: {
+  sessionId: number;
+  paymentMethodLabel: string;
+  originalAmount: number | null;
+}) {
+  const payment_method = params.paymentMethodLabel.includes('現金') ? '現金' : 'カード';
+  try {
+    await fetch('/api/admin/log-records', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action_type: 'レシート印刷',
+        session_id: params.sessionId,
+        payment_method,
+        original_amount: params.originalAmount,
+      }),
+    });
+  } catch (e) {
+    console.error('レシート印刷ログ送信エラー:', e);
+  }
+}
+
 export default function TableViewer({ tableId, onClose, onSessionMovedToTable }: TableViewerProps) {
   const { success, error, confirm } = useNotificationContext();
   const printer = usePrinter();
@@ -269,6 +292,11 @@ export default function TableViewer({ tableId, onClose, onSessionMovedToTable }:
         osFallback: () => printFullReceiptViaOs(payload),
         eposPayload: payload,
       });
+      void postReceiptPrintLogApi({
+        sessionId: session.id,
+        paymentMethodLabel: payload.paymentMethod || '',
+        originalAmount: Number.isFinite(payload.total) ? payload.total : null,
+      });
     } catch (e) {
       console.error('自動領収書印刷エラー:', e);
       error('エラー', '領収書の自動印刷に失敗しました（プリンター接続を確認してください）');
@@ -288,6 +316,11 @@ export default function TableViewer({ tableId, onClose, onSessionMovedToTable }:
       await printer.requestPrint(escposData, '領収書印刷', {
         osFallback: () => printFullReceiptViaOs(payload),
         eposPayload: payload,
+      });
+      void postReceiptPrintLogApi({
+        sessionId: session.id,
+        paymentMethodLabel: payload.paymentMethod || '',
+        originalAmount: Number.isFinite(payload.total) ? payload.total : null,
       });
     } catch (e) {
       console.error('領収書印刷エラー:', e);

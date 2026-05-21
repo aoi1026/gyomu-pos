@@ -101,6 +101,11 @@ export async function GET(request: NextRequest) {
     const charges: Record<string, number> = {};
     for (const r of chargesRes.rows) charges[String(r.charge_name)] = Number(r.value) || 0;
 
+    // 旧DB向けの最低限の保険（B調整）
+    // - salary.b_adjust_yen / salary_daily.b_adjust_yen を追加（マイナス値を許容）
+    await client.query(`ALTER TABLE salary ADD COLUMN IF NOT EXISTS b_adjust_yen DECIMAL(12,2) DEFAULT 0.00`);
+    await client.query(`ALTER TABLE salary_daily ADD COLUMN IF NOT EXISTS b_adjust_yen DECIMAL(12,2) DEFAULT 0.00`);
+
     let result: { rows: any[] };
     let catBackMap: Record<string, Record<string, number>> = {};
 
@@ -180,6 +185,7 @@ export async function GET(request: NextRequest) {
         0::DECIMAL(12,2) AS rental_yen,
         0::DECIMAL(12,2) AS other_deduct_yen,
         0::DECIMAL(12,2) AS penalty_yen,
+        0::DECIMAL(12,2) AS b_adjust_yen,
         0::DECIMAL(12,2) AS bonus_yen,
         0::DECIMAL(12,2) AS point_yen,
         0::DECIMAL(12,2) AS additional_point_yen,
@@ -226,11 +232,12 @@ export async function GET(request: NextRequest) {
             const categoryAmounts = catAmountMap[uid] || {};
             const sales_back_yen = Object.values(categoryTotals).reduce((s: number, x: any) => s + (Number(x) || 0), 0);
             const basePay = Number(r.base_pay || 0);
+            const bAdjust = Number(sd.b_adjust_yen || 0);
             const bonus = Number(sd.bonus_yen || 0);
             const point = Number(sd.point_yen || 0);
             const addPoint = Number(sd.additional_point_yen || 0);
             const backTotal = Number(sd.back_total || 0);
-            const totalPay = basePay + backTotal + bonus + point + addPoint;
+            const totalPay = basePay + backTotal + bAdjust + bonus + point + addPoint;
             const paid = Number(sd.paid_price || 0);
             return {
               user_id: r.user_id,
@@ -253,6 +260,7 @@ export async function GET(request: NextRequest) {
               rental_yen: Number(sd.rental_yen || 0),
               other_deduct_yen: Number(sd.other_deduct_yen || 0),
               penalty_yen: Number(sd.penalty_yen || 0),
+              b_adjust_yen: bAdjust,
               bonus_yen: bonus,
               point_yen: point,
               additional_point_yen: addPoint,
@@ -301,6 +309,7 @@ export async function GET(request: NextRequest) {
             COALESCE(SUM(inside_nomination_extension_fee), 0)::DECIMAL(12,2) AS inside_nomination_extension_fee,
             COALESCE(SUM(together_nomination_count), 0)::int AS together_nomination_count,
             COALESCE(SUM(together_nomination_fee), 0)::DECIMAL(12,2) AS together_nomination_fee,
+            COALESCE(SUM(b_adjust_yen), 0)::DECIMAL(12,2) AS b_adjust_yen,
             COALESCE(SUM(bonus_yen), 0)::DECIMAL(12,2) AS bonus_yen,
             COALESCE(SUM(point_yen), 0)::DECIMAL(12,2) AS point_yen,
             COALESCE(SUM(additional_point_yen), 0)::DECIMAL(12,2) AS additional_point_yen,
@@ -387,6 +396,7 @@ export async function GET(request: NextRequest) {
           const categoryBackTotal = Object.values(categoryTotals).reduce((s, x) => s + (Number(x) || 0), 0);
           if (a) {
             const basePay = Number(liveAtt?.base_pay ?? a.base_pay ?? 0);
+            const bAdjust = Number(a.b_adjust_yen || 0);
             const bonus = Number(a.bonus_yen || 0);
             const point = Number(a.point_yen || 0);
             const addPoint = Number(a.additional_point_yen || 0);
@@ -408,6 +418,7 @@ export async function GET(request: NextRequest) {
               rental_yen: Number(a.rental_yen || 0),
               other_deduct_yen: Number(a.other_deduct_yen || 0),
               penalty_yen: Number(a.penalty_yen || 0),
+              b_adjust_yen: bAdjust,
               bonus_yen: bonus,
               point_yen: point,
               additional_point_yen: addPoint,
@@ -441,6 +452,7 @@ export async function GET(request: NextRequest) {
             rental_yen: 0,
             other_deduct_yen: 0,
             penalty_yen: 0,
+            b_adjust_yen: 0,
             bonus_yen: 0,
             point_yen: 0,
             additional_point_yen: 0,
@@ -490,6 +502,7 @@ export async function GET(request: NextRequest) {
       const categoryTotals = catBackMap[userId] || r.categoryTotals || {};
       const categoryBackTotal = Object.values(categoryTotals).reduce((s, x) => s + (Number(x) || 0), 0);
 
+      const bAdjust = Number(r.b_adjust_yen || 0);
       const bonus = Number(r.bonus_yen || 0);
       const point = Number(r.point_yen || 0);
       const addPoint = Number(r.additional_point_yen || 0);
@@ -502,7 +515,7 @@ export async function GET(request: NextRequest) {
         togetherBack +
         categoryBackTotal;
 
-      const total = Number(r.base_pay || 0) + back_total + bonus + point + addPoint;
+      const total = Number(r.base_pay || 0) + back_total + bAdjust + bonus + point + addPoint;
 
       const paid = Number(r.paid_price || 0); // 前借日払として扱う
       const pickup = Number(r.pickup_yen || 0);
@@ -584,7 +597,7 @@ export async function PUT(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const {
+      const {
       user_id,
       year,
       month,
@@ -606,6 +619,7 @@ export async function PUT(request: NextRequest) {
       rental_yen,
       other_deduct_yen,
       penalty_yen,
+      b_adjust_yen,
       bonus_yen,
       point_yen,
       additional_point_yen,
@@ -617,6 +631,10 @@ export async function PUT(request: NextRequest) {
     if (!user_id || !year || !month) {
       return NextResponse.json({ success: false, error: 'user_id, year, month は必須です' }, { status: 400 });
     }
+
+    // 旧DB向けの最低限の保険（B調整）
+    // - 月次保存は salary へ直接 upsert するので、PUT 側でもカラムを補完する
+    await client.query(`ALTER TABLE salary ADD COLUMN IF NOT EXISTS b_adjust_yen DECIMAL(12,2) DEFAULT 0.00`);
 
     await client.query('BEGIN');
     const paid = Number(paid_price || 0);
@@ -633,7 +651,7 @@ export async function PUT(request: NextRequest) {
         together_nomination_count, together_nomination_fee,
         sales_back_yen,
         pickup_yen, hairmake_yen, rental_yen, other_deduct_yen, penalty_yen,
-        bonus_yen, point_yen, additional_point_yen,
+        b_adjust_yen, bonus_yen, point_yen, additional_point_yen,
         paid_price, deduction_yen,
         total_pay_yen, realTotal_price
       )
@@ -645,9 +663,9 @@ export async function PUT(request: NextRequest) {
         $10,$11,
         $12,
         $13,$14,$15,$16,$17,
-        $18,$19,$20,
-        $21,$22,
-        $23,$24
+        $18,$19,$20,$21,
+        $22,$23,
+        $24,$25
       )
       ON CONFLICT (user_id, year, month)
       DO UPDATE SET 
@@ -665,6 +683,7 @@ export async function PUT(request: NextRequest) {
         rental_yen = EXCLUDED.rental_yen,
         other_deduct_yen = EXCLUDED.other_deduct_yen,
         penalty_yen = EXCLUDED.penalty_yen,
+        b_adjust_yen = EXCLUDED.b_adjust_yen,
         bonus_yen = EXCLUDED.bonus_yen,
         point_yen = EXCLUDED.point_yen,
         additional_point_yen = EXCLUDED.additional_point_yen,
@@ -690,6 +709,7 @@ export async function PUT(request: NextRequest) {
         rental_yen ?? 0,
         other_deduct_yen ?? 0,
         penalty_yen ?? 0,
+        b_adjust_yen ?? 0,
         bonus_yen ?? 0,
         point_yen ?? 0,
         additional_point_yen ?? 0,

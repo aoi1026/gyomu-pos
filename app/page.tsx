@@ -1,6 +1,5 @@
 'use client';
 
-import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -147,13 +146,16 @@ export default function Home() {
             <div className="relative">
               {/* Main Hero Image */}
               <div className="relative rounded-2xl overflow-hidden shadow-2xl bg-gradient-to-br from-purple-100 to-pink-100">
-                <Image 
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
                   src="https://images.pexels.com/photos/3184418/pexels-photo-3184418.jpeg?auto=compress&cs=tinysrgb&w=800&h=600&fit=crop"
                   alt="プロフェッショナルな日本人女性がタブレットでPOSシステムを操作"
                   width={800}
                   height={600}
                   className="w-full h-96 object-cover"
-                  unoptimized
+                  loading="lazy"
+                  decoding="async"
+                  suppressHydrationWarning
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-purple-900/20 to-transparent"></div>
                 
@@ -211,13 +213,16 @@ export default function Home() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             <div className="relative group">
               <div className="aspect-video rounded-xl overflow-hidden shadow-lg group-hover:shadow-xl transition-shadow duration-300">
-                <Image 
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
                   src="https://images.pexels.com/photos/3184292/pexels-photo-3184292.jpeg?auto=compress&cs=tinysrgb&w=600&h=400&fit=crop"
                   alt="テーブルログインシステム"
                   width={600}
                   height={400}
                   className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                  unoptimized
+                  loading="lazy"
+                  decoding="async"
+                  suppressHydrationWarning
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent"></div>
                 <div className="absolute bottom-4 left-4 text-white">
@@ -229,13 +234,16 @@ export default function Home() {
             
             <div className="relative group">
               <div className="aspect-video rounded-xl overflow-hidden shadow-lg group-hover:shadow-xl transition-shadow duration-300">
-                <Image 
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
                   src="https://images.pexels.com/photos/3184465/pexels-photo-3184465.jpeg?auto=compress&cs=tinysrgb&w=600&h=400&fit=crop"
                   alt="指名管理・バック率管理画面"
                   width={600}
                   height={400}
                   className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                  unoptimized
+                  loading="lazy"
+                  decoding="async"
+                  suppressHydrationWarning
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent"></div>
                 <div className="absolute bottom-4 left-4 text-white">
@@ -247,13 +255,16 @@ export default function Home() {
             
             <div className="relative group">
               <div className="aspect-video rounded-xl overflow-hidden shadow-lg group-hover:shadow-xl transition-shadow duration-300">
-                <Image 
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
                   src="https://images.pexels.com/photos/3184360/pexels-photo-3184360.jpeg?auto=compress&cs=tinysrgb&w=600&h=400&fit=crop"
                   alt="勤怠・給与管理システム"
                   width={600}
                   height={400}
                   className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                  unoptimized
+                  loading="lazy"
+                  decoding="async"
+                  suppressHydrationWarning
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent"></div>
                 <div className="absolute bottom-4 left-4 text-white">
@@ -325,13 +336,16 @@ export default function Home() {
       <section className="py-20 px-4 sm:px-6 lg:px-8 bg-white">
         <div className="max-w-4xl mx-auto text-center">
           <div className="mb-12">
-            <Image 
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
               src="https://images.pexels.com/photos/3184292/pexels-photo-3184292.jpeg?auto=compress&cs=tinysrgb&w=400&h=400&fit=crop"
               alt="満足した店舗管理者"
               width={400}
               height={400}
               className="w-24 h-24 rounded-full mx-auto mb-6 object-cover shadow-lg"
-              unoptimized
+              loading="lazy"
+              decoding="async"
+              suppressHydrationWarning
             />
             <blockquote className="text-2xl font-medium text-gray-900 mb-6">
               「テーブルログインでキャストが注文を管理するシステムで、指名管理とバック率計算が簡単になりました。
