@@ -133,8 +133,12 @@ export function computeCustomerBillTotals(
   };
 }
 
+/**
+ * 請求合計（サービス手数料込みの最終額）を決済用に整数円へ整える。
+ * computeCustomerBillTotals の total を渡す想定。10% の再計算は行わない。
+ */
 export function customerBillPaymentAmount(totalWithFee: number, roundUnitYen: number): number {
-  const raw = totalWithFee * 1.1;
-  if (!Number.isFinite(roundUnitYen) || roundUnitYen <= 0) return Math.round(raw);
-  return ceilToPositiveMultiple(raw, roundUnitYen);
+  if (!Number.isFinite(totalWithFee)) return 0;
+  if (!Number.isFinite(roundUnitYen) || roundUnitYen <= 0) return Math.round(totalWithFee);
+  return ceilToPositiveMultiple(totalWithFee, roundUnitYen);
 }

@@ -1,3 +1,8 @@
+import {
+  formatRyoushushoAmount,
+  formatRyoushushoDate,
+} from '@/lib/printing/ryoushusho-html';
+
 type ReceiptLine = {
   left: string;
   right?: string;
@@ -50,6 +55,21 @@ export type ExtensionInfoReceiptPayload = {
   extensionPerPerson: number;
   extensionRemainder: number;
   footerNote?: string;
+};
+
+/** 日本の領収証（明細なし・支払証明用） */
+export type RyoushushoPayload = {
+  documentKind: 'ryoushusho';
+  receiptNo?: string;
+  issueDate: Date;
+  /** 宛名（空なら手書き用の下線のみ） */
+  recipientName?: string;
+  amount: number;
+  /** 但し書き（例: 飲食代） */
+  purposeText?: string;
+  storeName: string;
+  storeAddress: string;
+  storePhone: string;
 };
 
 export function formatYen(amount: number) {
@@ -234,7 +254,7 @@ export function makeReceiptCanvas(payload: ReceiptPayload, widthPx: number = 576
   return canvas;
 }
 
-/* ─────────────────── FullReceiptPayload (領収書) ─────────────────── */
+/* ─────────────────── FullReceiptPayload (明細レシート) ─────────────────── */
 
 export function makeFullReceiptCanvas(payload: FullReceiptPayload, widthPx: number = 576): HTMLCanvasElement {
   const canvas = document.createElement('canvas');
@@ -561,6 +581,145 @@ export function buildExtensionInfoReceiptEscPos(
 ): Uint8Array {
   const widthPx = opts?.widthPx ?? 576;
   const canvas = makeExtensionInfoReceiptCanvas(payload, widthPx);
+  const raster = canvasToRasterBytes(canvas);
+  const header = escposRasterHeader(canvas.width, canvas.height);
+  const bytes: number[] = [];
+  bytes.push(...escposInit());
+  bytes.push(...header);
+  bytes.push(...Array.from(raster));
+  bytes.push(...escposFeed(6));
+  bytes.push(...escposCut());
+  return new Uint8Array(bytes);
+}
+
+/* ─────────────────── RyoushushoPayload (領収証) ─────────────────── */
+
+export function makeRyoushushoCanvas(payload: RyoushushoPayload, widthPx: number = 576): HTMLCanvasElement {
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('Canvasが利用できません');
+
+  const pad = 20;
+  const innerLeft = pad + 8;
+  const innerRight = widthPx - pad - 8;
+  const innerW = innerRight - innerLeft;
+  const h = 780;
+
+  canvas.width = widthPx;
+  canvas.height = h;
+
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = '#000';
+  ctx.strokeStyle = '#aaa';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(pad, 16, widthPx - pad * 2, h - 32);
+
+  const issueStr = formatRyoushushoDate(payload.issueDate);
+  const purpose = (payload.purposeText || '飲食代').trim();
+  const recipient = (payload.recipientName || '').trim();
+  const amountStr = formatRyoushushoAmount(payload.amount);
+  const storeName = payload.storeName || 'STORE';
+
+  const corners = [
+    [pad + 10, 36],
+    [widthPx - pad - 10, 36],
+    [pad + 10, h - 28],
+    [widthPx - pad - 10, h - 28],
+  ];
+  ctx.font = '22px serif';
+  ctx.fillStyle = '#555';
+  ctx.textAlign = 'center';
+  for (const [cx, cy] of corners) {
+    ctx.fillText('❧', cx, cy);
+  }
+  ctx.fillStyle = '#000';
+
+  let y = 72;
+  ctx.textAlign = 'center';
+  ctx.font = 'bold 28px serif';
+  ctx.fillText('領　収　証', widthPx / 2, y);
+  y += 38;
+
+  ctx.textAlign = 'right';
+  ctx.font = '16px serif';
+  const noText = payload.receiptNo?.trim() ? `No.　${payload.receiptNo.trim()}` : 'No.';
+  ctx.fillText(noText, innerRight, y);
+  y += 22;
+  ctx.fillText(`発行日　${issueStr}`, innerRight, y);
+  y += 28;
+
+  const stampW = 76;
+  const stampH = 76;
+  const stampX = innerRight - stampW;
+  const stampY = y - 8;
+  ctx.strokeStyle = '#aaa';
+  ctx.strokeRect(stampX, stampY, stampW, stampH);
+  ctx.textAlign = 'center';
+  ctx.font = '14px sans-serif';
+  ctx.fillStyle = '#888';
+  ctx.fillText('収入印紙', stampX + stampW / 2, stampY + stampH / 2 + 5);
+  ctx.fillStyle = '#000';
+
+  ctx.textAlign = 'left';
+  ctx.font = 'bold 24px serif';
+  const nameText = recipient || '';
+  ctx.fillText(nameText, innerLeft, y + 8);
+  const nameW = Math.max(280, ctx.measureText(nameText).width + 40);
+  const nameLineY = y + 14;
+  ctx.strokeStyle = '#000';
+  ctx.beginPath();
+  ctx.moveTo(innerLeft, nameLineY);
+  ctx.lineTo(innerLeft + nameW, nameLineY);
+  ctx.stroke();
+  ctx.font = '20px serif';
+  ctx.fillText('　様', innerLeft + nameW + 4, y + 8);
+  y = nameLineY + 36;
+
+  ctx.font = 'bold 44px serif';
+  const amtW = ctx.measureText(amountStr).width;
+  ctx.fillText(amountStr, innerLeft, y);
+  ctx.beginPath();
+  ctx.moveTo(innerLeft, y + 8);
+  ctx.lineTo(innerLeft + Math.max(amtW + 20, 320), y + 8);
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  ctx.lineWidth = 1;
+  ctx.font = '18px serif';
+  ctx.fillText('　印', innerLeft + Math.max(amtW + 20, 320) + 8, y - 4);
+  y += 44;
+
+  ctx.font = '17px serif';
+  ctx.fillText(`${purpose}　として　上記正に領収いたしました。`, innerLeft, y);
+  y += 28;
+
+  ctx.strokeStyle = '#000';
+  ctx.beginPath();
+  ctx.moveTo(innerLeft, y);
+  ctx.lineTo(innerRight, y);
+  ctx.stroke();
+  y += 28;
+
+  ctx.font = '16px serif';
+  if (payload.storeAddress?.trim()) {
+    ctx.fillText(`　　　　${payload.storeAddress.trim()}`, innerLeft, y);
+    y += 24;
+  }
+  if (payload.storePhone?.trim()) {
+    ctx.fillText(`　　　　TEL ${payload.storePhone.trim()}`, innerLeft, y);
+    y += 24;
+  }
+
+  ctx.textAlign = 'right';
+  ctx.font = 'bold 48px "Times New Roman", serif';
+  ctx.fillText(storeName, innerRight, h - 48);
+
+  return canvas;
+}
+
+export function buildRyoushushoEscPos(payload: RyoushushoPayload, opts?: { widthPx?: number }): Uint8Array {
+  const widthPx = opts?.widthPx ?? 576;
+  const canvas = makeRyoushushoCanvas(payload, widthPx);
   const raster = canvasToRasterBytes(canvas);
   const header = escposRasterHeader(canvas.width, canvas.height);
   const bytes: number[] = [];

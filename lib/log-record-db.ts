@@ -1,7 +1,7 @@
 import type { PoolClient } from 'pg';
 import { getBusinessDayYmd } from '@/lib/business-day';
 
-export type LogRecordAction = '明細削除' | 'レシート印刷';
+export type LogRecordAction = '明細削除' | 'レシート印刷' | '領収書印刷';
 
 export type InsertLogRecordRow = {
   business_date: string; // YYYY-MM-DD
@@ -18,7 +18,7 @@ export type InsertLogRecordRow = {
 };
 
 /**
- * システムログ（注文明細削除・レシート印刷）用テーブル。
+ * システムログ（注文明細削除・レシート印刷・領収書印刷）用テーブル。
  * 既存 DB では起動時に CREATE IF NOT EXISTS で補完する。
  */
 export async function ensureLogRecordTable(client: PoolClient): Promise<void> {
@@ -28,7 +28,7 @@ export async function ensureLogRecordTable(client: PoolClient): Promise<void> {
       created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
       business_date DATE NOT NULL,
       table_label TEXT NOT NULL DEFAULT '',
-      action_type TEXT NOT NULL CHECK (action_type IN ('明細削除', 'レシート印刷')),
+      action_type TEXT NOT NULL CHECK (action_type IN ('明細削除', 'レシート印刷', '領収書印刷')),
       original_amount DECIMAL(12,2),
       quantity INTEGER,
       target_staff_label TEXT,
@@ -42,6 +42,13 @@ export async function ensureLogRecordTable(client: PoolClient): Promise<void> {
   await client.query(`
     CREATE INDEX IF NOT EXISTS idx_log_record_business_date_id
     ON log_record (business_date DESC, id DESC)
+  `);
+  await client.query(`
+    ALTER TABLE log_record DROP CONSTRAINT IF EXISTS log_record_action_type_check
+  `);
+  await client.query(`
+    ALTER TABLE log_record ADD CONSTRAINT log_record_action_type_check
+    CHECK (action_type IN ('明細削除', 'レシート印刷', '領収書印刷'))
   `);
 }
 

@@ -6,14 +6,14 @@ import { ensureLogRecordTable, insertLogRecord, logBusinessDateNow } from '@/lib
 export const dynamic = 'force-dynamic';
 
 /**
- * 領収書印刷のログ（クライアントから送信）。明細削除は salesorder API 側で記録。
+ * レシート／領収書印刷のログ（クライアントから送信）。明細削除は salesorder API 側で記録。
  */
 export async function POST(request: NextRequest) {
   const client = await pool.connect();
   try {
     const body = await request.json().catch(() => ({}));
     const actionType = String(body?.action_type || '');
-    if (actionType !== 'レシート印刷') {
+    if (actionType !== 'レシート印刷' && actionType !== '領収書印刷') {
       return NextResponse.json({ success: false, error: 'action_type が不正です' }, { status: 400 });
     }
     const sessionId = Number(body?.session_id);
@@ -44,7 +44,7 @@ export async function POST(request: NextRequest) {
     await insertLogRecord(client, {
       business_date: logBusinessDateNow(),
       table_label: String(sess.rows[0].table_label || ''),
-      action_type: 'レシート印刷',
+      action_type: actionType as 'レシート印刷' | '領収書印刷',
       original_amount: Number.isFinite(original_amount as number) ? (original_amount as number) : null,
       payment_method,
       memo,

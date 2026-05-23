@@ -2,6 +2,7 @@ import type {
   ReceiptPayload,
   FullReceiptPayload,
   ExtensionInfoReceiptPayload,
+  RyoushushoPayload,
 } from '@/lib/printing/escpos-raster';
 import { formatYen } from '@/lib/printing/escpos-raster';
 import { summarizeSessionPayments, toNumber, type SessionPayment } from '@/lib/session-payments';
@@ -448,5 +449,46 @@ export function buildExtensionInfoReceipt(
     extensionRemainder,
     footerNote: 'サービスTAX込 指名延長料込',
   };
+}
+
+export type BuildRyoushushoArgs = {
+  storeName: string;
+  storeAddress: string;
+  storePhone: string;
+  amount: number;
+  receiptNo?: string;
+  issueDate?: Date;
+  recipientName?: string;
+  purposeText?: string;
+};
+
+/** 明細レシートの合計から日本の領収証（領収証）ペイロードを生成 */
+export function buildRyoushusho(args: BuildRyoushushoArgs): RyoushushoPayload {
+  return {
+    documentKind: 'ryoushusho',
+    receiptNo: args.receiptNo,
+    issueDate: args.issueDate ?? new Date(),
+    recipientName: args.recipientName ?? '',
+    amount: args.amount,
+    purposeText: args.purposeText ?? '飲食代',
+    storeName: args.storeName,
+    storeAddress: args.storeAddress,
+    storePhone: args.storePhone,
+  };
+}
+
+export function buildRyoushushoFromFullReceipt(
+  full: FullReceiptPayload,
+  opts?: { issueDate?: Date; recipientName?: string; receiptNo?: string }
+): RyoushushoPayload {
+  return buildRyoushusho({
+    storeName: full.storeName,
+    storeAddress: full.storeAddress,
+    storePhone: full.storePhone,
+    amount: full.total,
+    receiptNo: opts?.receiptNo ?? full.paymentId,
+    issueDate: opts?.issueDate,
+    recipientName: opts?.recipientName,
+  });
 }
 

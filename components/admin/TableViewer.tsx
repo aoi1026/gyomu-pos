@@ -37,8 +37,13 @@ import {
   fetchStoreId,
   buildFullReceipt,
   buildExtensionInfoReceipt,
+  buildRyoushushoFromFullReceipt,
 } from '@/lib/printing/receipt-builders';
-import { buildFullReceiptTextEscPos, buildExtensionInfoReceiptTextEscPos } from '@/lib/printing/escpos-text';
+import {
+  buildFullReceiptTextEscPos,
+  buildExtensionInfoReceiptTextEscPos,
+  buildRyoushushoTextEscPos,
+} from '@/lib/printing/escpos-text';
 import { removeLatestExtensionRoomSurcharges } from '@/lib/remove-latest-extension-room-surcharges';
 import { perNominationExtensionCharge, extensionUnitPrice as nominationExtensionUnitFromEntry } from '@/lib/nomination-extension-fee';
 import { nominationOrderLineTotal } from '@/lib/nomination-order-line-total';
@@ -59,12 +64,21 @@ import {
   type SessionPayment,
 } from '@/lib/session-payments';
 import { getCastRealtimeSubtitle } from '@/lib/cast-realtime-subtitle';
-import type { FullReceiptPayload, ExtensionInfoReceiptPayload } from '@/lib/printing/escpos-raster';
+import type {
+  FullReceiptPayload,
+  ExtensionInfoReceiptPayload,
+  RyoushushoPayload,
+} from '@/lib/printing/escpos-raster';
 import {
   previewFullReceiptInWindow,
   printFullReceiptViaOs,
   printExtensionInfoReceiptViaOs,
+  printRyoushushoViaOs,
 } from '@/lib/printing/os-print';
+import {
+  ryoushushoToHtml,
+  RYOUSHUSHO_PREVIEW_STYLES,
+} from '@/lib/printing/ryoushusho-html';
 import {
   normalizeSessionTimeStep,
   parseHHMM,
@@ -126,11 +140,12 @@ interface Nomination {
   created_at: string;
 }
 
-/** 領収書印刷を log_record に記録（失敗しても UI は継続） */
-async function postReceiptPrintLogApi(params: {
+/** レシート／領収書印刷を log_record に記録（失敗しても UI は継続） */
+async function postPrintLogApi(params: {
   sessionId: number;
   paymentMethodLabel: string;
   originalAmount: number | null;
+  actionType: 'レシート印刷' | '領収書印刷';
 }) {
   const payment_method = params.paymentMethodLabel.includes('現金') ? '現金' : 'カード';
   try {
@@ -138,14 +153,14 @@ async function postReceiptPrintLogApi(params: {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        action_type: 'レシート印刷',
+        action_type: params.actionType,
         session_id: params.sessionId,
         payment_method,
         original_amount: params.originalAmount,
       }),
     });
   } catch (e) {
-    console.error('レシート印刷ログ送信エラー:', e);
+    console.error(`${params.actionType}ログ送信エラー:`, e);
   }
 }
 
@@ -214,6 +229,9 @@ export default function TableViewer({ tableId, onClose, onSessionMovedToTable }:
 
   const [showReceiptPreview, setShowReceiptPreview] = useState(false);
   const [receiptPreviewData, setReceiptPreviewData] = useState<FullReceiptPayload | null>(null);
+
+  const [showRyoushushoPreview, setShowRyoushushoPreview] = useState(false);
+  const [ryoushushoPreviewData, setRyoushushoPreviewData] = useState<RyoushushoPayload | null>(null);
 
   const [showExtensionInfoPreview, setShowExtensionInfoPreview] = useState(false);
   const [extensionInfoPreviewData, setExtensionInfoPreviewData] = useState<ExtensionInfoReceiptPayload | null>(null);
@@ -288,22 +306,36 @@ export default function TableViewer({ tableId, onClose, onSessionMovedToTable }:
     try {
       const payload = await buildReceiptData(paymentsOverride);
       if (!payload) return;
-      await printer.requestPrint(buildFullReceiptTextEscPos(payload), '領収書自動印刷', {
+      const ryoushusho = buildRyoushushoFromFullReceipt(payload);
+
+      await printer.requestPrint(buildFullReceiptTextEscPos(payload), 'レシート自動印刷', {
         osFallback: () => printFullReceiptViaOs(payload),
         eposPayload: payload,
       });
-      void postReceiptPrintLogApi({
+      void postPrintLogApi({
         sessionId: session.id,
         paymentMethodLabel: payload.paymentMethod || '',
         originalAmount: Number.isFinite(payload.total) ? payload.total : null,
+        actionType: 'レシート印刷',
+      });
+
+      await printer.requestPrint(buildRyoushushoTextEscPos(ryoushusho), '領収証自動印刷', {
+        osFallback: () => printRyoushushoViaOs(ryoushusho),
+        eposPayload: ryoushusho,
+      });
+      void postPrintLogApi({
+        sessionId: session.id,
+        paymentMethodLabel: payload.paymentMethod || '',
+        originalAmount: Number.isFinite(ryoushusho.amount) ? ryoushusho.amount : null,
+        actionType: '領収書印刷',
       });
     } catch (e) {
-      console.error('自動領収書印刷エラー:', e);
-      error('エラー', '領収書の自動印刷に失敗しました（プリンター接続を確認してください）');
+      console.error('自動印刷エラー:', e);
+      error('エラー', 'レシート／領収証の自動印刷に失敗しました（プリンター接続を確認してください）');
     }
   };
 
-  const handlePrintReceipt = async () => {
+  const handlePrintItemizedReceipt = async () => {
     if (!session || !tableId) {
       error('エラー', 'セッション情報がありません');
       return;
@@ -311,20 +343,46 @@ export default function TableViewer({ tableId, onClose, onSessionMovedToTable }:
     try {
       const payload = await buildReceiptData();
       if (!payload) return;
-      // iPad / iOS では Web Bluetooth に制限があるため、OS の印刷ダイアログ経由で印刷する
       const escposData = buildFullReceiptTextEscPos(payload);
-      await printer.requestPrint(escposData, '領収書印刷', {
+      await printer.requestPrint(escposData, 'レシート印刷', {
         osFallback: () => printFullReceiptViaOs(payload),
         eposPayload: payload,
       });
-      void postReceiptPrintLogApi({
+      void postPrintLogApi({
         sessionId: session.id,
         paymentMethodLabel: payload.paymentMethod || '',
         originalAmount: Number.isFinite(payload.total) ? payload.total : null,
+        actionType: 'レシート印刷',
       });
     } catch (e) {
-      console.error('領収書印刷エラー:', e);
-      error('エラー', '領収書データの生成に失敗しました');
+      console.error('レシート印刷エラー:', e);
+      error('エラー', 'レシートデータの生成に失敗しました');
+    }
+  };
+
+  const handlePrintRyoushusho = async () => {
+    if (!session || !tableId) {
+      error('エラー', 'セッション情報がありません');
+      return;
+    }
+    try {
+      const payload = await buildReceiptData();
+      if (!payload) return;
+      const ryoushusho = buildRyoushushoFromFullReceipt(payload);
+      const escposData = buildRyoushushoTextEscPos(ryoushusho);
+      await printer.requestPrint(escposData, '領収証印刷', {
+        osFallback: () => printRyoushushoViaOs(ryoushusho),
+        eposPayload: ryoushusho,
+      });
+      void postPrintLogApi({
+        sessionId: session.id,
+        paymentMethodLabel: payload.paymentMethod || '',
+        originalAmount: Number.isFinite(ryoushusho.amount) ? ryoushusho.amount : null,
+        actionType: '領収書印刷',
+      });
+    } catch (e) {
+      console.error('領収証印刷エラー:', e);
+      error('エラー', '領収証データの生成に失敗しました');
     }
   };
 
@@ -334,14 +392,30 @@ export default function TableViewer({ tableId, onClose, onSessionMovedToTable }:
       return;
     }
     try {
-      // 最新の決済情報を取得してからプレビューを生成
       const latestPayments = await loadSessionPayments(session.id);
       const payload = await buildReceiptData(latestPayments);
       if (!payload) return;
       setReceiptPreviewData(payload);
       setShowReceiptPreview(true);
     } catch (e) {
-      console.error('領収書プレビューエラー:', e);
+      console.error('レシートプレビューエラー:', e);
+      error('エラー', 'プレビューの生成に失敗しました');
+    }
+  };
+
+  const handleShowRyoushushoPreview = async () => {
+    if (!session || !tableId) {
+      error('エラー', 'セッション情報がありません');
+      return;
+    }
+    try {
+      const latestPayments = await loadSessionPayments(session.id);
+      const payload = await buildReceiptData(latestPayments);
+      if (!payload) return;
+      setRyoushushoPreviewData(buildRyoushushoFromFullReceipt(payload));
+      setShowRyoushushoPreview(true);
+    } catch (e) {
+      console.error('領収証プレビューエラー:', e);
       error('エラー', 'プレビューの生成に失敗しました');
     }
   };
@@ -2508,14 +2582,12 @@ export default function TableViewer({ tableId, onClose, onSessionMovedToTable }:
     }
   };
 
-  const calculatePaymentAmount = () => {
+  /** 現在の請求合計（注文合計の「合計」と同額。サービス手数料込み） */
+  const getBillTotal = () => {
     const total = calculateTotal();
     const ru = getManualTotal() !== null ? 0 : customerBillRoundUpYen;
     return customerBillPaymentAmount(total, ru);
   };
-
-  /** 現在の請求合計 (端数処理後の最終請求額) */
-  const getBillTotal = () => calculatePaymentAmount();
 
   /** 受領済み / 残金 等のサマリーを計算する */
   const getPaymentSummary = () => {
@@ -3561,52 +3633,92 @@ export default function TableViewer({ tableId, onClose, onSessionMovedToTable }:
 
                 {/* 注文合計 */}
                 <Card>
-                  <CardHeader className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-2 space-y-0 pb-2">
-                    <CardTitle className="flex items-center whitespace-nowrap">
+                  <CardHeader className="flex flex-col gap-2 space-y-0 pb-2">
+                    <CardTitle className="flex items-center shrink-0">
                       <DollarSign className="w-5 h-5 mr-2 shrink-0" />
                       注文合計
                     </CardTitle>
-                    <div className="flex flex-wrap items-center justify-end gap-1">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={handlePrintExtensionInfoReceipt}
-                        className="h-8 gap-1 px-2"
-                        title="現在料金 / 60分延長料金レシートを印刷"
-                      >
-                        <Timer className="w-4 h-4 shrink-0" />
-                        <span className="hidden 2xl:inline">延長料金印刷</span>
-                        <span className="2xl:hidden text-xs">延長</span>
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={handleShowExtensionInfoReceiptPreview}
-                        className="h-8 px-2"
-                        title="延長料金レシートのプレビュー"
-                      >
-                        <FileText className="w-4 h-4" />
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={handlePrintReceipt}
-                        className="h-8 gap-1 px-2"
-                        title="領収書印刷"
-                      >
-                        <Printer className="w-4 h-4 shrink-0" />
-                        <span className="hidden 2xl:inline">領収書印刷</span>
-                        <span className="2xl:hidden text-xs">領収</span>
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={handleShowReceiptPreview}
-                        className="h-8 px-2"
-                        title="プレビュー"
-                      >
-                        <FileText className="w-4 h-4" />
-                      </Button>
+                    {/*
+                      印刷ボタン: スマホ・iPad は3行（印刷+プレビューのペア）、lg以上は1行
+                    */}
+                    <div className="flex w-full min-w-0 flex-col gap-1.5 lg:flex-row lg:flex-wrap lg:items-center lg:justify-end lg:gap-1">
+                      <div className="flex min-w-0 items-stretch gap-1 lg:w-auto">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={handlePrintExtensionInfoReceipt}
+                          className="h-8 min-w-0 flex-1 gap-1 px-2 lg:flex-initial"
+                          title="現在料金 / 60分延長料金レシートを印刷"
+                        >
+                          <Timer className="h-4 w-4 shrink-0" />
+                          <span className="truncate text-xs sm:text-sm lg:hidden 2xl:inline">
+                            延長料金印刷
+                          </span>
+                          <span className="hidden truncate text-xs lg:inline 2xl:hidden">延長</span>
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={handleShowExtensionInfoReceiptPreview}
+                          className="h-8 w-9 shrink-0 px-0"
+                          title="延長料金レシートのプレビュー"
+                          aria-label="延長料金レシートのプレビュー"
+                        >
+                          <FileText className="h-4 w-4" />
+                        </Button>
+                      </div>
+                      <div className="flex min-w-0 items-stretch gap-1 lg:w-auto">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={handlePrintItemizedReceipt}
+                          className="h-8 min-w-0 flex-1 gap-1 px-2 lg:flex-initial"
+                          title="明細レシートを印刷"
+                        >
+                          <Printer className="h-4 w-4 shrink-0" />
+                          <span className="truncate text-xs sm:text-sm lg:hidden 2xl:inline">
+                            レシート印刷
+                          </span>
+                          <span className="hidden truncate text-xs lg:inline 2xl:hidden">レシート</span>
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={handleShowReceiptPreview}
+                          className="h-8 w-9 shrink-0 px-0"
+                          title="明細レシートのプレビュー"
+                          aria-label="明細レシートのプレビュー"
+                        >
+                          <FileText className="h-4 w-4" />
+                        </Button>
+                      </div>
+                      <div className="flex min-w-0 items-stretch gap-1 lg:w-auto">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={handlePrintRyoushusho}
+                          className="h-8 min-w-0 flex-1 gap-1 border-amber-300 px-2 lg:flex-initial"
+                          title="領収証（日本の領収書）を印刷"
+                        >
+                          <Printer className="h-4 w-4 shrink-0 text-amber-800" />
+                          <span className="truncate text-xs text-amber-900 sm:text-sm lg:hidden 2xl:inline">
+                            領収証印刷
+                          </span>
+                          <span className="hidden truncate text-xs text-amber-900 lg:inline 2xl:hidden">
+                            領収証
+                          </span>
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={handleShowRyoushushoPreview}
+                          className="h-8 w-9 shrink-0 border-amber-300 px-0"
+                          title="領収証のプレビュー"
+                          aria-label="領収証のプレビュー"
+                        >
+                          <FileText className="h-4 w-4 text-amber-800" />
+                        </Button>
+                      </div>
                     </div>
                   </CardHeader>
                   <CardContent className="h-[460px] overflow-y-auto pr-2 space-y-4">
@@ -5116,12 +5228,12 @@ export default function TableViewer({ tableId, onClose, onSessionMovedToTable }:
         </DialogContent>
       </Dialog>
 
-      {/* 領収書プレビューダイアログ */}
+      {/* 明細レシートプレビュー */}
       <Dialog open={showReceiptPreview} onOpenChange={setShowReceiptPreview}>
         <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>領収書プレビュー</DialogTitle>
-            <DialogDescription>印刷される領収書の内容です</DialogDescription>
+            <DialogTitle>レシートプレビュー</DialogTitle>
+            <DialogDescription>印刷される明細レシートの内容です（項目・税込合計）</DialogDescription>
           </DialogHeader>
           {receiptPreviewData && (
             <div className="border border-gray-200 p-5 bg-white font-sans text-sm">
@@ -5185,6 +5297,27 @@ export default function TableViewer({ tableId, onClose, onSessionMovedToTable }:
                 )}
               </div>
             </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* 領収証プレビュー（日本の領収書） */}
+      <Dialog open={showRyoushushoPreview} onOpenChange={setShowRyoushushoPreview}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>領収証プレビュー</DialogTitle>
+            <DialogDescription>
+              印刷される領収証の内容です（明細なし・合計金額の支払証明）
+            </DialogDescription>
+          </DialogHeader>
+          {ryoushushoPreviewData && (
+            <>
+              <style dangerouslySetInnerHTML={{ __html: RYOUSHUSHO_PREVIEW_STYLES }} />
+              <div
+                className="ryoushusho-preview-host"
+                dangerouslySetInnerHTML={{ __html: ryoushushoToHtml(ryoushushoPreviewData) }}
+              />
+            </>
           )}
         </DialogContent>
       </Dialog>

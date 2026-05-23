@@ -12,7 +12,12 @@ import PrintConfirmModal from '@/components/admin/PrintConfirmModal';
 import type { PendingPrintJob } from '@/components/admin/PrintConfirmModal';
 import { useNotificationContext } from '@/lib/notification-context';
 import { isValidIpv4 } from '@/lib/printing/utils';
-import type { ReceiptPayload, FullReceiptPayload, ExtensionInfoReceiptPayload } from '@/lib/printing/escpos-raster';
+import type {
+  ReceiptPayload,
+  FullReceiptPayload,
+  ExtensionInfoReceiptPayload,
+  RyoushushoPayload,
+} from '@/lib/printing/escpos-raster';
 
 type PrinterStatus = 'disconnected' | 'connecting' | 'connected';
 
@@ -42,6 +47,7 @@ type PrinterContextValue = {
         | ReceiptPayload
         | FullReceiptPayload
         | ExtensionInfoReceiptPayload
+        | RyoushushoPayload
         | ReceiptPayload[];
     }
   ) => Promise<void>;
@@ -290,6 +296,7 @@ export function PrinterProvider({ children }: { children: React.ReactNode }) {
           | ReceiptPayload
           | FullReceiptPayload
           | ExtensionInfoReceiptPayload
+          | RyoushushoPayload
           | ReceiptPayload[];
       }
     ) => {
@@ -317,14 +324,17 @@ export function PrinterProvider({ children }: { children: React.ReactNode }) {
               printFullReceiptViaEpos,
               printReceiptsViaEpos,
               printExtensionInfoReceiptViaEpos,
+              printRyoushushoViaEpos,
             } = await import('@/lib/printing/epos-print');
             if (Array.isArray(eposPayload)) {
               await printReceiptsViaEpos(networkPrinterIp, eposPayload);
+            } else if ('documentKind' in eposPayload && eposPayload.documentKind === 'ryoushusho') {
+              await printRyoushushoViaEpos(networkPrinterIp, eposPayload);
             } else if ('orderLines' in eposPayload) {
               await printFullReceiptViaEpos(networkPrinterIp, eposPayload);
             } else if ('currentLabel' in eposPayload) {
               await printExtensionInfoReceiptViaEpos(networkPrinterIp, eposPayload);
-            } else {
+            } else if ('lines' in eposPayload) {
               await printReceiptViaEpos(networkPrinterIp, eposPayload);
             }
             success('印刷完了', `${jobLabel}をWi-Fiプリンターへ送信しました`);

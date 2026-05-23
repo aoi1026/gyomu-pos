@@ -179,12 +179,15 @@ export default function SystemLogsPage() {
                   ) : (
                     records.map((row) => {
                       const isDelete = row.action_type === '明細削除';
-                      const isPrint = row.action_type === 'レシート印刷';
+                      const isReceiptPrint = row.action_type === 'レシート印刷';
+                      const isRyoushushoPrint = row.action_type === '領収書印刷';
                       const actionClass = isDelete
                         ? 'bg-purple-100 text-purple-900 font-medium'
-                        : isPrint
+                        : isReceiptPrint
                           ? 'bg-red-100 text-red-900 font-medium'
-                          : '';
+                          : isRyoushushoPrint
+                            ? 'bg-amber-100 text-amber-900 font-medium'
+                            : '';
                       const amt = row.original_amount != null ? Number(row.original_amount) : null;
                       return (
                         <TableRow key={row.id}>
@@ -206,7 +209,9 @@ export default function SystemLogsPage() {
                           <TableCell className="tabular-nums whitespace-nowrap text-sm">
                             {isDelete ? formatTimeJa(row.ordered_at) : '-'}
                           </TableCell>
-                          <TableCell>{isPrint ? row.payment_method || '-' : '-'}</TableCell>
+                          <TableCell>
+                            {isReceiptPrint || isRyoushushoPrint ? row.payment_method || '-' : '-'}
+                          </TableCell>
                           <TableCell className="text-sm text-slate-600 max-w-[12rem] break-words">
                             {row.memo || ''}
                           </TableCell>

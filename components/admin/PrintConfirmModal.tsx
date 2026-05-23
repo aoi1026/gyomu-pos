@@ -16,12 +16,18 @@ function detectIsIOS(): boolean {
     (/Macintosh/.test(navigator.userAgent) && typeof document !== 'undefined' && 'ontouchend' in document);
 }
 
-import type { ReceiptPayload, FullReceiptPayload, ExtensionInfoReceiptPayload } from '@/lib/printing/escpos-raster';
+import type {
+  ReceiptPayload,
+  FullReceiptPayload,
+  ExtensionInfoReceiptPayload,
+  RyoushushoPayload,
+} from '@/lib/printing/escpos-raster';
 import {
   printReceiptViaEpos,
   printFullReceiptViaEpos,
   printReceiptsViaEpos,
   printExtensionInfoReceiptViaEpos,
+  printRyoushushoViaEpos,
 } from '@/lib/printing/epos-print';
 
 export type PendingPrintJob = {
@@ -34,6 +40,7 @@ export type PendingPrintJob = {
     | ReceiptPayload
     | FullReceiptPayload
     | ExtensionInfoReceiptPayload
+    | RyoushushoPayload
     | ReceiptPayload[];
 };
 
@@ -158,11 +165,13 @@ export default function PrintConfirmModal({
         const p = pendingJob.eposPayload;
         if (Array.isArray(p)) {
           await printReceiptsViaEpos(networkPrinterIp, p);
+        } else if ('documentKind' in p && p.documentKind === 'ryoushusho') {
+          await printRyoushushoViaEpos(networkPrinterIp, p);
         } else if ('orderLines' in p) {
           await printFullReceiptViaEpos(networkPrinterIp, p);
         } else if ('currentLabel' in p) {
           await printExtensionInfoReceiptViaEpos(networkPrinterIp, p);
-        } else {
+        } else if ('lines' in p) {
           await printReceiptViaEpos(networkPrinterIp, p);
         }
         setPrintResult({ type: 'success', message: '正常に印刷されました（Wi-Fi 直接接続）' });

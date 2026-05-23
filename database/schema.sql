@@ -526,13 +526,13 @@ CREATE TRIGGER update_notifications_updated_at
     BEFORE UPDATE ON notifications 
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
--- システムログ（注文明細削除・レシート印刷）
+-- システムログ（注文明細削除・レシート印刷・領収書印刷）
 CREATE TABLE IF NOT EXISTS log_record (
     id SERIAL PRIMARY KEY,
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
     business_date DATE NOT NULL,
     table_label TEXT NOT NULL DEFAULT '',
-    action_type TEXT NOT NULL CHECK (action_type IN ('明細削除', 'レシート印刷')),
+    action_type TEXT NOT NULL CHECK (action_type IN ('明細削除', 'レシート印刷', '領収書印刷')),
     original_amount DECIMAL(12,2),
     quantity INTEGER,
     target_staff_label TEXT,

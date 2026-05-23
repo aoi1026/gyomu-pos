@@ -1,6 +1,12 @@
 'use client';
 
-import type { ReceiptPayload, FullReceiptPayload, ExtensionInfoReceiptPayload } from '@/lib/printing/escpos-raster';
+import type {
+  ReceiptPayload,
+  FullReceiptPayload,
+  ExtensionInfoReceiptPayload,
+  RyoushushoPayload,
+} from '@/lib/printing/escpos-raster';
+import { formatRyoushushoAmount, formatRyoushushoDate } from '@/lib/printing/ryoushusho-html';
 import { charWidth, truncateToWidth, leftRight } from '@/lib/printing/escpos-text';
 
 const EPOS_SDK_URL = '/epos/epos-2.27.0.js';
@@ -434,8 +440,66 @@ export async function printReceiptViaEpos(ip: string, payload: ReceiptPayload): 
   if (!result.success) throw new Error(result.detail);
 }
 
+function buildRyoushushoText(p: EposPrinterDevice, payload: RyoushushoPayload): void {
+  if (typeof p.addTextLang === 'function') p.addTextLang(p.LANG_JA || 'ja');
+  if (typeof p.addTextFont === 'function') p.addTextFont(p.FONT_A || 'font_a');
+
+  const purpose = (payload.purposeText || '飲食代').trim();
+  const recipient = (payload.recipientName || '').trim();
+  const issueStr = formatRyoushushoDate(payload.issueDate);
+  const noText = payload.receiptNo?.trim() ? `No.　${payload.receiptNo.trim()}` : 'No.';
+
+  p.addTextAlign(p.ALIGN_CENTER);
+  p.addTextSize(2, 2);
+  p.addTextStyle(false, false, true, p.COLOR_1);
+  p.addText('領　収　証\n');
+  p.addTextSize(1, 1);
+  p.addTextStyle(false, false, false, p.COLOR_1);
+
+  p.addTextAlign(p.ALIGN_RIGHT);
+  p.addText(`${noText}\n`);
+  p.addText(`発行日　${issueStr}\n`);
+  p.addText('\n');
+
+  p.addTextAlign(p.ALIGN_LEFT);
+  p.addText((recipient ? `${recipient}　様` : '　　　　　　　　　　　様') + '\n');
+  p.addText('-'.repeat(COL_WIDTH) + '\n');
+  p.addText('\n');
+
+  p.addTextSize(2, 2);
+  p.addTextStyle(false, false, true, p.COLOR_1);
+  p.addText(leftRight(formatRyoushushoAmount(payload.amount), '　印', COL_WIDTH_WIDE) + '\n');
+  p.addTextSize(1, 1);
+  p.addTextStyle(false, false, false, p.COLOR_1);
+  p.addText('-'.repeat(COL_WIDTH) + '\n');
+  p.addText('\n');
+
+  p.addText(`${purpose}　として　上記正に領収いたしました。\n`);
+  p.addText('\n');
+  p.addText('-'.repeat(COL_WIDTH) + '\n');
+  p.addText('\n');
+
+  if (payload.storeAddress?.trim()) p.addText(`　　　　${payload.storeAddress.trim()}\n`);
+  if (payload.storePhone?.trim()) p.addText(`　　　　TEL ${payload.storePhone.trim()}\n`);
+  p.addText('\n');
+
+  p.addTextAlign(p.ALIGN_RIGHT);
+  p.addTextStyle(false, false, true, p.COLOR_1);
+  p.addText((payload.storeName || 'STORE') + '\n');
+  p.addTextStyle(false, false, false, p.COLOR_1);
+  p.addText('\n[ 収入印紙 ]\n');
+
+  p.addFeedLine(3);
+  p.addCut(p.CUT_FEED);
+}
+
 export async function printFullReceiptViaEpos(ip: string, payload: FullReceiptPayload): Promise<void> {
   const result = await connectAndPrintWithBuilder(ip, (p) => buildFullReceiptText(p, payload));
+  if (!result.success) throw new Error(result.detail);
+}
+
+export async function printRyoushushoViaEpos(ip: string, payload: RyoushushoPayload): Promise<void> {
+  const result = await connectAndPrintWithBuilder(ip, (p) => buildRyoushushoText(p, payload));
   if (!result.success) throw new Error(result.detail);
 }
 

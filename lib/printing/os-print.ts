@@ -1,4 +1,10 @@
-import type { ReceiptPayload, FullReceiptPayload, ExtensionInfoReceiptPayload } from '@/lib/printing/escpos-raster';
+import type {
+  ReceiptPayload,
+  FullReceiptPayload,
+  ExtensionInfoReceiptPayload,
+  RyoushushoPayload,
+} from '@/lib/printing/escpos-raster';
+import { buildRyoushushoPrintPageHtml } from '@/lib/printing/ryoushusho-html';
 import { formatYen } from '@/lib/printing/escpos-raster';
 
 function isIOS(): boolean {
@@ -250,11 +256,18 @@ export function printReceiptViaOs(payloads: ReceiptPayload | ReceiptPayload[]): 
 }
 
 /**
- * 領収書（フル形式・画像デザイン）をOSの印刷ダイアログで印刷します。
+ * 明細レシートをOSの印刷ダイアログで印刷します。
  */
 export function printFullReceiptViaOs(payload: FullReceiptPayload): void {
   const html = fullReceiptToHtml(payload);
-  doPrint(buildReceiptPageHtml(`<div class="paper">${html}</div>`, '領収書 印刷'));
+  doPrint(buildReceiptPageHtml(`<div class="paper">${html}</div>`, 'レシート 印刷'));
+}
+
+/**
+ * 領収証（日本の領収書）をOSの印刷ダイアログで印刷します。
+ */
+export function printRyoushushoViaOs(payload: RyoushushoPayload): void {
+  doPrint(buildRyoushushoPrintPageHtml(payload, '領収証 印刷'));
 }
 
 function extensionInfoReceiptToHtml(p: ExtensionInfoReceiptPayload): string {
@@ -308,12 +321,26 @@ export function previewExtensionInfoReceiptInWindow(payload: ExtensionInfoReceip
 }
 
 /**
- * 領収書（フル形式）をプレビューウィンドウで表示します。
+ * 明細レシートをプレビューウィンドウで表示します。
  */
 export function previewFullReceiptInWindow(payload: FullReceiptPayload): void {
   const html = fullReceiptToHtml(payload);
-  const fullHtml = buildReceiptPageHtml(`<div class="paper">${html}</div>`, '領収書 プレビュー');
+  const fullHtml = buildReceiptPageHtml(`<div class="paper">${html}</div>`, 'レシート プレビュー');
   const w = window.open('', 'pos_os_preview', 'width=420,height=680');
+  if (!w) {
+    throw new Error('ポップアップがブロックされました。ポップアップ許可後に再度お試しください。');
+  }
+  w.document.open();
+  w.document.write(fullHtml);
+  w.document.close();
+}
+
+/**
+ * 領収証をプレビューウィンドウで表示します。
+ */
+export function previewRyoushushoInWindow(payload: RyoushushoPayload): void {
+  const fullHtml = buildRyoushushoPrintPageHtml(payload, '領収証 プレビュー');
+  const w = window.open('', 'pos_os_preview_ryo', 'width=420,height=720');
   if (!w) {
     throw new Error('ポップアップがブロックされました。ポップアップ許可後に再度お試しください。');
   }

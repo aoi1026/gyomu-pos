@@ -2259,7 +2259,7 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
     return total;
   };
 
-  // 支払い金額を計算（合計の1.1倍 = 10%追加）
+  // 支払い金額（注文合計と同じ。サービス手数料は calculateTotal に含まれる）
   const calculatePaymentAmount = () => {
     const total = calculateTotal();
     return customerBillPaymentAmount(total, customerBillRoundUpYen);

@@ -1,6 +1,7 @@
 'use client';
 
-import type { FullReceiptPayload, ExtensionInfoReceiptPayload } from './escpos-raster';
+import type { FullReceiptPayload, ExtensionInfoReceiptPayload, RyoushushoPayload } from './escpos-raster';
+import { formatRyoushushoAmount, formatRyoushushoDate } from './ryoushusho-html';
 
 // ---------------------------------------------------------------------------
 // Shift-JIS encoder – built lazily from the browser's built-in TextDecoder
@@ -74,6 +75,7 @@ const KANJI_SJIS = [FS, 0x43, 0x02];
 
 const ALIGN_LEFT   = [ESC, 0x61, 0x00];
 const ALIGN_CENTER = [ESC, 0x61, 0x01];
+const ALIGN_RIGHT  = [ESC, 0x61, 0x02];
 
 const BOLD_ON  = [ESC, 0x45, 0x01];
 const BOLD_OFF = [ESC, 0x45, 0x00];
@@ -195,7 +197,7 @@ class EscPosBuilder {
 }
 
 // ---------------------------------------------------------------------------
-// Full receipt (領収書) – text-mode ESC/POS
+// Full receipt (明細レシート) – text-mode ESC/POS
 // ---------------------------------------------------------------------------
 
 export function buildFullReceiptTextEscPos(
@@ -445,5 +447,64 @@ export function buildReceiptTextEscPos(
 
   b.push(feedLines(4), CUT);
 
+  return b.build();
+}
+
+// ---------------------------------------------------------------------------
+// Ryoushusho (領収証) – text-mode ESC/POS（ryoshusho_print.html 準拠）
+// ---------------------------------------------------------------------------
+
+export function buildRyoushushoTextEscPos(payload: RyoushushoPayload): Uint8Array {
+  const b = new EscPosBuilder();
+  const purpose = (payload.purposeText || '飲食代').trim();
+  const recipient = (payload.recipientName || '').trim();
+  const issueStr = formatRyoushushoDate(payload.issueDate);
+  const noText = payload.receiptNo?.trim() ? `No.　${payload.receiptNo.trim()}` : 'No.';
+
+  b.push(INIT, JAPAN_CS, KANJI_ON, KANJI_SJIS);
+
+  b.push(ALIGN_CENTER, SIZE_XLARGE, BOLD_ON);
+  b.line('領　収　証');
+  b.push(SIZE_NORMAL, BOLD_OFF);
+
+  b.push(ALIGN_RIGHT);
+  b.line(noText);
+  b.line(`発行日　${issueStr}`);
+  b.lf();
+
+  b.push(ALIGN_LEFT);
+  if (recipient) {
+    b.line(`${recipient}　様`);
+  } else {
+    b.line('　　　　　　　　　　　様');
+  }
+  b.line('────────────────────────');
+  b.lf();
+
+  b.push(ALIGN_LEFT, SIZE_XLARGE, BOLD_ON);
+  b.line(leftRight(formatRyoushushoAmount(payload.amount), '　印', COL_WIDTH_WIDE));
+  b.push(SIZE_NORMAL, BOLD_OFF);
+  b.line('────────────────────────');
+  b.lf();
+
+  b.line(`${purpose}　として　上記正に領収いたしました。`);
+  b.lf();
+  b.line(dashedLine());
+  b.lf();
+
+  if (payload.storeAddress?.trim()) b.line(`　　　　${payload.storeAddress.trim()}`);
+  if (payload.storePhone?.trim()) b.line(`　　　　TEL ${payload.storePhone.trim()}`);
+  b.lf();
+
+  b.push(ALIGN_RIGHT, BOLD_ON);
+  b.line(payload.storeName || 'STORE');
+  b.push(BOLD_OFF);
+  b.lf();
+
+  b.push(ALIGN_RIGHT);
+  b.line('[ 収入印紙 ]');
+  b.lf();
+
+  b.push(feedLines(4), CUT);
   return b.build();
 }
