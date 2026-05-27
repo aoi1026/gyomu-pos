@@ -81,7 +81,7 @@ type BuildArgs = {
   issuedAt: Date;
   cartOrders: Array<{ id: number; total_price: number; status: string }>;
   orderRequestStatus: Record<string | number, any>;
-  additionalServices: Array<{ charge: number }>;
+  additionalServices: Array<{ charge: number; type?: string }>;
   guestCount: string;
   addCharges: Record<string, number>;
   setExtensions: Array<{ count: number; timestamp: number; price?: number }>;
@@ -119,12 +119,19 @@ export function buildCurrentAndExtensionReceipts(args: BuildArgs): {
     if (st === 'accepted') return sum + (Number(order.total_price) || 0);
     return sum;
   }, 0);
-  const additionalServicesTotal = additionalServices.reduce((sum, s) => sum + (Number(s.charge) || 0), 0);
+  const nomihoudaiTotal = additionalServices.reduce(
+    (sum: number, s: any) => sum + (s?.type === 'nomihoudai' ? (Number(s?.charge) || 0) : 0),
+    0
+  );
+  const additionalServicesTotal = additionalServices.reduce(
+    (sum: number, s: any) => sum + (s?.type === 'nomihoudai' ? 0 : (Number(s?.charge) || 0)),
+    0
+  );
   const productAndServiceTotal = productTotal + additionalServicesTotal;
 
   const guest = Math.max(0, parseInt(String(guestCount || '0'), 10) || 0);
   const setPrice = Number(addCharges['set_price'] || 0);
-  const sessionFee = setPrice * guest;
+  const sessionFee = setPrice * guest + nomihoudaiTotal;
 
   const mainCharge = Number(addCharges['main'] || 0);
 
@@ -211,7 +218,7 @@ export type BuildFullReceiptArgs = {
   addCharges: Record<string, number>;
   setExtensions: Array<{ count: number; timestamp?: number; price?: number }>;
   nominations: Array<{ cost?: number; cast_name?: string }>;
-  additionalServices: Array<{ charge: number }>;
+  additionalServices: Array<{ charge: number; type?: string }>;
   /** 途中会計がある場合の決済レコード一覧 */
   sessionPayments?: SessionPayment[];
 };
@@ -240,7 +247,11 @@ export function buildFullReceipt(args: BuildFullReceiptArgs): FullReceiptPayload
   const orderLines: Array<{ item: string; qty: number; amount: number }> = [];
   const guest = Math.max(0, parseInt(String(guestCount || '0'), 10) || 0);
   const setPrice = Number(addCharges['set_price'] || 0);
-  const sessionFee = setPrice * guest;
+  const nomihoudaiTotal = additionalServices.reduce(
+    (sum: number, s: any) => sum + (s?.type === 'nomihoudai' ? (Number(s?.charge) || 0) : 0),
+    0
+  );
+  const sessionFee = setPrice * guest + nomihoudaiTotal;
 
   if (sessionFee > 0) {
     orderLines.push({ item: 'セット料金', qty: guest, amount: sessionFee });
@@ -268,7 +279,10 @@ export function buildFullReceipt(args: BuildFullReceiptArgs): FullReceiptPayload
     orderLines.push({ item: '指名料金', qty: 1, amount: nominationSum });
   }
 
-  const additionalTotal = additionalServices.reduce((s, a) => s + (Number(a.charge) || 0), 0);
+  const additionalTotal = additionalServices.reduce(
+    (s: number, a: any) => s + (a?.type === 'nomihoudai' ? 0 : (Number(a?.charge) || 0)),
+    0
+  );
   if (additionalTotal > 0) {
     orderLines.push({ item: '追加サービス', qty: 1, amount: additionalTotal });
   }

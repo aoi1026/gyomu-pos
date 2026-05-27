@@ -7,7 +7,7 @@ async function ensureAdditionalServicesTable(client: any) {
     CREATE TABLE IF NOT EXISTS additional_services (
       id SERIAL PRIMARY KEY,
       session_id INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-      service_type VARCHAR(50) NOT NULL CHECK (service_type IN ('bottle_keep', 'vip_room', 'karaoke')),
+      service_type VARCHAR(50) NOT NULL CHECK (service_type IN ('bottle_keep', 'vip_room', 'karaoke', 'nomihoudai')),
       count INTEGER NOT NULL DEFAULT 1 CHECK (count > 0),
       charge DECIMAL(10,2) NOT NULL DEFAULT 0.00 CHECK (charge >= 0),
       created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
@@ -17,6 +17,15 @@ async function ensureAdditionalServicesTable(client: any) {
 
   await client.query(`
     ALTER TABLE additional_services ADD COLUMN IF NOT EXISTS note TEXT
+  `);
+
+  // 既存DBの CHECK 制約を更新（飲み放題追加）
+  await client.query(`
+    ALTER TABLE additional_services DROP CONSTRAINT IF EXISTS additional_services_service_type_check
+  `);
+  await client.query(`
+    ALTER TABLE additional_services ADD CONSTRAINT additional_services_service_type_check
+    CHECK (service_type IN ('bottle_keep', 'vip_room', 'karaoke', 'nomihoudai'))
   `);
 
   await client.query(`
@@ -117,7 +126,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!['bottle_keep', 'vip_room', 'karaoke'].includes(type)) {
+    if (!['bottle_keep', 'vip_room', 'karaoke', 'nomihoudai'].includes(type)) {
       return NextResponse.json(
         { success: false, error: 'Invalid service type' },
         { status: 400 }

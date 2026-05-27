@@ -396,7 +396,7 @@ CREATE TABLE IF NOT EXISTS public.bottle_keep (
 CREATE TABLE IF NOT EXISTS public.additional_services (
     id SERIAL PRIMARY KEY,
     session_id INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-    service_type VARCHAR(50) NOT NULL CHECK (service_type IN ('bottle_keep', 'vip_room', 'karaoke')),
+    service_type VARCHAR(50) NOT NULL CHECK (service_type IN ('bottle_keep', 'vip_room', 'karaoke', 'nomihoudai')),
     count INTEGER DEFAULT 1 NOT NULL CHECK (count > 0),
     charge DECIMAL(10,2) DEFAULT 0.00 NOT NULL CHECK (charge >= 0),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,

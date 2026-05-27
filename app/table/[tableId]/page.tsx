@@ -136,6 +136,7 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
   const [showSetExtensionDialog, setShowSetExtensionDialog] = useState(false);
   const [extensionGuestCount, setExtensionGuestCount] = useState<string>('');
   const [extensionNomihoudaiEnabled, setExtensionNomihoudaiEnabled] = useState(false);
+  const [startNomihoudaiEnabled, setStartNomihoudaiEnabled] = useState(false);
   const [showSetJoinDialog, setShowSetJoinDialog] = useState(false);
   const [joinGuestCount, setJoinGuestCount] = useState<string>('1');
   const [isEditingRemainingTime, setIsEditingRemainingTime] = useState(false);
@@ -173,7 +174,7 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
   const [endTimeDraft, setEndTimeDraft] = useState<string | null>(null);
   const [additionalServices, setAdditionalServices] = useState<Array<{
     id?: number;
-    type: 'bottle_keep' | 'vip_room' | 'karaoke';
+    type: 'bottle_keep' | 'vip_room' | 'karaoke' | 'nomihoudai';
     count: number;
     charge: number;
     timestamp: number;
@@ -1931,6 +1932,9 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
         return;
       }
 
+      // 飲み放題単価（任意）
+      const nomihoudaiUnit = Number(charges['nomihoudai'] || 0);
+
       // 人数をローカルストレージに保存
       localStorage.setItem('guest_count', guestCount);
 
@@ -1957,6 +1961,25 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
       // ローカルストレージにcurrent_session_idを保存
       localStorage.setItem('current_session_id', result.data.id.toString());
 
+      // 初回セットから飲み放題を適用する場合は additional_services に登録
+      if (startNomihoudaiEnabled && nomihoudaiUnit > 0) {
+        try {
+          await fetch('/api/additional-services', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              sessionId: result.data.id,
+              type: 'nomihoudai',
+              count: 1,
+              charge: nomihoudaiUnit * numGuestCount,
+              note: '初回セット',
+            }),
+          });
+        } catch (e) {
+          console.error('飲み放題登録エラー:', e);
+        }
+      }
+
       // セットカウントを1で初期化
       localStorage.setItem('set_count', '1');
 
@@ -1980,6 +2003,7 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
       localStorage.removeItem('nomination_charges');
       await loadNominations();
       success('セッション開始', 'セッションを開始しました');
+      setStartNomihoudaiEnabled(false);
     } catch (err) {
       console.error('セッション開始エラー:', err);
       error('エラー', 'セッション開始に失敗しました');
@@ -2260,6 +2284,13 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
       nominationLineTotal: (n) => nominationOrderLineTotal(n, setExtensions, addCharges),
       additionalServices,
     });
+
+    // 飲み放題（セッション開始）は「追加サービス」ではなく「セッション料金」に加算
+    const nomiTotalRaw = additionalServices
+      .filter((s: any) => s?.type === 'nomihoudai')
+      .reduce((sum: number, s: any) => sum + (Number(s?.charge) || 0), 0);
+    if (nomiTotalRaw > 0) rawLines.push(nomiTotalRaw);
+
     const { total } = computeCustomerBillTotals(rawLines, customerBillRoundUpYen);
     localStorage.setItem('fullcost', total.toString());
     return total;
@@ -4059,6 +4090,14 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
                           </p>
                         )}
                       </div>
+                      <div className="space-y-2">
+                        <Label>飲み放題プラン（初回セットから）</Label>
+                        <NomihoudaiToggleRow
+                          pricePerGuest={addCharges['nomihoudai'] || 0}
+                          enabled={startNomihoudaiEnabled}
+                          onToggle={() => setStartNomihoudaiEnabled((v) => !v)}
+                        />
+                      </div>
                       <Button
                         onClick={startSession}
                         disabled={!guestCount || guestCount.trim() === ''}
@@ -5066,14 +5105,27 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
                         if (guestCount && guestCount.trim() !== '') {
                           const cnt = parseInt(guestCount);
                           const unitPrice = addCharges['set_price'] || 0;
+                          const nomihoudaiUnit = addCharges['nomihoudai'] || 0;
+                          const nomiTotalRaw = additionalServices
+                            .filter((s: any) => s?.type === 'nomihoudai')
+                            .reduce((sum: number, s: any) => sum + (Number(s?.charge) || 0), 0);
                           if (!isNaN(cnt) && cnt > 0 && unitPrice > 0) {
+                            const baseDisplay = customerBillLineDisplayAmount(unitPrice * cnt, customerBillRoundUpYen);
+                            const nomiDisplay = nomiTotalRaw > 0
+                              ? customerBillLineDisplayAmount(nomiTotalRaw, customerBillRoundUpYen)
+                              : 0;
                             return (
                               <div className="flex justify-between items-start text-xs sm:text-sm gap-2">
                                 <div className="min-w-0 flex-1">
                                   <div>セッション料金</div>
-                                  <div className="text-gray-400 text-[10px] sm:text-xs mt-0.5">¥{unitPrice.toLocaleString()} × {cnt}名</div>
+                                  <div className="text-gray-400 text-[10px] sm:text-xs mt-0.5">
+                                    ¥{unitPrice.toLocaleString()} × {cnt}名
+                                    {nomiTotalRaw > 0 && nomihoudaiUnit > 0 && (
+                                      <> ＋ 飲み放題 ¥{nomihoudaiUnit.toLocaleString()} × {cnt}名</>
+                                    )}
+                                  </div>
                                 </div>
-                                <span className="flex-shrink-0">{formatCurrency(customerBillLineDisplayAmount(unitPrice * cnt, customerBillRoundUpYen))}</span>
+                                <span className="flex-shrink-0">{formatCurrency(baseDisplay + nomiDisplay)}</span>
                               </div>
                             );
                           }
@@ -5189,7 +5241,7 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
                       )}
 
                       {/* 追加サービス料金の明細 */}
-                      {additionalServices.length > 0 && (
+                      {additionalServices.some((s: any) => s?.type !== 'nomihoudai') && (
                         <div className="border-t pt-2 space-y-1">
                           <div className="text-[10px] sm:text-xs font-semibold text-gray-600 mb-1">追加サービス</div>
                           {(() => {
@@ -5236,7 +5288,7 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
                             });
 
                             const otherRows = additionalServices.filter(
-                              (s: any) => !mergedTypes.includes(s?.type)
+                              (s: any) => !mergedTypes.includes(s?.type) && s?.type !== 'nomihoudai'
                             );
 
                             const rendered = [

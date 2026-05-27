@@ -189,7 +189,7 @@ export default function TableViewer({ tableId, onClose, onSessionMovedToTable }:
   const [addCharges, setAddCharges] = useState<{[key: string]: number}>({});
   const [additionalServices, setAdditionalServices] = useState<Array<{
     id?: number;
-    type: 'bottle_keep' | 'vip_room' | 'karaoke';
+    type: 'bottle_keep' | 'vip_room' | 'karaoke' | 'nomihoudai';
     count: number;
     charge: number;
     timestamp: number;
@@ -2649,6 +2649,13 @@ export default function TableViewer({ tableId, onClose, onSessionMovedToTable }:
       nominationLineTotal: (n) => nominationOrderLineTotal(n, setExtensions, addCharges),
       additionalServices,
     });
+
+    // 飲み放題（セッション開始）は「追加サービス」扱いにせず、セッション料金に加算する
+    const nomiTotalRaw = additionalServices
+      .filter((s: any) => s?.type === 'nomihoudai')
+      .reduce((sum: number, s: any) => sum + (Number(s?.charge) || 0), 0);
+    if (nomiTotalRaw > 0) rawLines.push(nomiTotalRaw);
+
     const { total } = computeCustomerBillTotals(rawLines, customerBillRoundUpYen);
     return total;
   };
@@ -3889,14 +3896,27 @@ export default function TableViewer({ tableId, onClose, onSessionMovedToTable }:
                         if (guestCount && guestCount.trim() !== '') {
                           const cnt = parseInt(guestCount);
                           const unitPrice = addCharges['set_price'] || 0;
+                          const nomihoudaiUnit = addCharges['nomihoudai'] || 0;
+                          const nomiTotalRaw = additionalServices
+                            .filter((s: any) => s?.type === 'nomihoudai')
+                            .reduce((sum: number, s: any) => sum + (Number(s?.charge) || 0), 0);
                           if (!isNaN(cnt) && cnt > 0 && unitPrice > 0) {
+                            const baseDisplay = customerBillLineDisplayAmount(unitPrice * cnt, orderBillRoundUnitForDisplay);
+                            const nomiDisplay = nomiTotalRaw > 0
+                              ? customerBillLineDisplayAmount(nomiTotalRaw, orderBillRoundUnitForDisplay)
+                              : 0;
                             return (
                               <div className="flex justify-between items-start text-sm gap-2">
                                 <div className="min-w-0 flex-1">
                                   <div>セッション料金</div>
-                                  <div className="text-gray-400 text-xs mt-0.5">¥{unitPrice.toLocaleString()} × {cnt}名</div>
+                                  <div className="text-gray-400 text-xs mt-0.5">
+                                    ¥{unitPrice.toLocaleString()} × {cnt}名
+                                    {nomiTotalRaw > 0 && nomihoudaiUnit > 0 && (
+                                      <> ＋ 飲み放題 ¥{nomihoudaiUnit.toLocaleString()} × {cnt}名</>
+                                    )}
+                                  </div>
                                 </div>
-                                <span className="flex-shrink-0">{formatCurrency(customerBillLineDisplayAmount(unitPrice * cnt, orderBillRoundUnitForDisplay))}</span>
+                                <span className="flex-shrink-0">{formatCurrency(baseDisplay + nomiDisplay)}</span>
                               </div>
                             );
                           }
@@ -4018,7 +4038,7 @@ export default function TableViewer({ tableId, onClose, onSessionMovedToTable }:
                         </div>
                       )}
 
-                      {additionalServices.length > 0 && (
+                      {additionalServices.some((s: any) => s?.type !== 'nomihoudai') && (
                         <div className="border-t pt-2 space-y-1">
                           <div className="text-xs font-semibold text-gray-600 mb-1">追加サービス</div>
                           {(() => {
@@ -4065,7 +4085,7 @@ export default function TableViewer({ tableId, onClose, onSessionMovedToTable }:
                             });
 
                             const otherRows = additionalServices.filter(
-                              (s: any) => !mergedTypes.includes(s?.type)
+                              (s: any) => !mergedTypes.includes(s?.type) && s?.type !== 'nomihoudai'
                             );
 
                             const rendered = [

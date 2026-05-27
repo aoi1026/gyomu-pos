@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Users, Clock, ExternalLink, Circle, Play, LogOut } from 'lucide-react';
 import { useNotificationContext } from '@/lib/notification-context';
+import { NomihoudaiToggleRow } from '@/components/set-extension/NomihoudaiToggleRow';
 
 interface TableData {
   id: number;
@@ -43,6 +44,8 @@ export default function TableListPage() {
   const [guestCount, setGuestCount] = useState<string>('');
   const [sessionMemo, setSessionMemo] = useState<string>('');
   const [isStartingSession, setIsStartingSession] = useState(false);
+  const [startNomihoudaiEnabled, setStartNomihoudaiEnabled] = useState(false);
+  const [startNomihoudaiUnit, setStartNomihoudaiUnit] = useState(0);
   const [remainingTimes, setRemainingTimes] = useState<{ [tableId: number]: number }>({});
   const [elapsedTimes, setElapsedTimes] = useState<{ [tableId: number]: number }>({});
   const [showLogoutDialog, setShowLogoutDialog] = useState(false);
@@ -233,6 +236,21 @@ export default function TableListPage() {
         setSelectedTableForSession(table);
         setGuestCount('');
         setSessionMemo('');
+        setStartNomihoudaiEnabled(false);
+        setStartNomihoudaiUnit(0);
+        // 単価を取得（表示用）
+        void (async () => {
+          try {
+            const res = await fetch('/api/add-charges');
+            const j = await res.json().catch(() => ({}));
+            const unit = Array.isArray(j?.charges)
+              ? Number((j.charges.find((c: any) => String(c.charge_name) === 'nomihoudai')?.value) ?? 0)
+              : 0;
+            setStartNomihoudaiUnit(Number.isFinite(unit) ? unit : 0);
+          } catch {
+            setStartNomihoudaiUnit(0);
+          }
+        })();
         setShowStartSessionDialog(true);
       }
     }
@@ -276,6 +294,28 @@ export default function TableListPage() {
         return;
       }
 
+      // 初回セットから飲み放題を適用する場合は additional_services に登録
+      if (startNomihoudaiEnabled) {
+        try {
+          const nomiUnit = Number(startNomihoudaiUnit) || 0;
+          if (nomiUnit > 0) {
+            await fetch('/api/additional-services', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                sessionId: result.data.id,
+                type: 'nomihoudai',
+                count: 1,
+                charge: nomiUnit * numGuestCount,
+                note: '初回セット',
+              }),
+            });
+          }
+        } catch (e) {
+          console.error('飲み放題登録エラー:', e);
+        }
+      }
+
       success('セッション開始', 'セッションを開始しました');
       
       // モーダルを閉じる
@@ -284,6 +324,7 @@ export default function TableListPage() {
       setSelectedTableForSession(null);
       setGuestCount('');
       setSessionMemo('');
+      setStartNomihoudaiEnabled(false);
       
       // データを更新
       await fetchData();
@@ -607,6 +648,16 @@ export default function TableListPage() {
                 placeholder="メモを入力（任意）"
                 disabled={isStartingSession}
               />
+            </div>
+            <div className="space-y-2">
+              <Label>飲み放題（初回セットから）</Label>
+              <NomihoudaiToggleRow
+                pricePerGuest={startNomihoudaiUnit}
+                enabled={startNomihoudaiEnabled}
+                onToggle={() => setStartNomihoudaiEnabled((v) => !v)}
+                disabled={isStartingSession}
+              />
+              <p className="text-xs text-gray-500">単価は「料金設定 &gt; 飲み放題」から設定します</p>
             </div>
             <div className="flex justify-end space-x-2">
               <Button

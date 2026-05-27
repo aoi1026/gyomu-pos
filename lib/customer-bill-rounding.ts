@@ -50,7 +50,10 @@ export function additionalServicesDisplayRawTotals(services: AdditionalServiceBi
     totals.push(sumCharge(baseRows) + sumCharge(extRows));
   }
 
-  const otherRows = services.filter((s) => s?.type !== 'vip_room' && s?.type !== 'karaoke');
+  // 飲み放題は「追加サービス」ではなく「セッション料金」に反映するため、ここでは除外します。
+  const otherRows = services.filter(
+    (s) => s?.type !== 'vip_room' && s?.type !== 'karaoke' && s?.type !== 'nomihoudai'
+  );
   for (const s of otherRows) {
     const v = Number(s?.charge);
     totals.push(Number.isFinite(v) ? v : 0);
