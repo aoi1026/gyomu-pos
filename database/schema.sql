@@ -51,7 +51,10 @@ INSERT INTO add_charges (charge_name, value, other) VALUES
     ('inside', 0.00, NULL),
     ('together', 0.00, NULL),
     ('bottle_keep', 0.00, NULL),
-    ('song_room', 0.00, NULL)
+    ('song_room', 0.00, NULL),
+    ('set_price', 0.00, NULL),
+    ('extension_price', 0.00, NULL),
+    ('nomihoudai', 0.00, NULL)
 ON CONFLICT (charge_name) DO NOTHING;
 
 CREATE TABLE IF NOT EXISTS nomination (

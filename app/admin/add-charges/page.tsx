@@ -19,7 +19,8 @@ type ChargeName =
   | 'bottle_keep'
   | 'song_room'
   | 'set_price'
-  | 'extension_price';
+  | 'extension_price'
+  | 'nomihoudai';
 
 interface AddCharge {
   id: number;
@@ -38,6 +39,7 @@ const CHARGE_LABELS: Record<ChargeName, { title: string; description: string }> 
   song_room: { title: 'カラオケ利用料', description: '' }, // カラオケ設備の利用に対する料金です。
   set_price: { title: 'セット料金', description: '' }, // 基本セット料金です。
   extension_price: { title: '延長料金', description: '' }, // セット延長時の料金です。
+  nomihoudai: { title: '飲み放題', description: '' },
 };
 
 const currencyFormatter = new Intl.NumberFormat('ja-JP', {

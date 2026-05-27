@@ -51,6 +51,11 @@ import {
 import { summarizeSessionPayments, type SessionPayment } from '@/lib/session-payments';
 import { clearSessionLocalStorage } from '@/lib/session-client-storage';
 import { getCastRealtimeSubtitle } from '@/lib/cast-realtime-subtitle';
+import {
+  buildSetExtensionEntry,
+  computeSetExtensionLineTotal,
+} from '@/lib/set-extension-billing';
+import { NomihoudaiToggleRow } from '@/components/set-extension/NomihoudaiToggleRow';
 import StripeProvider from '@/components/providers/StripeProvider';
 import StripePaymentForm from '@/components/payment/StripePaymentForm';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -130,6 +135,7 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
   const [setExtensions, setSetExtensions] = useState<Array<{ count: number; timestamp: number; price?: number }>>([]); // 延長履歴（priceは延長料金の合計を保存）
   const [showSetExtensionDialog, setShowSetExtensionDialog] = useState(false);
   const [extensionGuestCount, setExtensionGuestCount] = useState<string>('');
+  const [extensionNomihoudaiEnabled, setExtensionNomihoudaiEnabled] = useState(false);
   const [showSetJoinDialog, setShowSetJoinDialog] = useState(false);
   const [joinGuestCount, setJoinGuestCount] = useState<string>('1');
   const [isEditingRemainingTime, setIsEditingRemainingTime] = useState(false);
@@ -2351,7 +2357,14 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
   const handleSetExtension = () => {
     const currentGuests = Number(session?.client || parseInt(guestCount || '0', 10) || 1);
     setExtensionGuestCount(String(Math.max(1, currentGuests)));
+    setExtensionNomihoudaiEnabled(false);
     setShowSetExtensionDialog(true);
+  };
+
+  const closeSetExtensionDialog = () => {
+    setShowSetExtensionDialog(false);
+    setExtensionGuestCount('');
+    setExtensionNomihoudaiEnabled(false);
   };
 
   const handleSetJoin = () => {
@@ -2439,17 +2452,19 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
 
     // 延長情報を追加（priceは「延長料金の合計」＝単価×人数として保存し、明細を固定化）
     const extensionPricePerGuest = charges['extension_price'];
+    const nomihoudaiPricePerGuest = charges['nomihoudai'] || 0;
     const savedNominationUnit = Number((setExtensions?.[0] as any)?.nomination_unit);
     const nominationUnit =
       Number.isFinite(savedNominationUnit) && savedNominationUnit >= 0
         ? savedNominationUnit
         : Number(charges['main']) || 0;
-    const newExtension = {
-      count,
-      timestamp: Date.now(),
-      price: extensionPricePerGuest * count,
-      nomination_unit: nominationUnit,
-    };
+    const newExtension = buildSetExtensionEntry({
+      guestCount: count,
+      extensionPricePerGuest,
+      nominationUnit,
+      nomihoudaiEnabled: extensionNomihoudaiEnabled,
+      nomihoudaiPricePerGuest,
+    });
     const updatedExtensions = [...setExtensions, newExtension];
     setSetExtensions(updatedExtensions);
 
@@ -2494,9 +2509,7 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
     // 成功メッセージを表示
     success('セット延長', `${count}名でセットを延長しました（60分追加）`);
 
-    // ダイアログを閉じる
-    setShowSetExtensionDialog(false);
-    setExtensionGuestCount('');
+    closeSetExtensionDialog();
 
     // 現在の指名リストの料金を追加
     // addChargesが空の場合は再取得
@@ -6160,7 +6173,13 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
         </Dialog>
 
         {/* セット延長ダイアログ */}
-        <Dialog open={showSetExtensionDialog} onOpenChange={setShowSetExtensionDialog}>
+        <Dialog
+          open={showSetExtensionDialog}
+          onOpenChange={(open) => {
+            if (!open) closeSetExtensionDialog();
+            else setShowSetExtensionDialog(true);
+          }}
+        >
           <DialogContent>
             <DialogHeader>
               <DialogTitle className="flex items-center">
@@ -6185,21 +6204,33 @@ export default function TableDashboard({ params }: { params: Promise<{ tableId: 
                   className="w-full"
                 />
                 <p className="text-sm text-gray-500">
-                  延長料金: {extensionGuestCount && !isNaN(parseInt(extensionGuestCount)) && parseInt(extensionGuestCount) > 0
-                    ? formatCurrency((addCharges['extension_price'] || 0) * parseInt(extensionGuestCount))
-                    : formatCurrency(0)}
+                  延長料金:{' '}
+                  {(() => {
+                    const n = parseInt(extensionGuestCount, 10);
+                    if (!extensionGuestCount || isNaN(n) || n <= 0) return formatCurrency(0);
+                    return formatCurrency(
+                      computeSetExtensionLineTotal(
+                        addCharges['extension_price'] || 0,
+                        n,
+                        extensionNomihoudaiEnabled,
+                        addCharges['nomihoudai'] || 0
+                      )
+                    );
+                  })()}
                 </p>
+              </div>
+              <div className="space-y-2">
+                <Label>飲み放題プラン</Label>
+                <NomihoudaiToggleRow
+                  pricePerGuest={addCharges['nomihoudai'] || 0}
+                  enabled={extensionNomihoudaiEnabled}
+                  onToggle={() => setExtensionNomihoudaiEnabled((v) => !v)}
+                />
               </div>
             </div>
 
             <div className="flex justify-end space-x-3">
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setShowSetExtensionDialog(false);
-                  setExtensionGuestCount('');
-                }}
-              >
+              <Button variant="outline" onClick={closeSetExtensionDialog}>
                 キャンセル
               </Button>
               <Button

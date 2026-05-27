@@ -64,6 +64,11 @@ import {
   type SessionPayment,
 } from '@/lib/session-payments';
 import { getCastRealtimeSubtitle } from '@/lib/cast-realtime-subtitle';
+import {
+  buildSetExtensionEntry,
+  computeSetExtensionLineTotal,
+} from '@/lib/set-extension-billing';
+import { NomihoudaiToggleRow } from '@/components/set-extension/NomihoudaiToggleRow';
 import type {
   FullReceiptPayload,
   ExtensionInfoReceiptPayload,
@@ -197,6 +202,7 @@ export default function TableViewer({ tableId, onClose, onSessionMovedToTable }:
   // セット延長関連
   const [showSetExtensionDialog, setShowSetExtensionDialog] = useState(false);
   const [extensionGuestCount, setExtensionGuestCount] = useState<string>('');
+  const [extensionNomihoudaiEnabled, setExtensionNomihoudaiEnabled] = useState(false);
   const [showSetJoinDialog, setShowSetJoinDialog] = useState(false);
   const [joinGuestCount, setJoinGuestCount] = useState<string>('1');
   
@@ -1722,7 +1728,14 @@ export default function TableViewer({ tableId, onClose, onSessionMovedToTable }:
   const handleSetExtension = () => {
     const currentGuests = Number(session?.client || parseInt(guestCount || '0', 10) || 1);
     setExtensionGuestCount(String(Math.max(1, currentGuests)));
+    setExtensionNomihoudaiEnabled(false);
     setShowSetExtensionDialog(true);
+  };
+
+  const closeSetExtensionDialog = () => {
+    setShowSetExtensionDialog(false);
+    setExtensionGuestCount('');
+    setExtensionNomihoudaiEnabled(false);
   };
 
   const handleSetJoin = () => {
@@ -1861,17 +1874,19 @@ export default function TableViewer({ tableId, onClose, onSessionMovedToTable }:
     }
 
     const extensionPricePerGuest = charges['extension_price'] || 0;
+    const nomihoudaiPricePerGuest = charges['nomihoudai'] || 0;
     const savedNominationUnit = Number((setExtensions?.[0] as any)?.nomination_unit);
     const nominationUnit =
       Number.isFinite(savedNominationUnit) && savedNominationUnit >= 0
         ? savedNominationUnit
         : Number(charges['main']) || 0;
-    const newExtension = {
-      count,
-      timestamp: Date.now(),
-      price: extensionPricePerGuest * count,
-      nomination_unit: nominationUnit,
-    };
+    const newExtension = buildSetExtensionEntry({
+      guestCount: count,
+      extensionPricePerGuest,
+      nominationUnit,
+      nomihoudaiEnabled: extensionNomihoudaiEnabled,
+      nomihoudaiPricePerGuest,
+    });
     const updatedExtensions = [...setExtensions, newExtension];
 
     const newSetCount = (session.set_count || 1) + 1;
@@ -1942,8 +1957,7 @@ export default function TableViewer({ tableId, onClose, onSessionMovedToTable }:
       }
 
       setSetExtensions(updatedExtensions);
-      setShowSetExtensionDialog(false);
-      setExtensionGuestCount('');
+      closeSetExtensionDialog();
       await loadSession();
       await appendExtensionRoomSurcharges(sessionIdForExtension, charges, additionalSnap);
       if (session?.id) await loadNominations(session.id);
@@ -3893,12 +3907,19 @@ export default function TableViewer({ tableId, onClose, onSessionMovedToTable }:
                       {/* セット延長料金 */}
                       {setExtensions.map((extension, index) => {
                         const extensionUnit = addCharges['extension_price'] || 0;
+                        const nomihoudaiUnit = addCharges['nomihoudai'] || 0;
                         const total = Number(extension.price ?? (extensionUnit * extension.count)) || 0;
+                        const hasNomihoudai = Boolean((extension as any).nomihoudai);
                         return (
                           <div key={index} className="flex justify-between items-start text-sm gap-2">
                             <div className="min-w-0 flex-1">
-                              <div>セット延長 ({index + 1}回目)</div>
-                              <div className="text-gray-400 text-xs mt-0.5">¥{extensionUnit.toLocaleString()} × {extension.count}名</div>
+                              <div>セット延長 ({index + 1}回目){hasNomihoudai ? '（飲み放題込）' : ''}</div>
+                              <div className="text-gray-400 text-xs mt-0.5">
+                                ¥{extensionUnit.toLocaleString()} × {extension.count}名
+                                {hasNomihoudai && nomihoudaiUnit > 0 && (
+                                  <> ＋ 飲み放題 ¥{nomihoudaiUnit.toLocaleString()} × {extension.count}名</>
+                                )}
+                              </div>
                             </div>
                             <span className="flex-shrink-0">{formatCurrency(customerBillLineDisplayAmount(total, orderBillRoundUnitForDisplay))}</span>
                           </div>
@@ -4375,7 +4396,13 @@ export default function TableViewer({ tableId, onClose, onSessionMovedToTable }:
       </Dialog>
 
       {/* セット延長ダイアログ */}
-      <Dialog open={showSetExtensionDialog} onOpenChange={setShowSetExtensionDialog}>
+      <Dialog
+        open={showSetExtensionDialog}
+        onOpenChange={(open) => {
+          if (!open) closeSetExtensionDialog();
+          else setShowSetExtensionDialog(true);
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle className="flex items-center">
@@ -4400,21 +4427,33 @@ export default function TableViewer({ tableId, onClose, onSessionMovedToTable }:
                 className="w-full"
               />
               <p className="text-sm text-gray-500">
-                延長料金: {extensionGuestCount && !isNaN(parseInt(extensionGuestCount)) && parseInt(extensionGuestCount) > 0 
-                  ? formatCurrency((addCharges['extension_price'] || 0) * parseInt(extensionGuestCount))
-                  : formatCurrency(0)}
+                延長料金:{' '}
+                {(() => {
+                  const n = parseInt(extensionGuestCount, 10);
+                  if (!extensionGuestCount || isNaN(n) || n <= 0) return formatCurrency(0);
+                  return formatCurrency(
+                    computeSetExtensionLineTotal(
+                      addCharges['extension_price'] || 0,
+                      n,
+                      extensionNomihoudaiEnabled,
+                      addCharges['nomihoudai'] || 0
+                    )
+                  );
+                })()}
               </p>
+            </div>
+            <div className="space-y-2">
+              <Label>飲み放題プラン</Label>
+              <NomihoudaiToggleRow
+                pricePerGuest={addCharges['nomihoudai'] || 0}
+                enabled={extensionNomihoudaiEnabled}
+                onToggle={() => setExtensionNomihoudaiEnabled((v) => !v)}
+              />
             </div>
           </div>
           
           <div className="flex justify-end space-x-3">
-            <Button
-              variant="outline"
-              onClick={() => {
-                setShowSetExtensionDialog(false);
-                setExtensionGuestCount('');
-              }}
-            >
+            <Button variant="outline" onClick={closeSetExtensionDialog}>
               キャンセル
             </Button>
             <Button

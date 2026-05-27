@@ -7,6 +7,7 @@ const DEFAULT_CHARGES = [
   // 要件: セット料金/延長料金は add_charges の「charge_nameがset_price/extension_priceの行」の value を参照する
   { name: 'set_price', label: 'セット料金' },
   { name: 'extension_price', label: '延長料金' },
+  { name: 'nomihoudai', label: '飲み放題' },
 ];
 
 import { NextRequest, NextResponse } from 'next/server';
