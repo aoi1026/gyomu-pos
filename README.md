@@ -413,7 +413,6 @@ Copyright © 2026 aoi-webstudio.com. All rights reserved.
 
 <div align="center">
 
-**LNXS** — ナイトワーク業態の現場運用に寄り添うPOSシステム
 
 Developed by [aoi-webstudio.com](https://aoi-webstudio.com)
 
