@@ -1,168 +1,269 @@
-# 🍷 LNXS - キャバクラ特化統合POSシステム
+<div align="center">
 
-A comprehensive Point of Sale (POS) system specifically designed for cabaret clubs, featuring table-based ordering, cast nomination management, back rate calculations, attendance tracking, and comprehensive business management.
 
-**Version 3.0.0** - キャバクラ特化統合POSシステム - テーブルファースト設計でキャストが注文を管理し、指名・バック率計算まで完結
+### ナイトワーク特化型 統合POSシステム
+
+**テーブルファースト設計** で、キャストがその場で注文・指名・バック率計算まで完結できる、キャバクラ・ラウンジ向けの業務システムです。
+
+[![Next.js](https://img.shields.io/badge/Next.js-16-black?logo=next.js)](https://nextjs.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.2-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16.3-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
+[![TailwindCSS](https://img.shields.io/badge/TailwindCSS-3.3-38B2AC?logo=tailwind-css&logoColor=white)](https://tailwindcss.com/)
+[![License](https://img.shields.io/badge/License-Proprietary-lightgrey.svg)](#-ライセンス--著作権)
+
+</div>
+
 
 ## 📋 目次
 
-- [システム概要](#システム概要)
-- [主要機能](#主要機能)
-- [技術スタック](#技術スタック)
-- [アーキテクチャ](#アーキテクチャ)
-- [インストール](#インストール)
-- [使用方法](#使用方法)
-- [役割別機能](#役割別機能)
-- [操作フロー](#操作フロー)
-- [API仕様](#api仕様)
-- [データベーススキーマ](#データベーススキーマ)
-- [コンポーネント構造](#コンポーネント構造)
-- [認証・権限管理](#認証権限管理)
-- [レスポンシブデザイン](#レスポンシブデザイン)
-- [開発](#開発)
-- [デプロイ](#デプロイ)
+- [概要](#-概要)
+- [主要機能](#-主要機能)
+- [技術スタック](#-技術スタック)
+- [システム構成](#-システム構成)
+- [データベース設計](#-データベース設計)
+- [セットアップ](#-セットアップ)
+- [環境変数](#-環境変数)
+- [ログイン・テストアカウント](#-ログインテストアカウント)
+- [API仕様](#-api仕様)
+- [レシート・領収書印刷](#-レシート領収書印刷)
+- [決済（Stripe）](#-決済stripe)
+- [開発コマンド](#-開発コマンド)
+- [デプロイ](#-デプロイ)
+- [既知の制限事項・今後の課題](#-既知の制限事項今後の課題)
+- [ライセンス・著作権](#-ライセンス著作権)
+- [謝辞](#-謝辞)
 
-## 🎯 システム概要
+---
 
-LNXSは、キャバクラ業界に特化した統合POSシステムです。Next.js 14とTypeScriptで構築され、テーブルファースト設計により、キャストがテーブルで注文を管理し、指名・バック率計算まで効率的に処理できます。
+## 🎯 概要
 
-### 主要特徴
-- **テーブルファースト設計**: キャストがテーブルで注文を管理
-- **指名システム**: 本指名・場内指名の完全サポート
-- **バック率計算**: ドリンク・ボトル
-- **統合管理**: 勤怠・給与・売上・顧客の一元管理
-- **4つのロール**: テーブルログイン、キャスト、管理者
-- **リアルタイム管理**: テーブル状況、注文、セッションの監視
-- **モバイル対応**: レスポンシブデザインによる全デバイス対応
 
-## ✅ Implemented Features（実装済み機能のみ）
 
-- テーブル注文/セッション
-  - テーブルログイン、セッション開始/終了（`/api/sessions`）
-  - メニュー表示（`/api/categories`, `/api/products`）。在庫0の商品は非表示
-  - 商品注文（`/api/salesorder`）と在庫減算、状態反映
-  - サービス注文（`/api/serviceorder`）
-  - キャスト指名（本指名/場内指名）登録、スタッフ呼び出し
-  - スタッフ呼び出し通知（`/api/notifications`）
-  - Stripe決済導線（支払い後にセッション金額更新・未承認注文の自動拒否）
+一般的なPOSと異なり、**注文の起点が「キャスト」ではなく「テーブル（卓）」** にあるのが最大の特徴です。テーブル担当が専用ログインでその卓の注文・指名・サービス呼び出しを一括管理し、来店（セッション）が終了するとその場でキャストのバック率や指名料が自動計算されます。
 
-- 管理者（Admin）
-  - キャスト管理（一覧/追加/編集/削除）: `/api/casts`, `/api/casts/[id]`（メール重複検知、パスワードハッシュ化）
-  - カテゴリ管理（一覧/追加/編集/削除）: `/api/categories`, `/api/categories/[id]`
-    - ID 1/2 を常に先頭表示・削除不可（UI/APIで保護）
+### 主な特徴
 
-- キャスト
-  - 勤怠（出退勤）ローカル記録、記録表示は常時表示
-  - 勤怠送信（`/api/attendance`）で管理者共有
+- 🍷 **テーブルファースト設計** — 卓単位でセッションを開始し、商品注文・サービス注文・指名をすべて紐付けて管理
+- 👥 **指名システム** — 本指名・場内指名・同伴指名に対応し、指名昇格や延長料金の計算も自動化
+- 💰 **バック率・給与計算** — ドリンク／ボトル／指名料ごとのバック率を月次・日次で自動集計
+- 🖨️ **本格的なレシート／領収書印刷基盤** — LAN接続のEpson ePOSプリンタ、Web BluetoothによるESC/POS直接印刷、OS標準印刷の3系統に対応
+- 💳 **Stripeカード決済** — PaymentIntentを用いたその場カード決済に対応
+- 📊 **勤怠・シフト・売上管理** — 出退勤の承認フロー、日次／月次売上、キャストランキングを一元管理
+- 🎤 **VIPルーム・カラオケ（ソング）ルーム管理** — 個室・カラオケルームの空き状況とセッション連携
+
+---
+
+## ✅ 主要機能
+
+以下は実際のソースコード（`app/`・`app/api/`）を確認した上での、**実装済み機能** の一覧です。
+
+### 🍷 テーブル（キオスク端末）
+- テーブル専用ログイン（`/table-login`）とテーブル一覧・空き状況表示（`/table-list`）
+- 卓ごとの注文・会計画面（`/table/[tableId]`）— メニュー選択、在庫連動、注文カート
+- キャスト指名（本指名・場内指名・同伴指名）の登録
+- スタッフ呼び出し・サービス注文（おしぼり、灰皿交換など）
+- Stripeによるカード決済導線（決済完了後にセッション金額を反映）
+
+### 👨‍💼 キャスト
+- キャスト専用ログイン（`/cast-login`）、共通ダッシュボード
+- 勤怠打刻（出勤・退勤）と勤怠状況の確認
+- 担当セッションの詳細確認、日次実績の確認
+- 自分のバック率・指名実績・給与明細の確認
+
+### 👨‍💻 管理者
+- 管理者専用ログイン（`/admin-login`）
+- メニュー・カテゴリ・商品管理（並び替え対応）、追加料金設定
+- キャスト管理、バック率設定、指名管理
+- ボトルキープ管理、VIPルーム／ソングルーム管理、テーブル管理
+- 勤怠承認、シフト管理、給与プレビュー・給与カテゴリ設定
+- 日次／月次売上分析、キャストランキング、レジ締め
+- スタッフ呼び出し・注文監視のリアルタイム確認
+- 操作ログ（明細削除・レシート印刷・領収書印刷の記録）の確認
+
+### 🔐 システム管理者（super_admin）
+- 店舗一覧・監査ログ画面（`/super/`）を用意
+
+> ⚠️ `super/` 配下は現状 **モックデータによるUIプロトタイプ** で、DBには連携していません（詳細は[既知の制限事項](#-既知の制限事項今後の課題)を参照）。
+
+---
 
 ## 🛠 技術スタック
 
-### フロントエンド
-- **Framework**: Next.js 14 (App Router)
-- **Language**: TypeScript 5.2.2
-- **Styling**: TailwindCSS 3.3.3 + shadcn/ui
-- **UI Components**: Radix UI primitives
-- **Icons**: Lucide React
-- **Forms**: React Hook Form + Zod validation
-- **Charts**: Recharts for data visualization
-- **State Management**: React Context API
+| 区分 | 技術 |
+|---|---|
+| フレームワーク | Next.js 16（App Router） |
+| 言語 | TypeScript 5.2 |
+| スタイリング | TailwindCSS 3.3 + shadcn/ui（Radix UIベース） |
+| フォーム | React Hook Form + Zod |
+| グラフ | Recharts |
+| データベース | PostgreSQL（`pg` 接続プール） |
+| 認証 | メール／パスワード（MD5ハッシュ照合）+ ロールベースアクセス制御 |
+| 決済 | Stripe（PaymentIntent） |
+| レシート印刷 | Epson ePOS SDK（LAN/WebSocket）、Web Bluetooth（ESC/POS）、OS標準印刷 |
+| アイコン | Lucide React |
+| Lint | ESLint（Next.js設定） |
 
-### バックエンド
-- **Runtime**: Next.js API Routes
-- **Database**: PostgreSQL（`pg` 接続プール）
-- **Auth**: シンプルなAdmin/Castログイン（MD5ハッシュによる検証）
-- **Notifications/Payments**: 通知API、Stripeエンドポイント実装
+---
 
-### 開発ツール
-- **Package Manager**: npm/yarn
-- **Linting**: ESLint with Next.js config
-- **Build Tool**: Next.js built-in bundler
-- **Type Checking**: TypeScript compiler
+## 🏗 システム構成
 
-## 🏗 アーキテクチャ
+### ロールと業務フロー
 
-### プロジェクト構造
-```
-nightwork-pos/
-├── app/                    # Next.js App Router pages
-│   ├── admin/             # 管理者機能
-│   │   ├── attendance/    # 勤怠管理
-│   │   ├── bottles/       # ボトル管理
-│   │   ├── campaigns/     # キャンペーン管理
-│   │   ├── cast-back-rates/ # バック率管理
-│   │   ├── menu/          # メニュー管理
-│   │   ├── nominations/   # 指名管理
-│   │   ├── order-monitor/ # 注文監視
-│   │   ├── payroll/       # 給与管理
-│   │   ├── register/      # レジ管理
-│   │   ├── sales/         # 売上管理
-│   │   ├── staff-calls/   # スタッフ呼び出し
-│   │   └── tables/        # テーブル管理
-│   ├── cast/              # キャスト機能
-│   │   ├── attendance/    # 勤怠管理
-│   │   ├── back-rates/    # バック率確認
-│   │   ├── nominations/   # 指名管理
-│   │   ├── payroll/       # 給与管理
-│   │   ├── service/       # サービス管理
-│   │   └── sessions/      # セッション管理
-│   ├── super/             # システム管理者機能
-│   │   ├── audit/         # 監査ログ
-│   │   └── stores/        # 店舗管理
-│   ├── table/             # テーブル機能
-│   │   └── [tableId]/     # テーブル詳細
-│   ├── dashboard/         # ダッシュボード
-│   ├── login/             # ログイン
-│   └── page.tsx           # ランディングページ
-├── components/            # 再利用可能コンポーネント
-│   ├── ui/               # ベースUIコンポーネント
-│   ├── auth/             # 認証コンポーネント
-│   ├── admin/            # 管理者コンポーネント
-│   └── common/           # 共通コンポーネント
-├── lib/                  # ライブラリ・ユーティリティ
-│   ├── auth.ts           # 認証システム
-│   ├── table-auth.ts     # テーブル認証
-│   ├── cast-back-system.ts # バック率システム
-│   ├── nomination-system.ts # 指名システム
-│   ├── order-monitoring-system.ts # 注文監視
-│   ├── staff-call-system.ts # スタッフ呼び出し
-│   ├── payroll-calculator.ts # 給与計算
-│   ├── mock-data.ts      # モックデータ
-│   ├── validation.ts     # バリデーション
-│   └── utils.ts          # ユーティリティ
-└── hooks/                # カスタムフック
-    └── use-toast.ts      # トーストフック
+```mermaid
+flowchart LR
+    subgraph 卓
+        T[テーブルログイン] -->|セッション開始| S[(sessions)]
+        T -->|商品注文| SO[(salesorder)]
+        T -->|サービス注文| SVO[(serviceorder)]
+        T -->|指名| N[(nomination)]
+        T -->|スタッフ呼出| CM[(callmanager)]
+    end
+
+    subgraph キャスト
+        C[キャストログイン] --> ATT[勤怠打刻]
+        C --> SESS[担当セッション確認]
+        C --> PAY[バック率・給与確認]
+    end
+
+    subgraph 管理者
+        A[管理者ログイン] --> MENU[メニュー/在庫管理]
+        A --> APPROVE[勤怠承認]
+        A --> SALARY[給与計算]
+        A --> SALES[売上分析]
+        A --> MON[注文監視]
+    end
+
+    S --> SALARY
+    SO --> SALARY
+    N --> SALARY
+    ATT --> APPROVE
+    SO --> MON
+    SVO --> MON
+    CM --> MON
 ```
 
+### ディレクトリ構成（抜粋）
 
-## 🚀 インストール
+```
+POS_system/
+├── app/
+│   ├── page.tsx              # トップページ
+│   ├── table-login/          # テーブル専用ログイン
+│   ├── cast-login/           # キャスト専用ログイン
+│   ├── admin-login/          # 管理者専用ログイン
+│   ├── table-list/           # テーブル一覧
+│   ├── table/[tableId]/      # 卓の注文・会計画面（中核画面）
+│   ├── dashboard/            # ロール別ダッシュボード
+│   ├── cast/                 # キャスト機能（勤怠・給与・指名・セッション 等）
+│   ├── admin/                # 管理者機能（メニュー・在庫・勤怠承認・売上 等）
+│   ├── super/                # システム管理者機能（店舗一覧・監査ログ／モックUI）
+│   └── api/                  # APIルート（後述）
+├── components/
+│   ├── ui/                   # shadcn/uiベースの共通UI部品
+│   ├── admin/                # 管理者向けモーダル・パネル
+│   ├── auth/                 # ログインモーダル・ロールガード
+│   ├── payment/              # Stripe決済フォーム
+│   └── providers/            # Stripe Elementsプロバイダ 等
+├── lib/
+│   ├── database.ts           # PostgreSQL接続プール
+│   ├── hash.ts                # パスワードハッシュ（MD5）
+│   ├── payroll-calculator.ts # 給与計算ロジック
+│   ├── cast-back-system.ts   # バック率計算ロジック
+│   ├── nomination-*.ts       # 指名・延長料金ロジック
+│   ├── printing/             # レシート/領収書印刷（ePOS・Bluetooth・OS印刷）
+│   └── ...
+├── database/
+│   ├── schema.sql             # 基本スキーマ
+│   └── migration_*.sql        # 追加マイグレーション（給与カテゴリ・シフト・VIP等）
+├── scripts/                   # バックアップ・給与更新バッチ、シードデータ生成
+└── public/epos/                # Epson ePOS SDK 配置先
+```
+
+---
+
+## 🗄 データベース設計
+
+PostgreSQLで管理される主要テーブルとリレーションです（`database/schema.sql` 準拠）。
+
+```mermaid
+erDiagram
+    "table" ||--o{ sessions : "1卓が複数回来店"
+    sessions ||--o{ salesorder : "商品注文"
+    sessions ||--o{ serviceorder : "サービス注文"
+    sessions ||--o{ nomination : "指名"
+    sessions ||--o{ callmanager : "スタッフ呼出"
+    sessions ||--o{ bottle_keep : "ボトルキープ"
+    sessions ||--o{ vip_room : "VIPルーム利用"
+    sessions ||--o{ song_room : "ソングルーム利用"
+    sessions ||--o{ session_payments : "決済履歴"
+    "user" ||--o{ nomination : "指名されるキャスト"
+    "user" ||--o{ salesorder : "担当キャスト"
+    "user" ||--o{ attendance : "勤怠"
+    "user" ||--o{ salary : "月次給与"
+    "user" ||--o{ salary_daily : "日次給与"
+    category ||--o{ product : "カテゴリ分類"
+    product ||--o{ salesorder : "注文対象商品"
+    services ||--o{ serviceorder : "注文対象サービス"
+```
+
+| テーブル | 用途 |
+|---|---|
+| `table` | 店内の卓（テーブル）情報 |
+| `user` | 管理者・キャスト・マネージャー・テーブル・システム管理者の統合ユーザー |
+| `sessions` | 卓ごとの来店セッション（会計・セット回数・決済方法） |
+| `salesorder` / `serviceorder` | 商品注文・サービス注文（承認ステータス管理） |
+| `nomination` | 指名記録（本指名／場内指名／同伴） |
+| `bottle_keep` | ボトルキープ |
+| `vip_room` / `song_room` | VIPルーム・カラオケルームの利用状況 |
+| `session_payments` | 決済履歴（現金／カード、手数料） |
+| `category` / `product` | メニューカテゴリ・商品 |
+| `services` | サービス呼び出し項目マスタ |
+| `attendance` | 勤怠（出退勤・承認ステータス） |
+| `salary` / `salary_daily` | 月次／日次給与計算結果 |
+| `callmanager` | スタッフ呼び出し |
+| `notifications` | 通知 |
+| `log_record` | 操作ログ（明細削除・レシート印刷・領収書印刷） |
+| `add_charges` | 指名料・ボトルキープ等の追加料金マスタ |
+
+> `database/schema.sql` は基本スキーマのみを含みます。テーブルロール（`user.role='table'`）や給与カテゴリ、シフト管理などは `database/migration_*.sql` の追加適用が必要です。詳細は [`database/MIGRATION_GUIDE.md`](database/MIGRATION_GUIDE.md) を参照してください。
+
+---
+
+## 🚀 セットアップ
 
 ### 前提条件
-- Node.js 18+ 
-- npm または yarn パッケージマネージャー
+- Node.js 20.19 以上
+- PostgreSQL 14以上（ローカルまたはリモート）
+- npm
 
-### セットアップ手順
+### 手順
 
 1. **リポジトリのクローン**
    ```bash
    git clone <repository-url>
-   cd nightwork-pos
+   cd POS_system
    ```
 
 2. **依存関係のインストール**
    ```bash
    npm install
-   # または
-   yarn install
    ```
 
-3. **開発サーバーの起動**
+3. **データベースの作成とスキーマ適用**
+   ```bash
+   createdb cabaclub_system
+   psql -d cabaclub_system -f database/schema.sql
+   # 追加マイグレーションを database/MIGRATION_GUIDE.md の順序で適用
+   ```
+
+4. **環境変数の設定**
+
+   `.env` を作成し、[環境変数](#-環境変数)の項目を設定してください。
+
+5. **開発サーバーの起動**
    ```bash
    npm run dev
-   # または
-   yarn dev
    ```
-
-4. **ブラウザで開く**
    [http://localhost:3000](http://localhost:3000) にアクセス
 
 ### 本番用ビルド
@@ -171,694 +272,149 @@ npm run build
 npm start
 ```
 
-## 📖 使用方法
-
-### 役割別アクセス
-
-#### 🍷 テーブルログイン
-- **テーブル選択**: 利用可能なテーブルの選択
-- **顧客選択**: 本指名顧客またはフリー顧客の選択
-- **注文管理**: メニュー選択・キャスト選択・注文入力
-- **指名管理**: 本指名・場内指名の管理
-- **サービス注文**: おしぼり・灰皿交換・スタッフ呼び出し
-
-#### 👨‍💼 キャスト
-- **勤怠管理**: 出退勤記録・勤怠状況確認
-- **給与確認**: 給与明細・バック率確認・指名サマリー
-- **指名管理**: 本指名顧客管理・指名統計
-- **サービス管理**: サービス注文対応・スタッフ呼び出し対応
-- **セッション管理**: セッション詳細・注文履歴・会計処理
-
-#### 👨‍💻 管理者
-- **指名管理**: 指名統計・昇格管理・本指名変更
-- **売上管理**: 日次・月次売上確認・レポート生成
-- **メニュー管理**: メニューアイテムの作成・編集・価格設定
-- **ボトル管理**: 店舗在庫ボトルの管理・消費記録
-- **勤怠承認**: 勤怠データの確認・承認・修正
-- **給与プレビュー**: 給与計算・修正・確定
-- **システム設定**: バック率設定・メニュー管理・店舗設定
-
-
-### 主要ワークフロー
-
-#### テーブルログイン注文フロー
-1. テーブルログイン選択
-2. テーブル選択・顧客選択
-3. メニュー選択・キャスト選択
-4. 注文作成・カート確認
-5. 指名管理・サービス注文
-6. セッション終了
-
-#### キャスト勤務フロー
-1. キャストログイン
-2. 出勤記録・勤怠状況確認
-3. テーブル監視・顧客サポート
-4. サービス注文対応
-5. 指名管理・バック率確認
-6. 退勤記録
-
-#### 管理者運営フロー
-1. 管理者ログイン
-2. ダッシュボード確認
-3. 顧客管理・指名管理
-4. 売上確認・レポート生成
-5. システム設定・メンテナンス
-
-## 🔌 API仕様（実装済み）
-
-### 認証
-```
-POST /api/auth/admin-login
-POST /api/auth/cast-login
-```
-
-### キャスト
-```
-GET    /api/casts
-POST   /api/casts
-PUT    /api/casts/[id]
-DELETE /api/casts/[id]
-```
-
-### カテゴリ & 商品
-```
-GET    /api/categories
-POST   /api/categories
-PUT    /api/categories/[id]
-DELETE /api/categories/[id]     # ID 1/2 は削除不可
-
-GET    /api/products
-POST   /api/products
-PUT    /api/products/[id]
-DELETE /api/products/[id]
-```
-
-### サービス
-```
-GET    /api/services
-POST   /api/services
-```
-
-### セッション・注文
-```
-GET    /api/sessions
-POST   /api/sessions
-PATCH  /api/sessions/[id]
-
-GET    /api/salesorder           # ?session_id= でフィルタ
-POST   /api/salesorder           # 在庫減算を伴う
-
-GET    /api/serviceorder         # ?session_id= でフィルタ
-POST   /api/serviceorder
-```
-
-### 勤怠
-```
-GET    /api/attendance
-POST   /api/attendance
-```
-
-### 通知/呼び出し・決済
-```
-POST   /api/notifications
-GET    /api/callmanager
-POST   /api/callmanager
-
-POST   /api/stripe/create-payment-intent
-POST   /api/stripe/create-checkout-session
-```
-
-### データモデル
-
-#### 店舗インターフェース
-```typescript
-interface Store {
-  id: string;
-  name: string;
-  tax_bp: number;           // 税率（ベーシスポイント）
-  service_charge_bp: number; // サービス料率
-  closing_time: string;
-  created_at: string;
-  updated_at: string;
-}
-```
-
-#### テーブルシートインターフェース
-```typescript
-interface TableSeat {
-  id: string;
-  store_id: string;
-  label: string;
-  capacity: number;
-  active: boolean;
-  status: 'available' | 'occupied' | 'reserved' | 'cleaning';
-  area?: string;            // メインフロア、VIP、カウンター、個室
-  last_updated?: string;
-  session_start?: string;
-  estimated_checkout?: string;
-  customer_name?: string;
-  staff_assigned?: string;
-  note?: string;
-}
-```
-
-#### サービスセッションインターフェース
-```typescript
-interface ServiceSession {
-  id: string;
-  store_id: string;
-  business_date: string;
-  table_seat_id: string;
-  customer_id?: string;
-  opened_at: string;
-  closed_at?: string;
-  status: 'open' | 'settled' | 'void';
-  participating_casts: SessionCast[];
-}
-
-interface SessionCast {
-  staff_id: string;
-  joined_at: string;
-  left_at?: string;
-  is_primary: boolean;
-}
-```
-
-## 🗄 データベーススキーマ
-
-### 主要エンティティ
-
-#### 店舗
-- 独立した設定を持つ主要ビジネス単位
-- 税率、サービス料、営業パラメータ
-- 複数店舗対応と中央管理
-
-#### テーブル
-- 容量とステータス追跡を持つ物理座席エリア
-- エリア別組織（メイン、VIP、カウンター、個室）
-- リアルタイムステータス更新とセッション管理
-
-#### 顧客
-- 連絡先情報と設定を持つ顧客プロファイル
-- 来店履歴、支出パターン、サービスリクエスト
-- サービス注文追跡と顧客インタラクション
-
-#### キャスト
-- 役割と権限を持つ従業員プロファイル
-- 勤怠追跡とパフォーマンス指標
-- 自動計算による給与統合
-
-#### セッション
-- テーブルベースの顧客サービスセッション
-- マルチキャスト参加サポート
-- 継続時間追跡と請求管理
-- キオスク経由の自動セッション作成
-
-#### 注文
-- キオスクからのテーブルベース顧客注文
-- 注文アイテムごとのオプションキャスト指名
-- 税計算と支払い処理
-- ステータス追跡と確認ワークフロー
-
-#### メニューアイテム
-- カテゴリと価格を持つ商品カタログ
-- 税カテゴリとサービス料適用性
-- 画像サポートとSKU管理
-
-#### ボトル（店舗在庫）
-- 店舗全体の在庫管理システム
-- リアルタイム在庫レベル追跡と監視
-- 有効期限管理とアラート
-- ボトルステータス: アクティブ、空、期限切れ
-- 在庫不足通知（残量20%以下）
-
-## 🧩 コンポーネント構造
-
-### UIコンポーネント（shadcn/ui）
-- **Button**: 様々なボタンスタイルと状態
-- **Card**: ヘッダーとアクションを持つコンテンツコンテナ
-- **Dialog**: フォームと確認用のモーダルダイアログ
-- **Form**: バリデーション付きフォームコンポーネント
-- **Table**: ソートとフィルタリング機能付きデータテーブル
-- **Badge**: ステータスインジケーターとラベル
-- **Input**: 様々なタイプのフォーム入力
-- **Select**: ドロップダウン選択
-- **Tabs**: タブインターフェース
-- **Toast**: 通知システム
-
-### カスタムコンポーネント
-
-#### 認証
-- `LoginModal`: マルチロールログインインターフェース
-- `RoleGate`: ロールベースアクセス制御
-
-#### キャストコンポーネント
-- `CustomerRegistrationModal`: 顧客プロファイル作成と管理
-- `CustomerHistoryModal`: 顧客来店履歴と詳細
-- `ServiceOrderPage`: スタッフ呼び出しとサービスリクエストシステム
-- `CastNominationModal`: 顧客指名と割り当て
-
-#### 管理者コンポーネント
-- `CustomerRegistrationModal`: 顧客プロファイル作成
-- `CustomerHistoryModal`: 顧客来店履歴
-- `MenuItemModal`: メニューアイテム管理
-- `BottleModal`: 店舗在庫管理インターフェース
-- `AttendanceReviewPage`: スタッフ勤怠承認と取り消し
-- `PayrollPreviewPage`: 給与計算と修正
-
-
-## 🔐 認証・権限管理
-
-### ロールベースアクセス制御
-
-#### テーブルログイン
-- テーブルでの注文・指名・サービス注文
-- セッション管理・顧客情報表示
-
-#### キャストロール
-- 顧客管理とサービス
-- テーブル管理と注文処理
-- セッション追跡と顧客サービス
-- 個人勤怠と給与アクセス
-
-#### 管理者ロール
-- メニュー管理とシステム設定
-- 売上レポートと分析
-- キャストパフォーマンス監視
-- 顧客管理と指名管理
-
-
-### 認証フロー
-1. テーブルログイン、キャスト、管理者、システム管理者がログイン時に役割を選択
-2. システムがスタッフデータベースに対して認証情報を検証
-3. 適切な権限を持つ役割ベースダッシュボードアクセス
-4. 役割に基づくコンテキスト対応ナビゲーションと機能
-
-## 📱 レスポンシブデザイン
-
-### モバイルファーストアプローチ
-- **ブレークポイント**: sm (640px), md (768px), lg (1024px), xl (1280px)
-- **グリッドシステム**: 適応的列を持つレスポンシブグリッドレイアウト
-- **タイポグラフィ**: デバイス間でスケーラブルなテキストサイズ
-- **タッチターゲット**: モバイルインタラクション用の最小44px
-
-### レスポンシブ機能
-- **適応ヘッダー**: 折りたたみ可能なナビゲーションとレスポンシブブランディング
-- **フレキシブルグリッド**: 画面サイズに基づく1-4列レイアウト
-- **モバイルナビゲーション**: タッチフレンドリーなボタンとジェスチャー
-- **コンテンツ優先順位**: すべてのデバイスで重要な情報を表示
-
-### カスタムユーティリティ
-```css
-/* クリーンなモバイルスクロール用スクロールバー非表示 */
-.scrollbar-hide
-
-/* 微妙なスクロール用の細いスクロールバー */
-.scrollbar-thin
-
-/* レスポンシブスペーシングパターン */
-py-4 sm:py-8
-gap-4 sm:gap-6
-mb-6 sm:mb-8
-```
-
-## 🛠 開発
-
-### 開発コマンド
-```bash
-# 開発サーバー起動
-npm run dev
-
-# 本番用ビルド
-npm run build
-
-# 本番サーバー起動
-npm start
-
-# リンティング実行
-npm run lint
-```
-
-### コード構造ガイドライン
-- **コンポーネント**: TypeScriptを使用した関数コンポーネント
-- **状態管理**: グローバル状態用のReact Context
-- **スタイリング**: TailwindCSSユーティリティクラス
-- **型安全性**: 厳密なTypeScript設定
-- **パフォーマンス**: Next.js最適化機能
-
-### ベストプラクティス
-- **コンポーネント構成**: プロパティを持つ再利用可能コンポーネント
-- **型安全性**: 厳密なTypeScriptインターフェース
-- **パフォーマンス**: 遅延読み込みとコード分割
-- **アクセシビリティ**: ARIAラベルとキーボードナビゲーション
-- **レスポンシブデザイン**: モバイルファーストアプローチ
-
-## 🚀 デプロイ
-
-### 本番ビルド
-```bash
-# 最適化ビルド作成
-npm run build
-
-# 本番サーバー起動
-npm start
-```
-
-### 環境変数
-```env
-NEXT_PUBLIC_API_URL=your-api-url
-NEXT_PUBLIC_APP_NAME=LNXS
-```
-
-### デプロイプラットフォーム
-- **Vercel**: Next.jsアプリケーションに推奨
-- **Netlify**: 静的サイトデプロイ
-- **AWS**: コンテナベースデプロイ
-- **Docker**: コンテナ化デプロイ
-
-### パフォーマンス最適化
-- **静的生成**: より良いパフォーマンスのためのプリレンダリングページ
-- **画像最適化**: Next.js自動画像最適化
-- **コード分割**: 自動バンドル分割
-- **キャッシング**: 静的アセットキャッシングとCDNサポート
-
-### 技術的改善
-- **データベース統合**: PostgreSQL/MongoDBバックエンド
-- **認証**: JWT/OAuth2実装
-- **リアルタイム機能**: Socket.io統合
-- **テスト**: JestとReact Testing Library
-- **CI/CD**: 自動テストとデプロイ
-- **パフォーマンス**: オフラインサポート用Service Worker
-- **セキュリティ**: 強化されたセキュリティ対策
-- **監視**: アプリケーションパフォーマンス監視
-
-## 🔧 設定
-
-### 環境セットアップ
-```bash
-# 開発
-NODE_ENV=development
-NEXT_PUBLIC_APP_NAME=LNXS
-NEXT_PUBLIC_API_URL=http://localhost:3000/api
-NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_test_51SMrxT2NRpI9c8r78v4HWfbQHX6KDbrwYGv3J2eC68UsEoqknH3XPNQ9pul3zbuHH26znCvTlhBbwdtKLzvivmWM00f1wczpXr
-STRIPE_SECRET_KEY=STRIPE_SECRET_REMOVED
-
-# 本番
-NODE_ENV=production
-NEXT_PUBLIC_APP_NAME=LNXS
-NEXT_PUBLIC_API_URL=https://your-api-domain.com
-```
-
-### TailwindCSS設定
-```typescript
-// tailwind.config.ts
-module.exports = {
-  content: [
-    './pages/**/*.{js,ts,jsx,tsx,mdx}',
-    './components/**/*.{js,ts,jsx,tsx,mdx}',
-    './app/**/*.{js,ts,jsx,tsx,mdx}',
-  ],
-  theme: {
-    extend: {
-      colors: {
-        // カスタムカラーパレット
-      },
-      borderRadius: {
-        lg: 'var(--radius)',
-        md: 'calc(var(--radius) - 2px)',
-        sm: 'calc(var(--radius) - 4px)',
-      },
-    },
-  },
-  plugins: [require('tailwindcss-animate')],
-}
-```
-
-
-## 📊 パフォーマンス
-
-### 最適化戦略
-- **コード分割**: Next.jsによる自動バンドル分割
-- **画像最適化**: Next.js自動画像最適化
-- **静的生成**: より良いパフォーマンスのためのプリレンダリングページ
-- **キャッシング**: 静的アセットキャッシングとCDNサポート
-- **遅延読み込み**: コンポーネントとルートベースの遅延読み込み
-
-### パフォーマンス指標
-- **First Contentful Paint**: < 1.5s
-- **Largest Contentful Paint**: < 2.5s
-- **Cumulative Layout Shift**: < 0.1
-- **First Input Delay**: < 100ms
-
-## 🔒 セキュリティ
-
-### セキュリティ対策
-- **入力検証**: Zodスキーマ検証
-- **XSS保護**: Reactの組み込みXSS保護
-- **CSRF保護**: Next.js CSRF保護
-- **コンテンツセキュリティポリシー**: 厳密なCSPヘッダー
-- **HTTPS強制**: セキュアな通信
-
-### ベストプラクティス
-- **環境変数**: セキュアな設定管理
-- **認証**: ロールベースアクセス制御
-- **データ検証**: サーバーサイドとクライアントサイド検証
-- **エラーハンドリング**: セキュアなエラーメッセージ
-- **ログ**: セキュリティイベントの監査証跡
-
-## 📱 モバイル最適化
-
-### プログレッシブウェブアプリ（PWA）
-- **オフラインサポート**: オフライン機能用Service Worker
-- **アプリライク体験**: ネイティブアプリライクインターフェース
-- **プッシュ通知**: リアルタイム通知
-- **インストールプロンプト**: ホーム画面への追加機能
-
-### モバイル特化機能
-- **タッチジェスチャー**: スワイプとタップインタラクション
-- **レスポンシブ画像**: モバイル帯域幅に最適化
-- **高速読み込み**: モバイルネットワークに最適化
-- **バッテリー最適化**: 効率的な電力使用
-
-## 🌐 国際化
-
-### 多言語サポート
-```typescript
-// i18n設定
-const i18n = {
-  defaultLocale: 'ja',
-  locales: ['ja', 'en', 'zh'],
-  domains: [
-    {
-      domain: 'nightwork-pos.com',
-      defaultLocale: 'ja',
-    },
-  ],
-}
-```
-
-### 翻訳構造
-```
-locales/
-├── ja/                 # 日本語翻訳
-├── en/                 # 英語翻訳
-└── zh/                 # 中国語翻訳
-```
-
-## 🔄 状態管理
-
-### コンテキストプロバイダー
-```typescript
-// セッション管理
-const SessionContext = createContext<SessionContextType>();
-
-// 通知システム
-const NotificationContext = createContext<NotificationContextType>();
-
-// 認証
-const AuthContext = createContext<AuthContextType>();
-```
-
-### 状態パターン
-- **グローバル状態**: アプリ全体の状態用React Context
-- **ローカル状態**: コンポーネント固有の状態用useState
-- **サーバー状態**: APIシミュレーション用モックデータレイヤー
-- **フォーム状態**: フォーム管理用React Hook Form
-
-## 📈 分析・監視
-
-### ユーザー分析
-- **ページビュー**: ユーザーナビゲーションパターンの追跡
-- **ユーザー行動**: 機能使用の監視
-- **パフォーマンス**: アプリケーションパフォーマンスの追跡
-- **エラー**: エラーの監視と報告
-
-### ビジネス分析
-- **売上指標**: 収益と取引の追跡
-- **顧客インサイト**: 顧客行動分析
-- **スタッフパフォーマンス**: 従業員生産性指標
-- **運用データ**: ビジネス運用インサイト
-
-## 🚀 デプロイ戦略
-
-### ステージング環境
-```bash
-# ステージングにデプロイ
-npm run build:staging
-npm run deploy:staging
-```
-
-### 本番環境
-```bash
-# 本番にデプロイ
-npm run build:production
-npm run deploy:production
-```
-
-### ブルーグリーンデプロイ
-- **ゼロダウンタイム**: シームレスなデプロイプロセス
-- **ロールバック機能**: 前のバージョンへの迅速なロールバック
-- **ヘルスチェック**: 自動ヘルス監視
-- **ロードバランシング**: トラフィック分散
-
-## 🔧 メンテナンス
-
-### 定期タスク
-- **依存関係更新**: パッケージを最新に保つ
-- **セキュリティパッチ**: セキュリティ更新の適用
-- **パフォーマンス監視**: アプリケーションパフォーマンスの監視
-- **バックアップ管理**: 定期的なデータバックアップ
-- **ログ管理**: ログローテーションと分析
-
-### トラブルシューティング
-
-#### 一般的な問題
-1. **ビルド失敗**: TypeScriptエラーと依存関係をチェック
-2. **パフォーマンス問題**: バンドルサイズと読み込み時間を監視
-3. **レスポンシブ問題**: 様々なデバイスと画面サイズでテスト
-4. **認証問題**: ロールベースアクセス制御を確認
-
-#### デバッグコマンド
-```bash
-# TypeScriptエラーをチェック
-npx tsc --noEmit
-
-# バンドルサイズを分析
-npm run analyze
-
-# アクセシビリティ問題をチェック
-npm run a11y
-
-# パフォーマンス監査を実行
-npm run lighthouse
-```
-
-## 🤝 貢献
-
-### 開発セットアップ
-1. リポジトリをフォーク
-2. 機能ブランチを作成（`git checkout -b feature/amazing-feature`）
-3. 変更を加える
-4. 該当する場合はテストを追加
-5. 変更をコミット（`git commit -m 'Add amazing feature'`）
-6. ブランチにプッシュ（`git push origin feature/amazing-feature`）
-7. プルリクエストを開く
-
-### コード標準
-- **TypeScript**: 厳密な型チェック有効
-- **ESLint**: コード品質強制
-- **Prettier**: コードフォーマット
-- **Conventional Commits**: 標準化されたコミットメッセージ
-- **コードレビュー**: すべての変更にレビューが必要
-
-### プルリクエストガイドライン
-- **明確な説明**: 変更と理由を説明
-- **テスト**: 新機能にテストを含める
-- **ドキュメント**: 必要に応じてドキュメントを更新
-- **スクリーンショット**: UI変更にスクリーンショットを含める
-
-## 📄 ライセンス
-
-このプロジェクトはMITライセンスの下でライセンスされています。詳細は[LICENSE](LICENSE)ファイルを参照してください。
-
-### ライセンス条項
-- **商用利用**: 許可
-- **修正**: 許可
-- **配布**: 許可
-- **私的使用**: 許可
-- **責任**: 限定
-- **保証**: なし
-
-## 🆘 サポート
-
-### ヘルプの取得
-- **ドキュメント**: インラインコードコメントとこのREADMEを確認
-- **Issues**: バグや機能リクエスト用にGitHubでissueを作成
-- **Discussions**: 質問やアイデア用にGitHub Discussionsを使用
-- **Wiki**: 詳細ガイド用にプロジェクトwikiを確認
-
-### コミュニティ
-- **Discord**: リアルタイムサポート用にDiscordサーバーに参加
-- **Email**: support@nightwork-pos.comでお問い合わせ
-- **FAQ**: よくある質問を確認
-
-### 問題の報告
-問題を報告する際は、以下を含めてください：
-- **環境**: OS、ブラウザ、Node.jsバージョン
-- **再現手順**: 問題を再現する明確な手順
-- **期待される動作**: 期待していた動作
-- **実際の動作**: 実際に起こったこと
-- **スクリーンショット**: 該当する場合は視覚的証拠
-
-## 🆕 最近の更新
-
-### Version 3.0.0 - キャバクラ特化統合POSシステム
-
-#### 🍷 テーブルファーストシステム実装
-- **テーブルベース注文**: キャストがテーブルで注文を管理
-- **自動セッション管理**: テーブル利用時に自動的にセッション作成
-- **デバイスバインディング**: localStorageトークンによる安定したテーブル-デバイスバインディング
-- **キャスト指名**: 注文アイテムごとのオプションキャスト選択
-- **マルチキャストセッション**: テーブルセッションあたり複数キャストサポート
-
-#### 🔄 ワークフロー変革
-- **キャスト主導注文**: キャストが注文を管理し、指名・サービス注文まで完結
-- **指名システム**: 本指名・場内指名の完全サポート
-- **バック率計算**: ドリンク・ボトル・指名別の自動計算
-- **統合管理**: 勤怠・給与・売上・顧客の一元管理
-
-#### 🏗️ アーキテクチャ更新
-- **SessionContext統合**: すべてのコンポーネント間での中央集権的セッション管理
-- **テーブルファーストデータモデル**: 注文とセッションがキャストではなくテーブルに紐づけ
-- **テーブル特化レイアウト**: 顧客使用用の簡素化インターフェース
-- **ロールベースアクセス**: 新しいワークフロー用の権限更新
-
-#### 🐛 技術的改善
-- **TypeScript準拠**: すべての型エラーとインターフェース不一致を修正
-- **ビルド最適化**: コンパイル問題を解決し、ビルドパフォーマンスを改善
-- **データ一貫性**: すべてのコンポーネントで一貫したデータ構造を使用
-- **レスポンシブデザイン**: モバイルとタブレット互換性を強化
-
-### 以前のバージョン
-- **Version 2.1.0**: ボトル管理の大幅な改善による管理機能の強化
-- **Version 2.0.0**: 初期キャスト中心システム実装
-
-## 🙏 謝辞
-
-### オープンソースライブラリ
-- **Next.js**: 本番用Reactフレームワーク
-- **TailwindCSS**: ユーティリティファーストCSSフレームワーク
-- **shadcn/ui**: 美しくアクセシブルなコンポーネント
-- **Radix UI**: スタイルなし、アクセシブルなUIプリミティブ
-- **Lucide React**: 美しく一貫したアイコンツールキット
-
-### 貢献者
-- **開発チーム**: コア開発チーム
-- **デザインチーム**: UI/UXデザインと実装
-- **テストチーム**: 品質保証とテスト
-- **コミュニティ**: オープンソース貢献者
+---
+
+## 🔧 環境変数
+
+| 変数名 | 必須 | 説明 | デフォルト |
+|---|---|---|---|
+| `DB_HOST` | 任意 | PostgreSQLホスト | `localhost` |
+| `DB_PORT` | 任意 | PostgreSQLポート | `5432` |
+| `DB_NAME` | 任意 | データベース名 | `cabaclub_system` |
+| `DB_USER` | 任意 | DBユーザー名 | `postgres` |
+| `DB_PASSWORD` | 任意 | DBパスワード | `postgres` |
+| `STRIPE_SECRET_KEY` | カード決済を使う場合必須 | Stripeシークレットキー（サーバー側） | — |
+| `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | カード決済を使う場合必須 | Stripe公開可能キー（クライアント側） | — |
+
+> **重要**: `.env` はGit管理対象外（`.gitignore`済み）です。実際のシークレットキーやDBパスワードは絶対にコミットしないでください。
 
 ---
 
+## 🔑 ログイン・テストアカウント
 
-**LNXS** - モダンなテクノロジーと直感的な管理ツールでナイトライフビジネスを支援。🍷✨
+各ロールのログイン画面（`/table-login`・`/cast-login`・`/admin-login`）では、実際にはDBの `user` テーブルに対してメール＋パスワード（MD5照合）で認証されます。
+
+一方、`lib/auth.ts` にはUIプロトタイピング用の**ローカル開発専用モックアカウント**が定義されています（パスワードは全て `password`）。本番運用アカウントではありません。
+
+| ロール | メールアドレス例 | パスワード |
+|---|---|---|
+| キャスト | `tanaka@example.com` 他5件 | `password` |
+| 管理者 | `yamada@example.com` 他2件 | `password` |
+| システム管理者 | `system@example.com` 他1件 | `password` |
+
+---
+
+## 🔌 API仕様
+
+実装済みのAPIルート（`app/api/`）を機能別にまとめています。
+
+| 区分 | エンドポイント例 |
+|---|---|
+| 認証 | `POST /api/auth/table-login`, `/api/auth/cast-login`, `/api/auth/admin-login` |
+| マスタ管理 | `/api/categories`, `/api/products`, `/api/services`, `/api/add-charges`, `/api/tables` |
+| キャスト/ユーザー | `/api/casts`, `/api/cast-back-rates`, `/api/admins`, `/api/table-users` |
+| セッション/注文 | `/api/sessions`, `/api/salesorder`, `/api/serviceorder`, `/api/nominations`, `/api/cart` |
+| 勤怠/給与 | `/api/attendance`, `/api/salary-settings`, `/api/salary-attenday`, `/api/salary-category`, `/api/salary-full`, `/api/shifts`, `/api/deduct` |
+| ルーム | `/api/vip-room`, `/api/song-room` |
+| ボトルキープ | `/api/bottle-keep` |
+| 通知/呼出 | `/api/notifications`, `/api/callmanager` |
+| 決済 | `/api/stripe/create-payment-intent`, `/api/session-payments` |
+| 印刷 | `/api/print`, `/api/print/epos` |
+| 管理者向け集計 | `/api/admin/sales/*`, `/api/admin/payroll/*`, `/api/admin/cast-ranking` |
+| バッチ/運用 | `/api/cron/weekly-salary-update`, `/api/backup`, `/api/backup/restore` |
+
+---
+
+## 🖨 レシート・領収書印刷
+
+キャバクラ店舗の実運用を意識し、複数の印刷方式に対応しています。
+
+1. **Epson ePOS（LAN/WebSocket）** — `public/epos/` に配置したEpson公式SDKを用い、Wi-Fi接続のレシートプリンタに直接印刷（`lib/printing/epos-print.ts`）
+2. **Web Bluetooth（ESC/POS直接送信）** — BluetoothプリンタへESC/POSコマンドを直接送信（`lib/printing/bluetooth-escpos.ts`, `components/admin/BluetoothPrinterButton.tsx`）
+3. **OS標準印刷（フォールバック）** — Bluetooth非対応環境向けに領収書HTMLを生成し `window.print()` で出力（`lib/printing/os-print.ts`, `ryoushusho-html.ts`）
+
+印刷前には `PrintConfirmModal` による確認ダイアログを挟み、`log_record` テーブルに印刷履歴が記録されます。
+
+---
+
+## 💳 決済（Stripe）
+
+- **PaymentIntent方式（実装済み）**: `app/api/stripe/create-payment-intent` でサーバー側にPaymentIntentを作成し、`components/payment/StripePaymentForm.tsx`（Stripe Elements）でカード情報を入力・決済
+- **Checkout Session方式**: `app/api/stripe/create-checkout-session` はエンドポイントのみ用意されており、**現時点では未実装のスタブ**です
+- Webhookエンドポイントは未実装のため、決済確定後の非同期処理（返金・失敗通知等）は今後の課題です
+
+---
+
+## 🛠 開発コマンド
+
+```bash
+npm run dev     # 開発サーバー起動（Turbopack）
+npm run build   # 本番ビルド
+npm start       # 本番サーバー起動
+npm run lint    # ESLintでコード検査
+```
+
+> 現時点で自動テストのスクリプト・フレームワークは導入されていません。
+
+---
+
+## 🚀 デプロイ
+
+`vercel.json` にてVercel Cronが設定されており、毎週日曜15:00（UTC）に `/api/cron/weekly-salary-update` が呼び出され、週次の給与集計が自動更新されます。
+
+```json
+{
+  "crons": [
+    { "path": "/api/cron/weekly-salary-update", "schedule": "0 15 * * 0" }
+  ]
+}
+```
+
+`scripts/` 配下にはVercel Cron以外の運用を想定したバックアップ／給与更新バッチ（`backup-cron.ts`, `salary-update-cron.ts`）も同梱されています。
+
+---
+
+## ⚠️ 既知の制限事項・今後の課題
+
+正確な現状把握のため、ソースコード調査で確認できた制限事項を明記します。
+
+- **単一店舗前提**: `app/super/`（店舗一覧・監査ログ）はモックデータのみで、DBに `store` テーブルは存在しません。現状は複数店舗（マルチテナント）運用には対応していません。
+- **一部管理画面がモックデータ**: `app/admin/customers`・`app/admin/campaigns` は `lib/mock-data.ts` のモックデータを表示するのみで、DB連携はまだ実装されていません。
+- **パスワードハッシュがMD5**: 現状 `lib/hash.ts` はMD5でパスワードを照合しています。本番運用前により堅牢なハッシュ方式（bcrypt等）への移行を推奨します（`bcryptjs` は依存関係に含まれていますが未使用です）。
+- **サーバー側セッション機構なし**: ログイン状態はJWTやセッションCookieではなく、クライアント側の`localStorage`で管理されています。
+- **自動テスト未整備**: テスト用フレームワークは導入されていません。
+- **重複／未使用ページ**: `app/admin/order-monitor`（`order-monitoring`が実運用版）、`app/admin/bottles`（`bottle-keep`が実運用版）はいずれもどこからも参照されないオーファンページです。整理を推奨します。
+- **Stripe Checkout Session・Webhook未実装**: PaymentIntent方式のみ動作します。
+
+---
+
+## 📄 ライセンス・著作権
+
+本リポジトリは **プロプライエタリ（非公開）ソフトウェア** です。特別な許諾がない限り、商用利用・複製・再配布はできません。
+
+```
+Copyright © 2026 aoi-webstudio.com. All rights reserved.
+```
+
+---
+
+## 🙏 謝辞
+
+本プロジェクトは以下のオープンソースソフトウェアを利用しています。
+
+- [Next.js](https://nextjs.org/) — Reactフレームワーク
+- [TailwindCSS](https://tailwindcss.com/) / [shadcn/ui](https://ui.shadcn.com/) / [Radix UI](https://www.radix-ui.com/) — UIコンポーネント
+- [Recharts](https://recharts.org/) — グラフ描画
+- [Stripe](https://stripe.com/) — 決済基盤
+- [Epson ePOS SDK](https://download.epson.biz/sec_pubs/pos/reference_en/epos_js/index.html) — レシートプリンタ連携
+- [Lucide](https://lucide.dev/) — アイコン
+
+---
+
+<div align="center">
+
+**LNXS** — ナイトワーク業態の現場運用に寄り添うPOSシステム
+
+Developed by [aoi-webstudio.com](https://aoi-webstudio.com)
+
+</div>
